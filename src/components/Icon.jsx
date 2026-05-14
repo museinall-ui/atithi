@@ -1,0 +1,55 @@
+export default function Icon({ name, size = 18, color = 'currentColor', stroke = 1.6 }) {
+  const p = { fill: 'none', stroke: color, strokeWidth: stroke, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const paths = {
+    home:    <><path {...p} d="M3 8.5L10 3l7 5.5V17a1 1 0 01-1 1h-3v-5h-6v5H4a1 1 0 01-1-1V8.5z"/></>,
+    cal:     <><rect {...p} x="3" y="4.5" width="14" height="13" rx="2"/><path {...p} d="M3 8h14M7 2v3M13 2v3"/></>,
+    plus:    <><path {...p} d="M10 4v12M4 10h12"/></>,
+    users:   <><circle {...p} cx="7" cy="7" r="3"/><path {...p} d="M2 17c.5-3 2.5-5 5-5s4.5 2 5 5"/><circle {...p} cx="14" cy="6" r="2.5"/><path {...p} d="M13 12c2 0 4 1.5 4.5 4"/></>,
+    chart:   <><path {...p} d="M3 17h14M5 13l3-4 3 3 4-6"/></>,
+    cog:     <><circle {...p} cx="10" cy="10" r="2.5"/><path {...p} d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></>,
+    bed:     <><path {...p} d="M2 14V6M2 14h16M18 14v-3a2 2 0 00-2-2H8v5M2 9h2"/><circle {...p} cx="6" cy="9" r="1.5"/></>,
+    tag:     <><path {...p} d="M2.5 2.5h6L17 11l-6 6L2.5 8.5v-6z"/><circle cx="6" cy="6" r="1.2" fill={color}/></>,
+    plug:    <><path {...p} d="M14 6l3-3M6 14l-3 3M9 5l6 6-2.5 2.5a3 3 0 01-4.2 0L5 10.7a3 3 0 010-4.2L7.5 4z"/></>,
+    arrow:   <><path {...p} d="M4 10h12M11 5l5 5-5 5"/></>,
+    arrowL:  <><path {...p} d="M16 10H4M9 5l-5 5 5 5"/></>,
+    chev:    <><path {...p} d="M7 5l5 5-5 5"/></>,
+    chevD:   <><path {...p} d="M5 7l5 5 5-5"/></>,
+    chevU:   <><path {...p} d="M5 13l5-5 5 5"/></>,
+    search:  <><circle {...p} cx="9" cy="9" r="5"/><path {...p} d="M13 13l4 4"/></>,
+    bell:    <><path {...p} d="M5 14V9a5 5 0 0110 0v5l1.5 2h-13L5 14zM8 17a2 2 0 004 0"/></>,
+    check:   <><path {...p} d="M4 10l4 4 8-8"/></>,
+    x:       <><path {...p} d="M5 5l10 10M15 5L5 15"/></>,
+    phone:   <><path {...p} d="M5 3h2l2 5-2 1c1 2 3 4 5 5l1-2 5 2v2a2 2 0 01-2 2C9 18 2 11 2 5a2 2 0 012-2z"/></>,
+    mail:    <><rect {...p} x="2" y="4" width="16" height="12" rx="2"/><path {...p} d="M2 6l8 5 8-5"/></>,
+    wa:      <><path {...p} d="M3 17l1.2-3.8A7 7 0 1110 17a7 7 0 01-3.4-.9L3 17z"/><path {...p} d="M7.5 7.5c0 0 .5-.5 1-.5s1.2 1.5 1.2 2-.7 1-.7 1 .8 2 2.5 2.5c0 0 .5-.7 1-.7s2 .7 2 1.2-.5 1-.5 1c-2.5.5-5.5-2.5-6-5z" strokeWidth="1.2"/></>,
+    upi:     <><path {...p} d="M7 3l-3 7h4l-2 7 8-10h-5l3-4z"/></>,
+    qr:      <><rect {...p} x="3" y="3" width="6" height="6"/><rect {...p} x="11" y="3" width="6" height="6"/><rect {...p} x="3" y="11" width="6" height="6"/><path {...p} d="M11 11h2v2M15 11v2M11 15h2v2M15 15v2"/></>,
+    inr:     <><path {...p} d="M5 4h10M5 8h10M5 4c4 0 7 .5 7 4s-3 4-7 4l5 6"/></>,
+    card:    <><rect {...p} x="2.5" y="5" width="15" height="10" rx="1.5"/><path {...p} d="M2.5 8.5h15M5.5 12.5h3"/></>,
+    bank:    <><path {...p} d="M3 8l7-4 7 4M4 8v6M10 8v6M16 8v6M3 15h14M3 17h14"/></>,
+    clock:   <><circle {...p} cx="10" cy="10" r="7"/><path {...p} d="M10 6v4l3 2"/></>,
+    lock:    <><rect {...p} x="4" y="9" width="12" height="9" rx="2"/><path {...p} d="M7 9V6a3 3 0 016 0v3"/></>,
+    door:    <><path {...p} d="M5 17V4h7v13M5 17h10M5 4l7-2v15M11 11h.5"/></>,
+    moon:    <><path {...p} d="M14 11A6 6 0 016 3a7 7 0 108 8z"/></>,
+    sun:     <><circle {...p} cx="10" cy="10" r="3.5"/><path {...p} d="M10 3v1.5M10 15.5V17M3 10h1.5M15.5 10H17M5 5l1 1M14 14l1 1M5 15l1-1M14 6l1-1"/></>,
+    star:    <><path {...p} d="M10 3l2.2 4.5 5 .7-3.6 3.5.85 5L10 14.3l-4.45 2.4.85-5L2.8 8.2l5-.7L10 3z"/></>,
+    filter:  <><path {...p} d="M3 5h14M6 10h8M9 15h2"/></>,
+    more:    <><circle cx="5" cy="10" r="1.4" fill={color}/><circle cx="10" cy="10" r="1.4" fill={color}/><circle cx="15" cy="10" r="1.4" fill={color}/></>,
+    sync:    <><path {...p} d="M4 10a6 6 0 0110-4M16 10a6 6 0 01-10 4M14 3v3.5h-3.5M6 17v-3.5h3.5"/></>,
+    download:<><path {...p} d="M10 3v10M5 9l5 5 5-5M3 17h14"/></>,
+    eye:     <><path {...p} d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle {...p} cx="10" cy="10" r="2.5"/></>,
+    edit:    <><path {...p} d="M14 3l3 3-9 9-4 1 1-4 9-9z"/></>,
+    trash:   <><path {...p} d="M4 6h12M8 6V4h4v2M6 6v11a1 1 0 001 1h6a1 1 0 001-1V6"/></>,
+    flag:    <><path {...p} d="M4 17V3M4 4h11l-2 4 2 4H4"/></>,
+    map:     <><path {...p} d="M2 5l5-2 6 2 5-2v12l-5 2-6-2-5 2V5zM7 3v12M13 5v12"/></>,
+    block:   <><circle {...p} cx="10" cy="10" r="7"/><path {...p} d="M5 5l10 10"/></>,
+    info:    <><circle {...p} cx="10" cy="10" r="7"/><path {...p} d="M10 9v5M10 6.5v.5"/></>,
+    veg:     <><rect {...p} x="3" y="3" width="14" height="14" rx="1.5"/><circle cx="10" cy="10" r="3" fill={color}/></>,
+    upload:  <><path {...p} d="M10 17V7M5 11l5-5 5 5M3 17h14"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: 'block', flexShrink: 0 }}>
+      {paths[name] || null}
+    </svg>
+  );
+}

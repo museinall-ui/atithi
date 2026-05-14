@@ -44,12 +44,14 @@ function DiscountForm({ t, onCancel, onSave }) {
   );
 }
 
-export default function Rates({ go, t, lang }) {
+export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp }) {
   const [selectedType, setSelectedType] = useState('dlx');
   const [selected, setSelected] = useState(new Set([2, 3]));
   const [dragStart, setDragStart] = useState(null);
   const [dragEnd, setDragEnd] = useState(null);
-  const [overrides, setOverrides] = useState({});
+  const [localOverrides, setLocalOverrides] = useState({});
+  const overrides = overridesProp !== undefined ? overridesProp : localOverrides;
+  const setOverrides = setOverridesProp || setLocalOverrides;
   const [showBulkSheet, setShowBulkSheet] = useState(null);
   const [bulkVal, setBulkVal] = useState('');
   const [discountFormOpen, setDiscountFormOpen] = useState(false);

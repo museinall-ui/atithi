@@ -6,6 +6,10 @@ export function generateVoucher(b, rt) {
   const fmtDate = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   const fmtINR = (n) => '₹' + (n || 0).toLocaleString('en-IN');
   const balance = (b.total || 0) - (b.paid || 0);
+  const isHold = b.status === 'tentative' && balance > 0 && (b.releaseAt || b.releaseTs);
+  const releaseLabel = b.releaseTs
+    ? new Date(b.releaseTs).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+    : (b.releaseAt || '');
   const extrasList = Object.entries(b.extras || {}).map(([id, qty]) => {
     const all = [...EXTRAS_DEFAULT, ...(b.customExtras || [])];
     const ex = all.find(x => x.id === id);
@@ -51,7 +55,11 @@ export function generateVoucher(b, rt) {
   .note .lbl { font-size: 8pt; font-weight: 700; color: #C8553D; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
   .terms { font-size: 8pt; color: #888; line-height: 1.5; padding-top: 18px; border-top: 1px solid #E8E0D8; }
   .terms strong { color: #1a1a1a; }
-  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${balance > 0 ? '#C8553D' : '#0E8A5F'}; color: ${balance > 0 ? '#C8553D' : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
+  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${isHold ? '#B45309' : balance > 0 ? '#C8553D' : '#0E8A5F'}; color: ${isHold ? '#B45309' : balance > 0 ? '#C8553D' : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
+  .hold { padding: 14px 16px; background: #FFFBEB; border: 1.5px solid #FDE68A; border-left: 4px solid #B45309; border-radius: 8px; margin-bottom: 22px; }
+  .hold .lbl { font-size: 9pt; font-weight: 800; color: #B45309; letter-spacing: 1.2px; margin-bottom: 4px; text-transform: uppercase; }
+  .hold .msg { font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
+  .hold .when { font-weight: 700; color: #B45309; }
   .actions { margin-top: 24px; display: flex; gap: 10px; justify-content: center; }
   .actions button { padding: 10px 22px; border-radius: 8px; border: 1px solid #C8553D; background: #C8553D; color: #fff; font-size: 11pt; font-weight: 700; cursor: pointer; }
   .actions button.ghost { background: #fff; color: #C8553D; }
@@ -70,7 +78,7 @@ export function generateVoucher(b, rt) {
     <div class="voucher-meta">
       <div class="id">${b.id}</div>
       <div>Issued ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-      <div style="margin-top: 8px;"><span class="stamp">${balance > 0 ? 'BALANCE DUE' : 'PAID IN FULL'}</span></div>
+      <div style="margin-top: 8px;"><span class="stamp">${isHold ? 'TENTATIVE · ON HOLD' : balance > 0 ? 'BALANCE DUE' : 'PAID IN FULL'}</span></div>
     </div>
   </div>
 
@@ -106,6 +114,11 @@ export function generateVoucher(b, rt) {
     </div>
   </div>
 
+  ${isHold ? `<div class="hold">
+    <div class="lbl">⏱ Provisional hold — payment required</div>
+    <div class="msg">This room is being held for you until <span class="when">${releaseLabel}</span>. If we don't receive ${fmtINR(balance)} by then, the booking will be <strong>automatically released</strong> and the inventory re-opened for other guests.</div>
+  </div>` : ''}
+
   <h2>Folio</h2>
   <table>
     <thead>
@@ -123,7 +136,7 @@ export function generateVoucher(b, rt) {
     <tfoot>
       <tr><td colspan="3">Total</td><td class="r total">${fmtINR(b.total)}</td></tr>
       <tr><td colspan="3" style="font-size: 11pt; color: #666;">Paid</td><td class="r" style="font-size: 11pt; color: #0E8A5F;">${fmtINR(b.paid)}</td></tr>
-      ${balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">Balance due at check-in</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
+      ${balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${releaseLabel}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
     </tfoot>
   </table>
 

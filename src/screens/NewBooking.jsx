@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, EXTRAS_DEFAULT } from '../data.js';
+import { ROOM_TYPES, EXTRAS_DEFAULT, COUNTRIES } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -173,7 +173,12 @@ function StepDates({ data, set, t }) {
   );
 }
 
-function StepRoom({ data, set, t, baseRate }) {
+function nightDateLabel(nightIdx) {
+  const d = new Date(2026, 4, 4 + nightIdx);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+
+function StepRoom({ data, set, t, baseRate, rateForNight }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, color: T.ink3, marginBottom: 4 }}>
@@ -226,25 +231,99 @@ function StepRoom({ data, set, t, baseRate }) {
               )}
             </div>
             {selected && (
-              <div style={{ padding: '10px 14px 12px', borderTop: `1px dashed ${T.border}`, background: T.bgSoft, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ padding: '10px 14px 12px', borderTop: `1px dashed ${T.border}`, background: T.bgSoft, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {data.roomItems.map((r, idx) => {
-                  const rate = r.rate != null ? r.rate : rt.base;
+                  const defaultNightRates = Array.from({ length: data.nights }, (_, n) => rateForNight(rt.id, n));
+                  const uniformDefault = r.rate != null ? r.rate : defaultNightRates[0] || rt.base;
+                  const perNight = !!r.perNight && data.nights > 1;
+                  const nightRates = (r.nightRates && r.nightRates.length === data.nights)
+                    ? r.nightRates
+                    : Array.from({ length: data.nights }, () => uniformDefault);
                   const overridden = r.rate != null && r.rate !== rt.base;
+                  const itemTotal = perNight
+                    ? nightRates.reduce((s, v) => s + (+v || 0), 0)
+                    : uniformDefault * data.nights;
+                  const togglePerNight = () => {
+                    if (perNight) {
+                      set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, perNight: false, nightRates: undefined } : x));
+                    } else {
+                      set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, perNight: true, nightRates: Array.from({ length: data.nights }, (_, n) => x.nightRates?.[n] != null ? x.nightRates[n] : (x.rate != null ? x.rate : defaultNightRates[n] || rt.base)) } : x));
+                    }
+                  };
                   return (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T.ink2, minWidth: 52 }}>R{idx+1} · {r.adults}A{r.children>0?` ${r.children}C`:''}</div>
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${overridden ? T.primary : T.border}`, borderRadius: 7, padding: '0 8px', height: 32 }}>
-                        <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>₹</span>
-                        <input type="number" value={rate} onChange={(e) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, rate: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
-                        <span style={{ fontSize: 9, color: T.ink3 }}>/night</span>
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: T.ink2, minWidth: 52 }}>R{idx+1} · {r.adults}A{r.children>0?` ${r.children}C`:''}</div>
+                        {!perNight && (
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${overridden ? T.primary : T.border}`, borderRadius: 7, padding: '0 8px', height: 32 }}>
+                            <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>₹</span>
+                            <input type="number" value={uniformDefault} onChange={(e) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, rate: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
+                            <span style={{ fontSize: 9, color: T.ink3 }}>/night</span>
+                          </div>
+                        )}
+                        {perNight && (
+                          <div style={{ flex: 1, fontSize: 11, color: T.ink3, fontWeight: 600 }}>Per-night rates below</div>
+                        )}
+                        <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.ink, minWidth: 64, textAlign: 'right' }}>₹{itemTotal.toLocaleString('en-IN')}</span>
                       </div>
-                      <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.ink, minWidth: 64, textAlign: 'right' }}>₹{(rate * data.nights).toLocaleString('en-IN')}</span>
+
+                      {data.nights > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button onClick={togglePerNight} className="atithi-tap" style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                            background: perNight ? T.primaryLt : T.card,
+                            color: perNight ? T.primaryDk : T.ink3,
+                            border: `1px solid ${perNight ? T.primary : T.border}`,
+                            fontSize: 10, fontWeight: 700, letterSpacing: 0.1,
+                          }}>
+                            <Icon name={perNight ? 'check' : 'plus'} size={9} stroke={2.4} />
+                            Different rate each night
+                          </button>
+                          {perNight && (
+                            <button onClick={() => {
+                              set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, nightRates: Array.from({ length: data.nights }, (_, n) => defaultNightRates[n] || rt.base) } : x));
+                            }} style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Reset to default</button>
+                          )}
+                        </div>
+                      )}
+
+                      {perNight && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, padding: 8, background: T.card, borderRadius: 8, border: `1px dashed ${T.border}` }}>
+                          {nightRates.map((rate, ni) => (
+                            <div key={ni} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3 }}>NIGHT {ni + 1} · {nightDateLabel(ni)}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', height: 30 }}>
+                                <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                                <input
+                                  type="number"
+                                  value={rate}
+                                  onChange={(e) => {
+                                    const v = +e.target.value || 0;
+                                    set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, nightRates: nightRates.map((nr, k) => k === ni ? v : nr) } : x));
+                                  }}
+                                  className="tnum"
+                                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 0 }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, paddingTop: 8, borderTop: `1px dashed ${T.border}` }}>
                   <span style={{ fontSize: 11, color: T.ink2, fontWeight: 600 }}>Rooms subtotal</span>
-                  <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>₹{(data.roomItems.reduce((s,x)=>s+(x.rate!=null?x.rate:rt.base),0) * data.nights).toLocaleString('en-IN')}</span>
+                  <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>
+                    ₹{data.roomItems.reduce((sum, x) => {
+                      if (x.perNight && x.nightRates && x.nightRates.length === data.nights) {
+                        return sum + x.nightRates.reduce((s, v) => s + (+v || 0), 0);
+                      }
+                      const fallback = x.rate != null ? x.rate : (rateForNight(rt.id, 0) || rt.base);
+                      return sum + fallback * data.nights;
+                    }, 0).toLocaleString('en-IN')}
+                  </span>
                 </div>
               </div>
             )}
@@ -255,17 +334,19 @@ function StepRoom({ data, set, t, baseRate }) {
   );
 }
 
-function StepGuest({ data, set, t, plan, allExtras }) {
+function StepGuest({ data, set, t, plan, allExtras, onRemoveSavedExtra }) {
   const isForeign = data.country !== 'IN';
   const supportsGst = plan === 'gst';
   const [showAdd, setShowAdd] = useState(false);
   const [newEx, setNewEx] = useState({ label: '', price: '' });
   const [editingPriceId, setEditingPriceId] = useState(null);
+  const country = COUNTRIES.find(c => c.code === data.country) || COUNTRIES[0];
 
   const addCustom = () => {
     if (!newEx.label.trim() || !newEx.price) return;
     const id = 'cx_' + Date.now();
-    set('customExtras', [...data.customExtras, { id, label: newEx.label.trim(), sub: 'Custom', price: +newEx.price, icon: 'plus', custom: true }]);
+    const ex = { id, label: newEx.label.trim(), sub: 'Custom', price: +newEx.price, icon: 'plus', custom: true };
+    set('customExtras', [...(data.customExtras || []), ex]);
     set('extras', { ...data.extras, [id]: 1 });
     setNewEx({ label: '', price: '' }); setShowAdd(false);
   };
@@ -281,10 +362,29 @@ function StepGuest({ data, set, t, plan, allExtras }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Field label="Full name" value={data.name} onChange={(e) => set('name', e.target.value)} placeholder="As on ID (required)" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Field label="Country" value={data.country} onChange={(e) => set('country', e.target.value)} prefix="🇮🇳" />
-            <Field label="Mobile" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix="+91" placeholder="98100 00000 (required)" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>Country</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44 }}>
+              <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{country.flag}</span>
+              <select
+                value={data.country}
+                onChange={(e) => set('country', e.target.value)}
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, appearance: 'none', cursor: 'pointer' }}
+              >
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>
+                ))}
+              </select>
+              <Icon name="chevD" size={14} color={T.ink3} />
+            </div>
+            {isForeign && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: T.indigoLt, borderRadius: 8 }}>
+                <Icon name="flag" size={11} color={T.indigo} />
+                <span style={{ fontSize: 11, color: T.indigo, fontWeight: 700 }}>Foreign national · Form C will be auto-filed with FRRO</span>
+              </div>
+            )}
           </div>
+          <Field label="Mobile" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder="98100 00000 (required)" />
           <Field label="Email (optional)" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="guest@email.com" />
           {(!data.name.trim() || data.phone.trim().length < 6) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.warnLt, borderRadius: 8 }}>
@@ -303,10 +403,15 @@ function StepGuest({ data, set, t, plan, allExtras }) {
           </button>
         </div>
         {showAdd && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, padding: 8, background: T.primaryLt, borderRadius: 8 }}>
-            <input autoFocus placeholder="e.g. Bonfire dinner" value={newEx.label} onChange={e => setNewEx({ ...newEx, label: e.target.value })} style={{ flex: 1, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 600, background: T.card }} />
-            <input type="number" placeholder="₹" value={newEx.price} onChange={e => setNewEx({ ...newEx, price: e.target.value })} className="tnum" style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 700, background: T.card }} />
-            <button onClick={addCustom} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 6, padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Add</button>
+          <div style={{ marginBottom: 10, padding: 8, background: T.primaryLt, borderRadius: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input autoFocus placeholder="e.g. Bonfire dinner" value={newEx.label} onChange={e => setNewEx({ ...newEx, label: e.target.value })} style={{ flex: 1, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 600, background: T.card }} />
+              <input type="number" placeholder="₹" value={newEx.price} onChange={e => setNewEx({ ...newEx, price: e.target.value })} className="tnum" style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 700, background: T.card }} />
+              <button onClick={addCustom} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 6, padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Add</button>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 10, color: T.primaryDk, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="info" size={10} stroke={2.2} /> Saved for future bookings so you don't have to retype it.
+            </div>
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -323,13 +428,21 @@ function StepGuest({ data, set, t, plan, allExtras }) {
                   <Icon name={ex.icon} size={15} stroke={2} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{ex.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {ex.label}
+                    {ex.custom && <span style={{ fontSize: 9, fontWeight: 700, color: T.indigo, background: T.indigoLt, padding: '1px 5px', borderRadius: 4, letterSpacing: 0.2 }}>SAVED</span>}
+                  </div>
                   {!isEditingPrice ? (
                     <div className="tnum" style={{ fontSize: 11, color: T.ink3, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>{ex.sub} · ₹{ex.price.toLocaleString('en-IN')}</span>
                       <button onClick={() => setEditingPriceId(ex.id)} style={{ background: 'none', border: 'none', color: T.primary, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
                         <Icon name="edit" size={10} stroke={2.2} />
                       </button>
+                      {ex.custom && onRemoveSavedExtra && (
+                        <button onClick={() => onRemoveSavedExtra(ex.id)} title="Forget this saved extra" style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
+                          <Icon name="trash" size={10} stroke={2.2} />
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -468,7 +581,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
   );
 }
 
-export default function NewBooking({ go, onCreate, plan = 'engine', t, editing }) {
+export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {} }) {
   const isEdit = !!editing;
   const [step, setStep] = useState(1);
   const [data, setData] = useState(() => {
@@ -477,7 +590,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing }
         checkIn: '04 May 2026', nights: editing.nights,
         roomTypeId: editing.roomTypeId,
         roomItems: editing.roomItems || [{ adults: 2, children: 0, rate: null }],
-        name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: '', country: 'IN', gstin: '',
+        name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: '', country: editing.country || 'IN', gstin: '',
         notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: 4,
         payMethod: null, payAmount: 'full', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
@@ -498,10 +611,36 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing }
   const rt = ROOM_TYPES.find(r => r.id === data.roomTypeId);
   const withTax = plan === 'gst';
   const baseRate = rt ? rt.base : 0;
+
+  // Rate per night: respects overrides set in Rates screen + weekend factor.
+  const rateForNight = useMemo(() => (roomTypeId, nightIdx) => {
+    const room = ROOM_TYPES.find(r => r.id === roomTypeId);
+    if (!room) return 0;
+    const dayIdx = nightIdx; // bookings start at day 0 in this prototype
+    const override = rateOverrides[`${roomTypeId}:${dayIdx}`];
+    if (override && override.closed) return room.base; // closed → still show base as fallback
+    if (override && override.rate != null) return override.rate;
+    const d = new Date(2026, 4, 4 + dayIdx);
+    const isWknd = d.getDay() === 5 || d.getDay() === 6;
+    return Math.round(room.base * (isWknd ? 1.2 : 1));
+  }, [rateOverrides]);
+
   const roomsSubtotal = rt
-    ? data.roomItems.reduce((s, r) => s + (r.rate != null ? r.rate : baseRate), 0) * data.nights
+    ? data.roomItems.reduce((sum, r) => {
+        if (r.perNight && r.nightRates && r.nightRates.length === data.nights) {
+          return sum + r.nightRates.reduce((s, v) => s + (+v || 0), 0);
+        }
+        const rate = r.rate != null ? r.rate : rateForNight(rt.id, 0);
+        return sum + rate * data.nights;
+      }, 0)
     : 0;
-  const allExtras = [...EXTRAS_DEFAULT, ...data.customExtras].map(ex => ({
+
+  // Merge: defaults + globally-saved customs + locally-added (not yet saved) customs.
+  const mergedCustoms = [
+    ...savedCustomExtras,
+    ...(data.customExtras || []).filter(x => !savedCustomExtras.some(s => s.id === x.id)),
+  ];
+  const allExtras = [...EXTRAS_DEFAULT, ...mergedCustoms].map(ex => ({
     ...ex,
     price: data.extraPrices[ex.id] != null ? data.extraPrices[ex.id] : ex.price,
   }));
@@ -531,8 +670,8 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing }
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
         {step === 1 && <StepDates data={data} set={set} t={t} />}
-        {step === 2 && <StepRoom data={data} set={set} t={t} baseRate={baseRate} />}
-        {step === 3 && <StepGuest data={data} set={set} t={t} plan={plan} allExtras={allExtras} />}
+        {step === 2 && <StepRoom data={data} set={set} t={t} baseRate={baseRate} rateForNight={rateForNight} />}
+        {step === 3 && <StepGuest data={data} set={set} t={t} plan={plan} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
         {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
       </div>
 

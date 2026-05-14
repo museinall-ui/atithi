@@ -114,7 +114,15 @@ function PaymentSheet({ kind, balance, total, onClose, onSave }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, onEdit, onPayment }) {
+function fmtRelease(b) {
+  if (b.releaseTs) {
+    const d = new Date(b.releaseTs);
+    return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return b.releaseAt || '';
+}
+
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, onEdit, onPayment, onSetStatus }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
@@ -159,11 +167,22 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: 100 }}>
         <div style={{ padding: '14px 16px', background: statusInfo.bg, borderBottom: `1px solid ${T.borderSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: 4, background: statusInfo.color }} className={b.status === 'tentative' ? 'pulse' : ''} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: statusInfo.color }}>{statusInfo.label}</span>
-          {b.status === 'tentative' && (
-            <span className="tnum" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>releases at {b.releaseAt}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: statusInfo.color }}>{statusInfo.label}{b.autoReleased ? ' · auto-released' : ''}</span>
+          {b.status === 'tentative' && (b.releaseAt || b.releaseTs) && (
+            <span className="tnum" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>releases {fmtRelease(b)}</span>
           )}
         </div>
+        {b.status === 'tentative' && balance > 0 && (b.releaseAt || b.releaseTs) && (
+          <div style={{ margin: '12px 16px 0', padding: '12px 14px', background: T.warnLt, border: `1px solid oklch(85% 0.10 75)`, borderLeft: `4px solid oklch(60% 0.14 75)`, borderRadius: 10, display: 'flex', gap: 10 }}>
+            <Icon name="clock" size={18} color="oklch(48% 0.14 75)" stroke={2} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>Auto-release if unpaid</div>
+              <div style={{ fontSize: 12, color: T.ink2, marginTop: 2, lineHeight: 1.4 }}>
+                ₹{balance.toLocaleString('en-IN')} due before <span className="tnum" style={{ fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{fmtRelease(b)}</span>, otherwise the booking will be released automatically and the inventory re-opened.
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ padding: 16 }}>
           <Card padding={16}>
@@ -327,13 +346,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', gap: 8 }}>
-        {b.status === 'confirmed' && <Btn icon="door" full>Check in</Btn>}
-        {b.status === 'checkedin' && <Btn icon="check" full>Check out</Btn>}
+        {b.status === 'confirmed' && (
+          <Btn icon="door" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Check in</Btn>
+        )}
+        {b.status === 'checkedin' && (
+          <Btn icon="check" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Check out</Btn>
+        )}
         {b.status === 'tentative' && (
           <>
-            <Btn variant="ghost" icon="x" style={{ flex: 1 }}>Cancel</Btn>
-            <Btn icon="check" style={{ flex: 1 }}>Confirm</Btn>
+            <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>
+            <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>
           </>
+        )}
+        {b.status === 'cancelled' && (
+          <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
+        )}
+        {b.status === 'checkout' && (
+          <Btn variant="soft" icon="check" full disabled>Stay complete</Btn>
         )}
       </div>
     </div>

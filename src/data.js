@@ -39,10 +39,11 @@ export const BOOKINGS_SEED = [
 ];
 
 export const STATUS = {
-  confirmed:  { label: 'Confirmed',  color: 'oklch(58% 0.13 155)', bg: 'oklch(94% 0.05 155)' },
-  checkedin:  { label: 'Checked-in', color: 'oklch(48% 0.14 265)', bg: 'oklch(94% 0.04 265)' },
-  tentative:  { label: 'On hold',    color: 'oklch(58% 0.14 75)',  bg: 'oklch(95% 0.05 75)' },
-  cancelled:  { label: 'Cancelled',  color: 'oklch(60% 0.04 60)',  bg: 'oklch(94% 0.01 60)' },
+  confirmed:  { label: 'Confirmed',   color: 'oklch(58% 0.13 155)', bg: 'oklch(94% 0.05 155)' },
+  checkedin:  { label: 'Checked-in',  color: 'oklch(48% 0.14 265)', bg: 'oklch(94% 0.04 265)' },
+  checkout:   { label: 'Checked-out', color: 'oklch(55% 0.04 60)',  bg: 'oklch(95% 0.012 60)' },
+  tentative:  { label: 'On hold',     color: 'oklch(58% 0.14 75)',  bg: 'oklch(95% 0.05 75)' },
+  cancelled:  { label: 'Cancelled',   color: 'oklch(60% 0.04 60)',  bg: 'oklch(94% 0.01 60)' },
 };
 
 export const CHANNELS = {
@@ -52,6 +53,37 @@ export const CHANNELS = {
   booking: { label: 'Booking.com', color: '#003580',  short: 'B' },
   airbnb:  { label: 'Airbnb',      color: '#FF5A5F',  short: 'A' },
 };
+
+export const COUNTRIES = [
+  { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91' },
+  { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1'  },
+  { code: 'GB', name: 'United Kingdom',flag: '🇬🇧', dial: '+44' },
+  { code: 'AU', name: 'Australia',     flag: '🇦🇺', dial: '+61' },
+  { code: 'CA', name: 'Canada',        flag: '🇨🇦', dial: '+1'  },
+  { code: 'DE', name: 'Germany',       flag: '🇩🇪', dial: '+49' },
+  { code: 'FR', name: 'France',        flag: '🇫🇷', dial: '+33' },
+  { code: 'IT', name: 'Italy',         flag: '🇮🇹', dial: '+39' },
+  { code: 'ES', name: 'Spain',         flag: '🇪🇸', dial: '+34' },
+  { code: 'NL', name: 'Netherlands',   flag: '🇳🇱', dial: '+31' },
+  { code: 'IE', name: 'Ireland',       flag: '🇮🇪', dial: '+353'},
+  { code: 'CH', name: 'Switzerland',   flag: '🇨🇭', dial: '+41' },
+  { code: 'SE', name: 'Sweden',        flag: '🇸🇪', dial: '+46' },
+  { code: 'NO', name: 'Norway',        flag: '🇳🇴', dial: '+47' },
+  { code: 'JP', name: 'Japan',         flag: '🇯🇵', dial: '+81' },
+  { code: 'KR', name: 'South Korea',   flag: '🇰🇷', dial: '+82' },
+  { code: 'SG', name: 'Singapore',     flag: '🇸🇬', dial: '+65' },
+  { code: 'AE', name: 'UAE',           flag: '🇦🇪', dial: '+971'},
+  { code: 'IL', name: 'Israel',        flag: '🇮🇱', dial: '+972'},
+  { code: 'RU', name: 'Russia',        flag: '🇷🇺', dial: '+7'  },
+  { code: 'CN', name: 'China',         flag: '🇨🇳', dial: '+86' },
+  { code: 'TH', name: 'Thailand',      flag: '🇹🇭', dial: '+66' },
+  { code: 'NZ', name: 'New Zealand',   flag: '🇳🇿', dial: '+64' },
+  { code: 'BR', name: 'Brazil',        flag: '🇧🇷', dial: '+55' },
+  { code: 'ZA', name: 'South Africa',  flag: '🇿🇦', dial: '+27' },
+  { code: 'NP', name: 'Nepal',         flag: '🇳🇵', dial: '+977'},
+  { code: 'BT', name: 'Bhutan',        flag: '🇧🇹', dial: '+975'},
+  { code: 'LK', name: 'Sri Lanka',     flag: '🇱🇰', dial: '+94' },
+];
 
 export const EXTRAS_DEFAULT = [
   { id: 'breakfast', label: 'Breakfast',       sub: 'Veg buffet',   price: 350,  icon: 'veg' },

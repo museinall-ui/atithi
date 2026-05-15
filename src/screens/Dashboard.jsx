@@ -62,7 +62,7 @@ function ArrivalRow({ b, go, dayName, t }) {
   );
 }
 
-export default function Dashboard({ go, bookings, t, lang }) {
+export default function Dashboard({ go, bookings, property, t, lang }) {
   const isHi = lang === 'hi';
   const [toast, setToast] = useState(null);
 
@@ -148,7 +148,7 @@ export default function Dashboard({ go, bookings, t, lang }) {
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, marginTop: 2 }} className="hi">
               {t('namaste')}, Vikram
             </div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 1 }}>Yatra Desert Camp · Jaisalmer</div>
+            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 1 }}>{property?.profile?.name || 'Yatra Desert Camp'} · {property?.profile?.city || 'Jaisalmer'}</div>
           </div>
           <button style={{
             width: 40, height: 40, borderRadius: '50%', border: 'none',

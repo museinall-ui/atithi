@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useT } from './i18n.js';
-import { BOOKINGS_SEED, COUNTRIES } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS } from './data.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -20,6 +20,31 @@ const LS_KEYS = {
   overrides: 'atithi.rateOverrides.v1',
   plan: 'atithi.plan.v1',
   lang: 'atithi.lang.v1',
+  property: 'atithi.property.v1',
+};
+
+const DEFAULT_PROPERTY = {
+  profile: {
+    name: 'Yatra Desert Camp',
+    type: 'resort',
+    address: 'Sam Sand Dunes Road, near Khuri',
+    city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
+    checkIn: '14:00', checkOut: '11:00',
+    phone: '+91 90099 12345', email: 'stay@yatracamp.in', website: 'yatracamp.in',
+  },
+  categories: [
+    { id: 'dlx',  name: 'Deluxe Tent',          units: 8, base: 4500  },
+    { id: 'lux',  name: 'Luxury Tent (AC)',     units: 6, base: 7200  },
+    { id: 'btub', name: 'Bathtub Tent',         units: 4, base: 9500  },
+    { id: 'pool', name: 'Private Pool Cottage', units: 3, base: 14500 },
+  ],
+  rules: [
+    'Check-in from 2 PM · check-out by 11 AM',
+    'No outside food in tents',
+    'Bonfire from 7 PM to 10 PM only',
+    'Pets allowed in Deluxe & Luxury tents',
+  ],
+  amenities: { wifi: true, parking: true, pool: true, restaurant: true, ac: true, bonfire: true },
 };
 
 const loadLS = (key, fallback) => {
@@ -32,6 +57,37 @@ const saveLS = (key, val) => {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 };
 
+// Map a "DD MMM YYYY"-ish string to an index in the 14-day DAYS window.
+// Falls back to 0 (today, May 4 2026) if the string can't be parsed or is out of range.
+function parseCheckInIdx(checkInStr) {
+  if (!checkInStr) return 0;
+  const parsed = new Date(checkInStr);
+  if (isNaN(parsed.getTime())) return 0;
+  const baseDay = new Date(2026, 4, 4);
+  const diffDays = Math.round((parsed - baseDay) / (24 * 3600 * 1000));
+  if (diffDays < 0 || diffDays >= DAYS.length) return 0;
+  return diffDays;
+}
+
+// Pick the lowest-numbered unit of the chosen room type that is free for the requested
+// date range. Returns 0 as a last-resort fallback if every unit is taken — the Diary's
+// conflict UI will then surface the clash to the user.
+function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights) {
+  const room = ROOM_TYPES.find(r => r.id === roomTypeId);
+  if (!room) return 0;
+  const endIdx = startIdx + nights;
+  for (let u = 0; u < room.units; u++) {
+    const conflict = bookings.some(b =>
+      b.status !== 'cancelled' &&
+      b.roomTypeId === roomTypeId &&
+      b.unitIdx === u &&
+      !(b.startIdx + b.nights <= startIdx || endIdx <= b.startIdx)
+    );
+    if (!conflict) return u;
+  }
+  return 0;
+}
+
 export default function App() {
   const [plan, setPlan] = useState(() => loadLS(LS_KEYS.plan, 'engine'));
   const [lang, setLang] = useState(() => loadLS(LS_KEYS.lang, 'en'));
@@ -39,6 +95,7 @@ export default function App() {
   const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, BOOKINGS_SEED.map(b => ({ ...b }))));
   const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
+  const [property, setProperty] = useState(() => loadLS(LS_KEYS.property, DEFAULT_PROPERTY));
   const [editing, setEditing] = useState(null);
   const t = useT(lang);
 
@@ -47,6 +104,7 @@ export default function App() {
   useEffect(() => { saveLS(LS_KEYS.overrides, rateOverrides); }, [rateOverrides]);
   useEffect(() => { saveLS(LS_KEYS.plan, plan); }, [plan]);
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
+  useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
 
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
   useEffect(() => {
@@ -159,11 +217,13 @@ export default function App() {
       setEditing(null);
       setRoute({ name: 'booking', arg: editing });
     } else {
+      const startIdx = parseCheckInIdx(data.checkIn);
+      const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights);
       const newBk = {
         id: 'BK-' + (2854 + bookings.length),
         roomTypeId: data.roomTypeId,
-        unitIdx: 7,
-        startIdx: 0,
+        unitIdx,
+        startIdx,
         nights: data.nights,
         guest: data.name || 'New Guest',
         status,
@@ -192,7 +252,7 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} t={t} lang={lang} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
     case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} />; break;
@@ -201,9 +261,9 @@ export default function App() {
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} t={t} />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} t={t} lang={lang} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} />;
   }
 
   return (

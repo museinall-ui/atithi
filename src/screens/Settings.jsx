@@ -112,29 +112,17 @@ function GstnSheet({ t, onClose }) {
   );
 }
 
-function PropertyProfile({ t, onClose }) {
-  const [profile, setProfile] = useState({
-    name: 'Yatra Desert Camp',
-    type: 'resort',
-    address: 'Sam Sand Dunes Road, near Khuri',
-    city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
-    checkIn: '14:00', checkOut: '11:00',
-    phone: '+91 90099 12345', email: 'stay@yatracamp.in', website: 'yatracamp.in',
-  });
-  const [categories, setCategories] = useState([
-    { id: 'dlx',  name: 'Deluxe Tent',           units: 8, base: 4500 },
-    { id: 'lux',  name: 'Luxury Tent (AC)',       units: 6, base: 7200 },
-    { id: 'btub', name: 'Bathtub Tent',           units: 4, base: 9500 },
-    { id: 'pool', name: 'Private Pool Cottage',   units: 3, base: 14500 },
-  ]);
-  const [rules, setRules] = useState([
-    'Check-in from 2 PM · check-out by 11 AM',
-    'No outside food in tents',
-    'Bonfire from 7 PM to 10 PM only',
-    'Pets allowed in Deluxe & Luxury tents',
-  ]);
+function PropertyProfile({ t, onClose, property, onSave }) {
+  const [profile, setProfile] = useState(property.profile);
+  const [categories, setCategories] = useState(property.categories);
+  const [rules, setRules] = useState(property.rules);
   const [newRule, setNewRule] = useState('');
-  const [amenities, setAmenities] = useState({ wifi: true, parking: true, pool: true, restaurant: true, ac: true, bonfire: true });
+  const [amenities, setAmenities] = useState(property.amenities);
+
+  const handleSave = () => {
+    onSave({ profile, categories, rules, amenities });
+    onClose();
+  };
   const propTypes = [
     { id: 'resort',     label: t('ptResort') },
     { id: 'hotel',      label: t('ptHotel') },
@@ -153,14 +141,14 @@ function PropertyProfile({ t, onClose }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: T.bg, zIndex: 40, display: 'flex', flexDirection: 'column' }}>
-      <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={onClose}>{t('save')}</Btn>} />
+      <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 80 }}>
 
         <SectionHead title={t('logo')} />
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 72, height: 72, borderRadius: 14, background: T.card, padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,.08)', border: `1px dashed ${T.border}` }}>
-              <div style={{ width: '100%', height: '100%', borderRadius: 10, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>Y</div>
+              <div style={{ width: '100%', height: '100%', borderRadius: 10, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Current logo</div>
@@ -286,13 +274,15 @@ function PropertyProfile({ t, onClose }) {
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, t }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, t }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showGstn, setShowGstn] = useState(false);
+  const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
+  const locationLabel = [property.profile.city, property.profile.state].filter(Boolean).join(', ');
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('settings')} subtitle="Yatra Desert Camp" onBack={() => go('home')} />
+      <ScreenHeader title={t('settings')} subtitle={property.profile.name} onBack={() => go('home')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 100 }}>
 
         <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, cursor: 'pointer' }} onClick={() => setShowProfile(true)}>
@@ -303,12 +293,12 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
           </div>
           <div style={{ padding: 14, marginTop: -30, position: 'relative' }}>
             <div style={{ width: 56, height: 56, borderRadius: 14, background: T.card, padding: 3, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-              <div style={{ width: '100%', height: '100%', borderRadius: 11, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>Y</div>
+              <div style={{ width: '100%', height: '100%', borderRadius: 11, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(property.profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Yatra Desert Camp</div>
-                <div style={{ fontSize: 11, color: T.ink3 }}>Sam Sand Dunes, Jaisalmer · 21 units</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{property.profile.name}</div>
+                <div style={{ fontSize: 11, color: T.ink3 }}>{locationLabel} · {totalUnits} units</div>
               </div>
               <Icon name="chev" size={14} color={T.ink3} />
             </div>
@@ -431,7 +421,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         </Card>
       </div>
 
-      {showProfile && <PropertyProfile t={t} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}
       {showGstn && <GstnSheet t={t} onClose={() => setShowGstn(false)} />}
     </div>
   );

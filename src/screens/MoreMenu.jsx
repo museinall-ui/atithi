@@ -8,7 +8,7 @@ export default function MoreMenu({ go, t }) {
     { id: 'rates',    icon: 'tag',   color: T.primary, title: t('ratesTitle'),    sub: 'Pricing · close-outs · discounts' },
     { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'MMT · Goibibo · Booking.com' },
     { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: t('revenue') + ' · ADR · ' + t('avgOccupancy') },
-    { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: t('property') + ' · ' + t('integrations') + ' · ' + t('yourPlan') },
+    { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: t('property') + ' · ' + t('language') + ' · ' + t('integrations') + ' · ' + t('yourPlan') },
   ];
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>

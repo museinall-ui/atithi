@@ -1,10 +1,21 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
+import { DAYS } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Field from '../components/Field.jsx';
 import Avatar from '../components/Avatar.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+
+// Map a YYYY-MM-DD string (from <input type="date">) to a day index relative to
+// DAYS[0] (May 4, 2026). Returns null if unparseable.
+function dateToDayIdx(yyyymmdd) {
+  if (!yyyymmdd) return null;
+  const parsed = new Date(yyyymmdd + 'T00:00:00');
+  if (isNaN(parsed.getTime())) return null;
+  const baseDay = new Date(2026, 4, 4);
+  return Math.round((parsed - baseDay) / (24 * 3600 * 1000));
+}
 
 const iconBtn2 = {
   width: 36, height: 36, borderRadius: 10, border: 'none', background: T.primary,
@@ -34,8 +45,10 @@ const FILTERS = [
 export default function Guests({ go, bookings = [], t }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [stayDate, setStayDate] = useState('');
 
   // Augment guest list with current in-house markers from live bookings.
+  // `ranges` tracks each booking's [startIdx, nights] so we can filter by stay date.
   const liveGuests = useMemo(() => {
     const bookingGuests = new Map();
     bookings.forEach(b => {
@@ -50,6 +63,7 @@ export default function Guests({ go, bookings = [], t }) {
         formC: prev?.formC || b.formC || false,
         inhouse: prev?.inhouse || b.status === 'checkedin',
         lastStatus: b.status,
+        ranges: [...(prev?.ranges || []), { startIdx: b.startIdx, nights: b.nights, cancelled: b.status === 'cancelled' }],
       });
     });
     // Merge: prefer the booking-derived row when names match, else fall back to seed.
@@ -77,6 +91,9 @@ export default function Guests({ go, bookings = [], t }) {
     inhouse: liveGuests.filter(g => g.inhouse).length,
   }), [liveGuests]);
 
+  const targetDayIdx = useMemo(() => dateToDayIdx(stayDate), [stayDate]);
+  const dateOutOfRange = stayDate && (targetDayIdx === null || targetDayIdx < 0 || targetDayIdx >= DAYS.length);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return liveGuests.filter(g => {
@@ -85,9 +102,13 @@ export default function Guests({ go, bookings = [], t }) {
       if (filter === 'foreign' && !g.formC) return false;
       if (filter === 'inhouse' && !g.inhouse) return false;
       if (q && !(`${g.name} ${g.phone}`.toLowerCase().includes(q))) return false;
+      if (targetDayIdx !== null) {
+        const stayed = (g.ranges || []).some(r => !r.cancelled && r.startIdx <= targetDayIdx && targetDayIdx < r.startIdx + r.nights);
+        if (!stayed) return false;
+      }
       return true;
     });
-  }, [liveGuests, filter, search]);
+  }, [liveGuests, filter, search, targetDayIdx]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -131,6 +152,29 @@ export default function Guests({ go, bookings = [], t }) {
             );
           })}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '6px 10px', background: stayDate ? T.primaryLt : T.bgSoft, border: `1px solid ${stayDate ? T.primary : T.borderSoft}`, borderRadius: 8 }}>
+          <Icon name="cal" size={13} color={stayDate ? T.primaryDk : T.ink3} />
+          <label style={{ fontSize: 11, fontWeight: 700, color: stayDate ? T.primaryDk : T.ink2, letterSpacing: 0.1 }}>Stay date</label>
+          <input
+            type="date"
+            value={stayDate}
+            min={DAYS[0].iso}
+            max={DAYS[DAYS.length - 1].iso}
+            onChange={(e) => setStayDate(e.target.value)}
+            className="tnum"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 600, color: T.ink, minWidth: 0 }}
+          />
+          {stayDate && (
+            <button onClick={() => setStayDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.ink3, display: 'flex' }}>
+              <Icon name="x" size={12} />
+            </button>
+          )}
+        </div>
+        {dateOutOfRange && (
+          <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>
+            Outside the 14-day diary window — pick a date between {DAYS[0].dom} {DAYS[0].month} and {DAYS[DAYS.length-1].dom} {DAYS[DAYS.length-1].month}.
+          </div>
+        )}
       </div>
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: 100 }}>
         {filtered.length === 0 && (

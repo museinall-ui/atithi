@@ -32,6 +32,7 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown, onClick }) {
         padding: '0 6px 0 4px',
         display: 'flex', alignItems: 'center', gap: 6,
         cursor: 'grab', userSelect: 'none', overflow: 'hidden',
+        touchAction: 'none',
         zIndex: dx !== 0 ? 5 : 2,
         transform: dx !== 0 ? 'scale(1.02)' : 'none',
         transition: dx === 0 ? 'transform .12s' : 'none',

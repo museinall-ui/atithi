@@ -190,6 +190,10 @@ export default function App() {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, ...patch } : b));
   };
 
+  const setBookingGst = (bookingId, value) => {
+    setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, gstApplies: !!value } : b));
+  };
+
   const addSavedCustomExtra = (extra) => {
     setSavedCustomExtras(arr => {
       if (arr.some(x => x.id === extra.id)) return arr;
@@ -231,6 +235,7 @@ export default function App() {
         notes: data.notes, extras: data.extras,
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
         country, formC,
+        gstApplies: !!data.gstApplies,
         status: isHold ? 'tentative' : b.status,
         releaseTs: isHold ? releaseTs : undefined,
         releaseAt: isHold ? releaseAt : undefined,
@@ -260,6 +265,7 @@ export default function App() {
         roomItems: data.roomItems,
         customExtras: data.customExtras,
         extraPrices: data.extraPrices,
+        gstApplies: !!data.gstApplies,
         releaseTs: releaseTs || undefined,
         releaseAt: releaseAt || undefined,
         holdHours: isHold ? data.holdHours : undefined,
@@ -277,12 +283,12 @@ export default function App() {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
     case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onSetGst={setBookingGst} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
-    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} />; break;
+    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} />;

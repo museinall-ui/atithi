@@ -54,6 +54,17 @@ export const CHANNELS = {
   airbnb:  { label: 'Airbnb',      color: '#FF5A5F',  short: 'A' },
 };
 
+// Whether GST should be treated as applicable for this booking.
+// - Explicit per-booking override (`gstApplies` true/false) wins.
+// - Otherwise default by channel: OTA bookings include GST, direct/cash do not.
+// The caller is still responsible for checking the property's plan — if the
+// hotelier isn't on the GST plan, GST never applies regardless.
+export function bookingGstApplies(b) {
+  if (b == null) return false;
+  if (typeof b.gstApplies === 'boolean') return b.gstApplies;
+  return !!b.channel && b.channel !== 'direct';
+}
+
 export const COUNTRIES = [
   { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91' },
   { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1'  },

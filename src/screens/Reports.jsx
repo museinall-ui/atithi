@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, DAYS } from '../data.js';
+import { ROOM_TYPES, DAYS, bookingGstApplies } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -36,7 +36,8 @@ function fmtINR(n) {
   return '₹' + Math.round(n).toLocaleString('en-IN');
 }
 
-export default function Reports({ go, t, bookings = [] }) {
+export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
+  const gstEnabled = plan === 'gst';
   const stats = useMemo(() => {
     const active = bookings.filter(b => b.status !== 'cancelled');
     const totalUnits = ROOM_TYPES.reduce((s, r) => s + r.units, 0);
@@ -44,6 +45,14 @@ export default function Reports({ go, t, bookings = [] }) {
     // Revenue = sum of paid (cash collected). Total billed is shown as a sub-label.
     const revenue = active.reduce((s, b) => s + (b.paid || 0), 0);
     const billed = active.reduce((s, b) => s + (b.total || 0), 0);
+
+    // GST-applicable subset (channel-based default, per-booking override).
+    const gstBookings = active.filter(bookingGstApplies);
+    const reportedRevenue = gstBookings.reduce((s, b) => s + (b.paid || 0), 0);
+    const reportedBilled = gstBookings.reduce((s, b) => s + (b.total || 0), 0);
+    // Treat reported totals as GST-inclusive: 12% / 112% lives inside the price.
+    const gstCollected = Math.round(reportedBilled * 12 / 112);
+    const unreported = revenue - reportedRevenue;
 
     // Occupancy is computed across the 14-day diary window. For each day, count
     // every booking whose [startIdx, startIdx+nights) range covers that day.
@@ -67,11 +76,9 @@ export default function Reports({ go, t, bookings = [] }) {
     }).sort((a, b) => b.rev - a.rev);
     const topRevenue = byType[0]?.rev || 1;
 
-    // Compliance: count foreign bookings (Form C) and rough GST collected (12% of billed).
     const formC = active.filter(b => b.formC).length;
-    const gstCollected = Math.round(billed * 0.12 / 1.12); // billed includes GST when Pro is on
 
-    return { revenue, billed, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits };
+    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits };
   }, [bookings]);
 
   return (
@@ -86,6 +93,31 @@ export default function Reports({ go, t, bookings = [] }) {
           <KPI label="ADR" value={fmtINR(stats.adr)} sub="per night" icon="tag" color={T.teal} />
           <KPI label="RevPAR" value={fmtINR(stats.revpar)} sub="per available" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
+
+        {gstEnabled && (
+          <Card padding={14} style={{ marginBottom: 16, borderColor: T.indigoLt, background: 'oklch(98% 0.012 265)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Icon name="tag" size={14} color={T.indigo} stroke={2} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.indigo, letterSpacing: 0.2 }}>GST APPLICABILITY</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>REPORTED (GSTR-1)</div>
+                <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.reportedRevenue)}</div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{stats.gstCount} booking{stats.gstCount === 1 ? '' : 's'} · GST included</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>NOT REPORTED</div>
+                <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.unreported)}</div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>direct / cash bookings</div>
+              </div>
+            </div>
+            <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
+            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
+              Default is channel-based: OTA bookings include GST, direct/cash bookings don't. You can flip the toggle on any individual booking in its detail page.
+            </div>
+          </Card>
+        )}
 
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'baseline' }}>
@@ -137,7 +169,7 @@ export default function Reports({ go, t, bookings = [] }) {
 
         <SectionHead title="Compliance" style={{ marginTop: 18 }} />
         <Card>
-          <Row label="GST collected" value={fmtINR(stats.gstCollected)} />
+          <Row label="GST collected (reported)" value={fmtINR(stats.gstCollected)} />
           <Row label="Form C filed" value={`${stats.formC} of ${stats.formC}`} />
           <Row label="GSTR-1 next due" value="11 Jun" />
         </Card>

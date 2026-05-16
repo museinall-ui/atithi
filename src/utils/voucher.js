@@ -1,4 +1,4 @@
-import { EXTRAS_DEFAULT } from '../data.js';
+import { EXTRAS_DEFAULT, bookingGstApplies } from '../data.js';
 
 const FALLBACK_PROPERTY = {
   profile: {
@@ -36,6 +36,13 @@ export function generateVoucher(b, rt, property) {
     return { label: ex.label, qty, price, total: price * qty };
   }).filter(Boolean);
   const logoLetter = (p.name || 'A').trim().charAt(0).toUpperCase();
+  const withTax = bookingGstApplies(b);
+  // When GST applies, treat the booking total as already GST-inclusive (12/112 of it is tax).
+  const gstAmt = withTax ? Math.round(b.total * 12 / 112) : 0;
+  const halfGst = Math.round(gstAmt / 2);
+  const preTax = (b.total || 0) - gstAmt;
+  const extrasSum = extrasList.reduce((s, e) => s + e.total, 0);
+  const tariffLine = preTax - extrasSum; // room tariff portion before GST
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -140,24 +147,27 @@ export function generateVoucher(b, rt, property) {
     <div class="msg">This room is being held for you until <span class="when">${releaseLabel}</span>. If we don't receive ${fmtINR(balance)} by then, the booking will be <strong>automatically released</strong> and the inventory re-opened for other guests.</div>
   </div>` : ''}
 
-  <h2>Folio</h2>
+  <h2>Folio${withTax ? ' · GST invoice' : ''}</h2>
   <table>
     <thead>
       <tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td>${rt ? rt.name : 'Room'} · tariff</td>
+        <td>${rt ? esc(rt.name) : 'Room'} · tariff${withTax ? ' (excl. GST)' : ''}</td>
         <td class="r">${(b.roomItems && b.roomItems.length) || 1} × ${b.nights}N</td>
         <td class="r">—</td>
-        <td class="r">${fmtINR(b.total - extrasList.reduce((s, e) => s + e.total, 0))}</td>
+        <td class="r">${fmtINR(tariffLine)}</td>
       </tr>
-      ${extrasList.map(e => `<tr><td>${e.label}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
+      ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
+      ${withTax ? `
+      <tr><td style="color:#666;">CGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(halfGst)}</td></tr>
+      <tr><td style="color:#666;">SGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(gstAmt - halfGst)}</td></tr>` : ''}
     </tbody>
     <tfoot>
       <tr><td colspan="3">Total</td><td class="r total">${fmtINR(b.total)}</td></tr>
       <tr><td colspan="3" style="font-size: 11pt; color: #666;">Paid</td><td class="r" style="font-size: 11pt; color: #0E8A5F;">${fmtINR(b.paid)}</td></tr>
-      ${balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${releaseLabel}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
+      ${balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${esc(releaseLabel)}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
     </tfoot>
   </table>
 

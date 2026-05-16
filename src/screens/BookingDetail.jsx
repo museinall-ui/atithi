@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, CHANNELS, STATUS } from '../data.js';
+import { ROOM_TYPES, CHANNELS, STATUS, bookingGstApplies } from '../data.js';
 import { generateVoucher } from '../utils/voucher.js';
+import Toggle from '../components/Toggle.jsx';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -122,7 +123,7 @@ function fmtRelease(b) {
   return b.releaseAt || '';
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onSetGst }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
@@ -130,7 +131,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
   const statusInfo = STATUS[b.status];
-  const withTax = plan === 'gst';
+  const gstEnabled = plan === 'gst';
+  const withTax = gstEnabled && bookingGstApplies(b);
   const [payOpen, setPayOpen] = useState(false);
   const [payKind, setPayKind] = useState('payment');
   const [waStatus, setWaStatus] = useState('sent');
@@ -228,6 +230,20 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             <div style={{ height: 1, background: T.borderSoft, margin: '14px 0' }} />
             <Row label="Room" value={`${rt.name} · #${b.unitIdx + 1}`} />
             <Row label="Channel" value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
+            {gstEnabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
+                <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>GST in this booking</div>
+                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
+                    {withTax
+                      ? `Included · ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} of ₹${b.total.toLocaleString('en-IN')} goes to GSTN.`
+                      : `Not applied · this booking won't appear in GSTR-1.`}
+                  </div>
+                </div>
+                {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
+              </div>
+            )}
             {b.notes && (
               <>
                 <div style={{ height: 1, background: T.borderSoft, margin: '10px 0' }} />

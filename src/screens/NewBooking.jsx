@@ -507,14 +507,26 @@ function StepGuest({ data, set, t, plan, allExtras, onRemoveSavedExtra }) {
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, t }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, gstEnabled, roomsSubtotal, extrasTotal, t }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Card padding={16}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>SUMMARY</div>
-          <Chip color={withTax ? 'indigo' : 'soft'} style={{ fontSize: 9 }}>{withTax ? 'GST Pro' : 'No GST'}</Chip>
+          <Chip color={withTax ? 'indigo' : 'soft'} style={{ fontSize: 9 }}>{withTax ? 'GST 12%' : 'No GST'}</Chip>
         </div>
+        {gstEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 10, marginBottom: 12 }}>
+            <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include GST in invoice</div>
+              <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 2 }}>
+                {withTax ? 'CGST 6% + SGST 6% will be added and reported to GSTN.' : 'No GST will be added. This booking won\'t appear in GSTR-1.'}
+              </div>
+            </div>
+            <Toggle on={withTax} onChange={(v) => set('gstApplies', v)} />
+          </div>
+        )}
         <Row label={`Tariff · ${data.nights}N × ${data.roomItems.length} room${data.roomItems.length>1?'s':''}`} value={`₹${roomsSubtotal.toLocaleString('en-IN')}`} />
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
         {withTax && <Row label="CGST 6%" value={`₹${(gst/2).toLocaleString('en-IN')}`} />}
@@ -594,6 +606,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: 4,
         payMethod: null, payAmount: 'full', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
+        gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
       };
     }
     return {
@@ -604,12 +617,16 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       notes: '', source: 'walk-in', hold: false, holdHours: 4,
       payMethod: null, payAmount: 0, payCustom: 0,
       extras: {}, customExtras: [], extraPrices: {},
+      // New bookings created here are channel='direct', so GST defaults to off.
+      // Hotelier toggles it on via the GST switch on Step 4 if needed.
+      gstApplies: false,
     };
   });
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
   const rt = ROOM_TYPES.find(r => r.id === data.roomTypeId);
-  const withTax = plan === 'gst';
+  const gstEnabled = plan === 'gst'; // global feature gate
+  const withTax = gstEnabled && !!data.gstApplies; // per-booking flag
   const baseRate = rt ? rt.base : 0;
 
   // Rate per night: respects overrides set in Rates screen + weekend factor.
@@ -672,7 +689,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} baseRate={baseRate} rateForNight={rateForNight} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} plan={plan} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} gstEnabled={gstEnabled} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

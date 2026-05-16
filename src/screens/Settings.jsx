@@ -223,6 +223,8 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
   const [openCatAmenities, setOpenCatAmenities] = useState({});
+  const [gstin, setGstin] = useState(property.gstin || '');
+  const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
 
   const addCustomAmenity = (a) => setCustomAmenities(arr => arr.some(x => x.id === a.id) ? arr : [...arr, a]);
   const removeCustomAmenity = (id) => {
@@ -232,7 +234,7 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   };
 
   const handleSave = () => {
-    onSave({ profile, categories, rules, amenityIds, customAmenities });
+    onSave({ profile, categories, rules, amenityIds, customAmenities, gstin: gstin.trim(), accountant });
     onClose();
   };
   const propTypes = [
@@ -321,6 +323,44 @@ function PropertyProfile({ t, onClose, property, onSave }) {
             <Field label={t('contactPhone')} value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value })} />
             <Field label={t('contactEmail')} value={profile.email} onChange={e => setProfile({ ...profile, email: e.target.value })} />
             <Field label={t('website')} value={profile.website} onChange={e => setProfile({ ...profile, website: e.target.value })} prefix="https://" />
+          </div>
+        </Card>
+
+        <SectionHead title="Accountant (CA)" style={{ marginTop: 16 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
+            We email a sequenced list of issued invoices to your CA each month. They decide what gets filed with GSTN.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Field
+              label="CA email"
+              value={accountant.email}
+              onChange={e => setAccountant({ ...accountant, email: e.target.value })}
+              placeholder="ca@firm.in (required for export)"
+              prefix={<Icon name="mail" size={12} color={T.ink3} />}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field
+                label="CA name (optional)"
+                value={accountant.name}
+                onChange={e => setAccountant({ ...accountant, name: e.target.value })}
+                placeholder="CA Sharma"
+              />
+              <Field
+                label="Firm (optional)"
+                value={accountant.firm}
+                onChange={e => setAccountant({ ...accountant, firm: e.target.value })}
+                placeholder="Sharma & Associates"
+              />
+            </div>
+            <Field
+              label="Your GSTIN (optional)"
+              value={gstin}
+              onChange={e => setGstin(e.target.value.toUpperCase())}
+              placeholder="08AABCY1234M1Z5"
+              hint="If you're GST-registered, this appears on every tax invoice."
+              prefix={<Icon name="tag" size={12} color={T.ink3} />}
+            />
           </div>
         </Card>
 

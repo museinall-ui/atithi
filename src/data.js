@@ -65,6 +65,42 @@ export function bookingGstApplies(b) {
   return !!b.channel && b.channel !== 'direct';
 }
 
+// Whether this booking should be included in the monthly invoice export to the
+// CA. Same logic and field as bookingGstApplies for now — flipping one flips
+// the other. Separate function so the call sites read clearly.
+export function bookingInvoiceInclude(b) {
+  return bookingGstApplies(b);
+}
+
+// Indian financial year for the current calendar date. April 1 to March 31.
+// Returned as a two-digit-pair string like "2627" for FY 2026-27. Used as the
+// stable bucket key for invoice number counters per FY.
+export function currentFinancialYear(now = new Date()) {
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0 = Jan
+  const startYear = m >= 3 ? y : y - 1;
+  return `${startYear % 100}${(startYear + 1) % 100}`.padStart(4, '0');
+}
+
+// Format a sequential number as a GST-compliant invoice ID, e.g. "INV-2627-001".
+// Max length 16 chars per GST rules; this format is 12 chars, comfortably under.
+export function formatInvoiceNumber(fy, seq) {
+  return `INV-${fy}-${String(seq).padStart(3, '0')}`;
+}
+
+// All issued (non-voided) invoices across the given bookings, in the order they
+// were issued. Used by the month-end CA export.
+export function listIssuedInvoices(bookings) {
+  const all = [];
+  for (const b of bookings) {
+    for (const inv of (b.invoices || [])) {
+      if (inv.voided) continue;
+      all.push({ ...inv, bookingId: b.id, guest: b.guest });
+    }
+  }
+  return all.sort((a, b) => a.number.localeCompare(b.number));
+}
+
 export const COUNTRIES = [
   { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91' },
   { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1'  },

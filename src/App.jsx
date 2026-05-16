@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useT } from './i18n.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber } from './data.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -48,6 +48,13 @@ const DEFAULT_PROPERTY = {
   ],
   amenityIds: ['wifi', 'parking', 'pool', 'restaurant', 'bonfire', 'safari', 'reception24', 'airportshuttle'],
   customAmenities: [],
+  // Per-financial-year sequential invoice counter. Bumped each time an invoice
+  // is issued, so the next number is predictable and gap-free (a GST requirement).
+  invoiceCounters: {},
+  // CA / accountant contact used for the monthly invoice export.
+  accountant: { name: '', email: '', firm: '' },
+  // Optional GSTIN — shown on tax invoices when present.
+  gstin: '',
 };
 
 // Older saved property objects used { amenities: { wifi: true, ... } }; convert that to
@@ -66,6 +73,10 @@ function migrateProperty(p) {
     ...c,
     amenityIds: Array.isArray(c.amenityIds) ? c.amenityIds : (DEFAULT_PROPERTY.categories[i]?.amenityIds || []),
   }));
+  if (!out.invoiceCounters || typeof out.invoiceCounters !== 'object') out.invoiceCounters = {};
+  if (!out.accountant || typeof out.accountant !== 'object') out.accountant = { ...DEFAULT_PROPERTY.accountant };
+  else out.accountant = { ...DEFAULT_PROPERTY.accountant, ...out.accountant };
+  if (typeof out.gstin !== 'string') out.gstin = '';
   return out;
 }
 
@@ -194,6 +205,47 @@ export default function App() {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, gstApplies: !!value } : b));
   };
 
+  // Issue a sequential tax invoice. `parts` is an optional array describing how
+  // to split the booking total across multiple recipients/invoices. When omitted,
+  // one invoice is issued for the full booking amount with the guest as recipient.
+  // Each part: { amount, recipient: { name, gstin?, address? }, items?: [...], note? }
+  //
+  // Counter and booking are updated from the same baseSeq snapshot so the invoice
+  // numbers stored on the booking always match the property's counter.
+  const issueInvoice = (bookingId, parts) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking || booking.status === 'tentative') return null;
+    const splits = (Array.isArray(parts) && parts.length > 0) ? parts : [{
+      amount: booking.total || 0,
+      recipient: { name: booking.guest, gstin: '', address: '' },
+    }];
+    const fy = currentFinancialYear();
+    const baseSeq = (property.invoiceCounters && property.invoiceCounters[fy]) || 0;
+    const nowIso = new Date().toISOString();
+    const newInvoices = splits.map((part, i) => ({
+      id: 'inv_' + Date.now() + '_' + i,
+      number: formatInvoiceNumber(fy, baseSeq + i + 1),
+      fy,
+      date: nowIso,
+      amount: +part.amount || 0,
+      recipient: part.recipient || { name: booking.guest, gstin: '', address: '' },
+      items: part.items || null,
+      note: part.note || '',
+      voided: false,
+    }));
+    setProperty(p => ({ ...p, invoiceCounters: { ...(p.invoiceCounters || {}), [fy]: baseSeq + splits.length } }));
+    setBookings(arr => arr.map(b => b.id === bookingId
+      ? { ...b, invoices: [...(b.invoices || []), ...newInvoices] }
+      : b));
+    return newInvoices;
+  };
+
+  const voidInvoice = (bookingId, invoiceId) => {
+    setBookings(arr => arr.map(b => b.id === bookingId
+      ? { ...b, invoices: (b.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, voided: true } : inv) }
+      : b));
+  };
+
   const addSavedCustomExtra = (extra) => {
     setSavedCustomExtras(arr => {
       if (arr.some(x => x.id === extra.id)) return arr;
@@ -283,12 +335,12 @@ export default function App() {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
     case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onSetGst={setBookingGst} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
-    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} />; break;
+    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} />;

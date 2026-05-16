@@ -123,7 +123,123 @@ function fmtRelease(b) {
   return b.releaseAt || '';
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onSetGst }) {
+function fmtIssued(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Sheet for issuing one or more tax invoices against a booking. Defaults to a
+// single-recipient invoice for the full booking amount; the hotelier can split
+// into multiple parts before issuing.
+function IssueInvoiceSheet({ booking, onClose, onIssue }) {
+  const [parts, setParts] = useState([
+    { name: booking.guest || '', gstin: '', amount: booking.total || 0 },
+  ]);
+  const totalAllocated = parts.reduce((s, p) => s + (+p.amount || 0), 0);
+  const remaining = (booking.total || 0) - totalAllocated;
+  const valid = parts.length > 0 && Math.abs(remaining) < 0.5 && parts.every(p => p.name.trim() && +p.amount > 0);
+
+  const updatePart = (i, patch) => setParts(arr => arr.map((p, idx) => idx === i ? { ...p, ...patch } : p));
+  const addPart = () => setParts(arr => [...arr, { name: booking.guest || '', gstin: '', amount: remaining > 0 ? remaining : 0 }]);
+  const removePart = (i) => setParts(arr => arr.filter((_, idx) => idx !== i));
+
+  const submit = () => {
+    if (!valid) return;
+    onIssue(parts.map(p => ({
+      amount: +p.amount,
+      recipient: { name: p.name.trim(), gstin: p.gstin.trim(), address: '' },
+    })));
+    onClose();
+  };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 40, display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32, maxHeight: '90%', overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `color-mix(in oklch, ${T.teal} 14%, white)`, color: T.teal, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="download" size={16} stroke={2.2} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Issue tax invoice{parts.length > 1 ? 's' : ''}</div>
+            <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>Once issued, the invoice number is locked (GST requirement).</div>
+          </div>
+        </div>
+
+        <div style={{ background: T.bgSoft, borderRadius: 10, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>BOOKING TOTAL</span>
+          <span className="tnum" style={{ fontSize: 18, fontWeight: 700, color: T.ink }}>₹{(booking.total || 0).toLocaleString('en-IN')}</span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {parts.map((p, i) => (
+            <div key={i} style={{ padding: 12, background: T.bgSoft, borderRadius: 10, border: `1px solid ${T.borderSoft}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>INVOICE {i + 1}</span>
+                {parts.length > 1 && (
+                  <button onClick={() => removePart(i)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2 }}>
+                    <Icon name="x" size={11} />
+                  </button>
+                )}
+              </div>
+              <input
+                value={p.name}
+                onChange={e => updatePart(i, { name: e.target.value })}
+                placeholder="Recipient name"
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 600, color: T.ink, outline: 'none', marginBottom: 6 }}
+              />
+              <input
+                value={p.gstin}
+                onChange={e => updatePart(i, { gstin: e.target.value.toUpperCase() })}
+                placeholder="GSTIN (optional · for B2B)"
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 12, fontWeight: 600, color: T.ink, outline: 'none', marginBottom: 6, fontFamily: T.mono || 'monospace' }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 7 }}>
+                <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>₹</span>
+                <input
+                  type="number"
+                  value={p.amount}
+                  onChange={e => updatePart(i, { amount: e.target.value })}
+                  className="tnum"
+                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, fontWeight: 700, color: T.ink, minWidth: 0 }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={addPart}
+          style={{ marginTop: 10, width: '100%', padding: '10px', borderRadius: 8, border: `1.5px dashed ${T.border}`, background: 'transparent', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+        >
+          <Icon name="plus" size={11} stroke={2.4} /> Split into another invoice
+        </button>
+
+        <div style={{
+          marginTop: 12, padding: '10px 12px', borderRadius: 8,
+          background: valid ? 'oklch(95% 0.04 155)' : 'oklch(95% 0.05 75)',
+          color: valid ? T.ok : 'oklch(40% 0.14 75)',
+          fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Icon name={valid ? 'check' : 'info'} size={11} stroke={2.2} />
+          <span className="tnum">
+            ₹{totalAllocated.toLocaleString('en-IN')} of ₹{(booking.total || 0).toLocaleString('en-IN')}
+            {remaining > 0 ? ` · ₹${remaining.toLocaleString('en-IN')} unallocated` : remaining < 0 ? ` · ₹${Math.abs(remaining).toLocaleString('en-IN')} over` : ' · matches'}
+          </span>
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+          <Btn variant="ghost" full onClick={onClose}>Cancel</Btn>
+          <Btn full disabled={!valid} onClick={submit} style={{ background: T.teal, borderColor: T.teal }}>
+            Issue {parts.length} invoice{parts.length > 1 ? 's' : ''}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onSetGst, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
@@ -136,6 +252,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const [payOpen, setPayOpen] = useState(false);
   const [payKind, setPayKind] = useState('payment');
   const [waStatus, setWaStatus] = useState('sent');
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const invoices = b.invoices || [];
+  const activeInvoices = invoices.filter(inv => !inv.voided);
+  const invoicedAmount = activeInvoices.reduce((s, inv) => s + (inv.amount || 0), 0);
+  const remainingToInvoice = (b.total || 0) - invoicedAmount;
 
   useEffect(() => {
     setWaStatus('sent');
@@ -337,6 +458,83 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
         )}
 
         <div style={{ padding: '0 16px 16px' }}>
+          <SectionHead title="Invoices" action={
+            activeInvoices.length > 0 && remainingToInvoice <= 0
+              ? <Chip color="ok" icon="check" style={{ fontSize: 9 }}>Fully invoiced</Chip>
+              : null
+          } />
+          <Card padding={0}>
+            {invoices.length === 0 ? (
+              <div style={{ padding: '16px 14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
+                No tax invoice issued yet. Issue one for the full booking total or split into multiple invoices (e.g. company + personal share).
+              </div>
+            ) : (
+              invoices.map((inv, i, arr) => (
+                <div key={inv.id} style={{ padding: '12px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none', opacity: inv.voided ? 0.55 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `color-mix(in oklch, ${T.teal} 12%, white)`, color: T.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon name="tag" size={14} stroke={2} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                        <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink, textDecoration: inv.voided ? 'line-through' : 'none' }}>{inv.number}</span>
+                        {inv.voided && <Chip color="danger" style={{ fontSize: 9 }}>VOIDED</Chip>}
+                      </div>
+                      <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
+                        {fmtIssued(inv.date)} · {inv.recipient?.name || '—'}{inv.recipient?.gstin ? ` · ${inv.recipient.gstin}` : ''}
+                      </div>
+                    </div>
+                    <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>₹{(inv.amount || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                  {!inv.voided && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <button
+                        onClick={() => generateVoucher(b, rt, property, inv)}
+                        className="atithi-tap"
+                        style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <Icon name="download" size={11} stroke={2} /> View invoice PDF
+                      </button>
+                      <button
+                        onClick={() => { if (confirm(`Void invoice ${inv.number}? The number stays reserved (cannot be reused) per GST rules.`)) onVoidInvoice && onVoidInvoice(b.id, inv.id); }}
+                        className="atithi-tap"
+                        style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <Icon name="x" size={11} stroke={2} /> Void
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+            {b.status === 'tentative' ? (
+              <div style={{ padding: '10px 14px', background: T.bgSoft, fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
+                Confirm this tentative booking before issuing an invoice.
+              </div>
+            ) : remainingToInvoice > 0 ? (
+              <div style={{ padding: 12, background: T.bgSoft, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button
+                  onClick={() => setInvoiceOpen(true)}
+                  className="atithi-tap"
+                  style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none', background: T.teal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  <Icon name="plus" size={12} stroke={2.2} />
+                  {invoices.length === 0 ? `Issue invoice (₹${remainingToInvoice.toLocaleString('en-IN')})` : `Issue another invoice (₹${remainingToInvoice.toLocaleString('en-IN')} left)`}
+                </button>
+              </div>
+            ) : null}
+          </Card>
+        </div>
+
+        {invoiceOpen && (
+          <IssueInvoiceSheet
+            booking={{ ...b, total: remainingToInvoice }}
+            onClose={() => setInvoiceOpen(false)}
+            onIssue={(parts) => onIssueInvoice && onIssueInvoice(b.id, parts)}
+          />
+        )}
+
+        <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('activity')} />
           <Card padding={0}>
             {[
@@ -361,25 +559,32 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
         </div>
       </div>
 
-      <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', gap: 8 }}>
-        {b.status === 'confirmed' && (
-          <Btn icon="door" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Check in</Btn>
+      <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '10px 16px 24px' }}>
+        {(b.status === 'confirmed' || b.status === 'checkedin') && (
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 6, textAlign: 'center', letterSpacing: 0.2 }}>
+            Optional · inventory + invoicing work without these
+          </div>
         )}
-        {b.status === 'checkedin' && (
-          <Btn icon="check" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Check out</Btn>
-        )}
-        {b.status === 'tentative' && (
-          <>
-            <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>
-            <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>
-          </>
-        )}
-        {b.status === 'cancelled' && (
-          <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
-        )}
-        {b.status === 'checkout' && (
-          <Btn variant="soft" icon="check" full disabled>Stay complete</Btn>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {b.status === 'confirmed' && (
+            <Btn variant="soft" icon="door" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Log check-in</Btn>
+          )}
+          {b.status === 'checkedin' && (
+            <Btn variant="soft" icon="check" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Log check-out</Btn>
+          )}
+          {b.status === 'tentative' && (
+            <>
+              <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>
+              <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>
+            </>
+          )}
+          {b.status === 'cancelled' && (
+            <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
+          )}
+          {b.status === 'checkout' && (
+            <Btn variant="soft" icon="check" full disabled>Stay complete</Btn>
+          )}
+        </div>
       </div>
     </div>
   );

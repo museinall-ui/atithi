@@ -15,9 +15,15 @@ const FALLBACK_PROPERTY = {
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function generateVoucher(b, rt, property) {
+export function generateVoucher(b, rt, property, invoice) {
   const prop = property && property.profile ? property : FALLBACK_PROPERTY;
   const p = prop.profile;
+  const isInvoice = !!invoice && !!invoice.number;
+  const invoiceAmount = isInvoice ? (invoice.amount || b.total || 0) : (b.total || 0);
+  const docTitle = isInvoice ? 'Tax invoice' : 'Booking voucher';
+  const recipientName = isInvoice ? (invoice.recipient?.name || b.guest) : b.guest;
+  const recipientGstin = isInvoice ? (invoice.recipient?.gstin || '') : '';
+  const invoiceDate = isInvoice && invoice.date ? new Date(invoice.date) : new Date();
   const addressLine = [p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ');
   const checkIn = new Date(2026, 4, 4 + (b.startIdx || 0));
   const checkOut = new Date(2026, 4, 4 + (b.startIdx || 0) + b.nights);
@@ -36,13 +42,17 @@ export function generateVoucher(b, rt, property) {
     return { label: ex.label, qty, price, total: price * qty };
   }).filter(Boolean);
   const logoLetter = (p.name || 'A').trim().charAt(0).toUpperCase();
-  const withTax = bookingGstApplies(b);
-  // When GST applies, treat the booking total as already GST-inclusive (12/112 of it is tax).
-  const gstAmt = withTax ? Math.round(b.total * 12 / 112) : 0;
+  // Tax invoices always show the GST breakdown; vouchers show it only when the
+  // booking is GST-applicable per its channel/override flag.
+  const withTax = isInvoice || bookingGstApplies(b);
+  const baseAmount = isInvoice ? invoiceAmount : (b.total || 0);
+  // Treat the booking/invoice total as GST-inclusive: 12/112 of it is tax.
+  const gstAmt = withTax ? Math.round(baseAmount * 12 / 112) : 0;
   const halfGst = Math.round(gstAmt / 2);
-  const preTax = (b.total || 0) - gstAmt;
-  const extrasSum = extrasList.reduce((s, e) => s + e.total, 0);
-  const tariffLine = preTax - extrasSum; // room tariff portion before GST
+  const preTax = baseAmount - gstAmt;
+  const extrasSum = isInvoice ? 0 : extrasList.reduce((s, e) => s + e.total, 0);
+  const tariffLine = preTax - extrasSum;
+  const docNumber = isInvoice ? invoice.number : b.id;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -101,27 +111,32 @@ export function generateVoucher(b, rt, property) {
         <div class="brand-sub">${esc(addressLine)}${p.phone ? ' · ' + esc(p.phone) : ''}</div>
         ${p.landmark ? `<div class="brand-sub" style="margin-top:1px;">📍 ${esc(p.landmark)}</div>` : ''}
         ${p.mapUrl ? `<div class="brand-sub" style="margin-top:2px;"><a href="${esc(p.mapUrl)}" style="color:#C8553D; text-decoration:none; font-weight:600;">View on map →</a></div>` : ''}
+        ${prop.gstin ? `<div class="brand-sub" style="margin-top:2px;"><strong>GSTIN:</strong> ${esc(prop.gstin)}</div>` : ''}
       </div>
     </div>
     <div class="voucher-meta">
-      <div class="id">${esc(b.id)}</div>
-      <div>Issued ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-      <div style="margin-top: 8px;"><span class="stamp">${isHold ? 'TENTATIVE · ON HOLD' : balance > 0 ? 'BALANCE DUE' : 'PAID IN FULL'}</span></div>
+      <div class="id">${esc(docNumber)}</div>
+      <div>${isInvoice ? 'Invoice date' : 'Issued'} ${invoiceDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      ${isInvoice ? `<div style="font-size:8pt; color:#888; margin-top:2px;">Booking ${esc(b.id)}</div>` : ''}
+      <div style="margin-top: 8px;"><span class="stamp">${isInvoice ? 'TAX INVOICE' : isHold ? 'TENTATIVE · ON HOLD' : balance > 0 ? 'BALANCE DUE' : 'PAID IN FULL'}</span></div>
     </div>
   </div>
 
-  <h2>Booking voucher</h2>
+  <h2>${esc(docTitle)}</h2>
   <div class="grid">
     <div class="card">
-      <h2 style="margin-bottom: 10px;">Guest</h2>
-      <div style="font-size: 13pt; font-weight: 700;">${b.guest}</div>
-      <div style="font-size: 10pt; color: #666; margin-top: 4px;">${b.phone || ''}</div>
-      <div style="font-size: 10pt; color: #666;">${b.guests || ''}</div>
+      <h2 style="margin-bottom: 10px;">${isInvoice ? 'Billed to' : 'Guest'}</h2>
+      <div style="font-size: 13pt; font-weight: 700;">${esc(recipientName)}</div>
+      ${isInvoice ? '' : `<div style="font-size: 10pt; color: #666; margin-top: 4px;">${esc(b.phone || '')}</div>`}
+      ${recipientGstin ? `<div style="font-size: 10pt; color: #666; margin-top: 4px;"><strong>GSTIN:</strong> ${esc(recipientGstin)}</div>` : ''}
+      ${isInvoice && invoice.recipient?.address ? `<div style="font-size: 10pt; color: #666; margin-top: 4px;">${esc(invoice.recipient.address)}</div>` : ''}
+      ${!isInvoice ? `<div style="font-size: 10pt; color: #666;">${esc(b.guests || '')}</div>` : ''}
     </div>
     <div class="card">
       <h2 style="margin-bottom: 10px;">Accommodation</h2>
-      <div style="font-size: 13pt; font-weight: 700;">${rt ? rt.name : 'Room'}</div>
-      <div style="font-size: 10pt; color: #666; margin-top: 4px;">${(b.roomItems && b.roomItems.length) || 1} unit(s) · ${b.guests || ''}</div>
+      <div style="font-size: 13pt; font-weight: 700;">${rt ? esc(rt.name) : 'Room'}</div>
+      <div style="font-size: 10pt; color: #666; margin-top: 4px;">${(b.roomItems && b.roomItems.length) || 1} unit(s) · ${esc(b.guests || '')}</div>
+      ${isInvoice ? `<div style="font-size: 9pt; color: #888; margin-top: 6px;"><strong>HSN:</strong> 996311 (Hotel accommodation)</div>` : ''}
     </div>
   </div>
 
@@ -147,7 +162,7 @@ export function generateVoucher(b, rt, property) {
     <div class="msg">This room is being held for you until <span class="when">${releaseLabel}</span>. If we don't receive ${fmtINR(balance)} by then, the booking will be <strong>automatically released</strong> and the inventory re-opened for other guests.</div>
   </div>` : ''}
 
-  <h2>Folio${withTax ? ' · GST invoice' : ''}</h2>
+  <h2>${isInvoice ? 'Invoice line items' : 'Folio'}</h2>
   <table>
     <thead>
       <tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
@@ -165,11 +180,16 @@ export function generateVoucher(b, rt, property) {
       <tr><td style="color:#666;">SGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(gstAmt - halfGst)}</td></tr>` : ''}
     </tbody>
     <tfoot>
-      <tr><td colspan="3">Total</td><td class="r total">${fmtINR(b.total)}</td></tr>
-      <tr><td colspan="3" style="font-size: 11pt; color: #666;">Paid</td><td class="r" style="font-size: 11pt; color: #0E8A5F;">${fmtINR(b.paid)}</td></tr>
-      ${balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${esc(releaseLabel)}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
+      <tr><td colspan="3">${isInvoice ? 'Invoice total' : 'Total'}</td><td class="r total">${fmtINR(baseAmount)}</td></tr>
+      ${!isInvoice ? `<tr><td colspan="3" style="font-size: 11pt; color: #666;">Paid</td><td class="r" style="font-size: 11pt; color: #0E8A5F;">${fmtINR(b.paid)}</td></tr>` : ''}
+      ${!isInvoice && balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${esc(releaseLabel)}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
     </tfoot>
   </table>
+  ${isInvoice ? `
+  <div style="margin-bottom: 18px; padding: 12px 14px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 8px; font-size: 9pt; line-height: 1.5;">
+    <strong>Place of supply:</strong> ${esc(p.state || '—')} · <strong>Invoice no:</strong> ${esc(invoice.number)} · <strong>FY:</strong> ${esc(invoice.fy || '')}
+    ${invoice.note ? `<br/><strong>Note:</strong> ${esc(invoice.note)}` : ''}
+  </div>` : ''}
 
   ${b.notes ? `<div class="note"><div class="lbl">Special request</div>${b.notes}</div>` : ''}
 

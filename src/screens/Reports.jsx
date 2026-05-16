@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, DAYS, bookingGstApplies } from '../data.js';
+import { ROOM_TYPES, DAYS, bookingGstApplies, listIssuedInvoices } from '../data.js';
+import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -36,8 +37,24 @@ function fmtINR(n) {
   return '₹' + Math.round(n).toLocaleString('en-IN');
 }
 
-export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
+export default function Reports({ go, t, bookings = [], plan = 'engine', property }) {
   const gstEnabled = plan === 'gst';
+  const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
+  const caEmail = property?.accountant?.email || '';
+
+  const handleSendToCA = () => {
+    if (issuedInvoices.length === 0) {
+      alert('No invoices to send yet. Open any booking and tap "Issue invoice" first.');
+      return;
+    }
+    if (!caEmail) {
+      alert('Add your CA\'s email in Settings → Property profile → Accountant before sending.');
+      return;
+    }
+    exportInvoiceList(bookings, property);
+    // Give the printable window a moment to open before triggering mailto.
+    setTimeout(() => emailToAccountant(issuedInvoices, property), 600);
+  };
   const stats = useMemo(() => {
     const active = bookings.filter(b => b.status !== 'cancelled');
     const totalUnits = ROOM_TYPES.reduce((s, r) => s + r.units, 0);
@@ -112,9 +129,21 @@ export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
             <Icon name="download" size={14} color={T.teal} stroke={2} />
             <span style={{ fontSize: 12, fontWeight: 700, color: T.teal, letterSpacing: 0.2 }}>MONTH-END · SEND TO CA</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-            <div className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{stats.invoiceableCount}</div>
-            <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>bookings ready for invoice export</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{issuedInvoices.length}</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>INVOICES ISSUED</div>
+            </div>
+            <div>
+              <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{stats.invoiceableCount}</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>BOOKINGS READY</div>
+            </div>
+            {stats.gapCount > 0 && (
+              <div>
+                <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: 'oklch(48% 0.14 75)', letterSpacing: -0.3 }}>{stats.gapCount}</div>
+                <div style={{ fontSize: 10, color: 'oklch(48% 0.14 75)', fontWeight: 700, letterSpacing: 0.3 }}>WITH GAPS</div>
+              </div>
+            )}
           </div>
           {stats.gapCount > 0 ? (
             <div style={{ padding: '10px 12px', background: 'oklch(95% 0.05 75)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -128,26 +157,44 @@ export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
                 </div>
               </div>
             </div>
+          ) : issuedInvoices.length === 0 ? (
+            <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <Icon name="info" size={13} color={T.ink3} stroke={2} />
+              <div style={{ fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.4 }}>
+                No invoices issued yet. Open a booking and tap <strong>Issue invoice</strong> to start.
+              </div>
+            </div>
+          ) : !caEmail ? (
+            <div style={{ padding: '10px 12px', background: 'oklch(95% 0.05 75)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <Icon name="info" size={13} color="oklch(48% 0.14 75)" stroke={2} />
+              <div style={{ fontSize: 11, color: 'oklch(40% 0.14 75)', fontWeight: 600, lineHeight: 1.4 }}>
+                Add your CA's email in <strong>Settings → Property profile → Accountant</strong> before sending.
+              </div>
+            </div>
           ) : (
             <div style={{ padding: '10px 12px', background: 'oklch(95% 0.04 155)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="check" size={13} color={T.ok} stroke={2.4} />
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ok }}>No payment gaps · invoices ready</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ok }}>Ready to send to {caEmail}</div>
             </div>
           )}
           <button
-            disabled={stats.gapCount > 0}
-            onClick={() => alert('Monthly invoice export to CA is coming soon. The system will email a sequenced list of invoices (PDF + Excel) to your accountant.')}
+            disabled={stats.gapCount > 0 || issuedInvoices.length === 0}
+            onClick={handleSendToCA}
             style={{
               width: '100%', padding: '10px 12px', borderRadius: 10,
               border: 'none',
-              background: stats.gapCount > 0 ? T.bgSoft : T.teal,
-              color: stats.gapCount > 0 ? T.ink3 : '#fff',
-              fontSize: 12, fontWeight: 700, cursor: stats.gapCount > 0 ? 'not-allowed' : 'pointer',
+              background: (stats.gapCount > 0 || issuedInvoices.length === 0) ? T.bgSoft : T.teal,
+              color: (stats.gapCount > 0 || issuedInvoices.length === 0) ? T.ink3 : '#fff',
+              fontSize: 12, fontWeight: 700, cursor: (stats.gapCount > 0 || issuedInvoices.length === 0) ? 'not-allowed' : 'pointer',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
-            <Icon name="wa" size={13} stroke={2} />
-            {stats.gapCount > 0 ? `Resolve ${stats.gapCount} gap${stats.gapCount > 1 ? 's' : ''} to enable export` : 'Email invoice list to CA'}
+            <Icon name="download" size={13} stroke={2} />
+            {stats.gapCount > 0
+              ? `Resolve ${stats.gapCount} gap${stats.gapCount > 1 ? 's' : ''} to enable export`
+              : issuedInvoices.length === 0
+                ? 'Issue at least one invoice first'
+                : `Open invoice list (${issuedInvoices.length}) + email to CA`}
           </button>
         </Card>
 

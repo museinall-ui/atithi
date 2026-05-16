@@ -29,14 +29,16 @@ const DEFAULT_PROPERTY = {
     type: 'resort',
     address: 'Sam Sand Dunes Road, near Khuri',
     city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
+    landmark: 'Near Sam Sand Dunes, 45km west of Jaisalmer Fort',
+    mapUrl: 'https://maps.google.com/?q=Sam+Sand+Dunes,+Jaisalmer',
     checkIn: '14:00', checkOut: '11:00',
     phone: '+91 90099 12345', email: 'stay@yatracamp.in', website: 'yatracamp.in',
   },
   categories: [
-    { id: 'dlx',  name: 'Deluxe Tent',          units: 8, base: 4500  },
-    { id: 'lux',  name: 'Luxury Tent (AC)',     units: 6, base: 7200  },
-    { id: 'btub', name: 'Bathtub Tent',         units: 4, base: 9500  },
-    { id: 'pool', name: 'Private Pool Cottage', units: 3, base: 14500 },
+    { id: 'dlx',  name: 'Deluxe Tent',          units: 8, base: 4500,  amenityIds: ['fan', 'bonfire', 'desertview', 'hotwater'] },
+    { id: 'lux',  name: 'Luxury Tent (AC)',     units: 6, base: 7200,  amenityIds: ['ac', 'heater', 'desertview', 'hotwater', 'minibar', 'kettle'] },
+    { id: 'btub', name: 'Bathtub Tent',         units: 4, base: 9500,  amenityIds: ['ac', 'heater', 'bathtub', 'balcony', 'minibar', 'kettle', 'toiletries'] },
+    { id: 'pool', name: 'Private Pool Cottage', units: 3, base: 14500, amenityIds: ['ac', 'heater', 'privatepool', 'kitchenette', 'minibar', 'kettle', 'safe', 'toiletries'] },
   ],
   rules: [
     'Check-in from 2 PM · check-out by 11 AM',
@@ -44,8 +46,28 @@ const DEFAULT_PROPERTY = {
     'Bonfire from 7 PM to 10 PM only',
     'Pets allowed in Deluxe & Luxury tents',
   ],
-  amenities: { wifi: true, parking: true, pool: true, restaurant: true, ac: true, bonfire: true },
+  amenityIds: ['wifi', 'parking', 'pool', 'restaurant', 'bonfire', 'safari', 'reception24', 'airportshuttle'],
+  customAmenities: [],
 };
+
+// Older saved property objects used { amenities: { wifi: true, ... } }; convert that to
+// the new { amenityIds: [...] } shape so saved data keeps working without a wipe.
+function migrateProperty(p) {
+  if (!p || typeof p !== 'object') return DEFAULT_PROPERTY;
+  const out = { ...DEFAULT_PROPERTY, ...p };
+  out.profile = { ...DEFAULT_PROPERTY.profile, ...(p.profile || {}) };
+  if (!Array.isArray(out.amenityIds)) {
+    out.amenityIds = p.amenities && typeof p.amenities === 'object'
+      ? Object.keys(p.amenities).filter(k => p.amenities[k])
+      : [...DEFAULT_PROPERTY.amenityIds];
+  }
+  if (!Array.isArray(out.customAmenities)) out.customAmenities = [];
+  out.categories = (Array.isArray(p.categories) ? p.categories : DEFAULT_PROPERTY.categories).map((c, i) => ({
+    ...c,
+    amenityIds: Array.isArray(c.amenityIds) ? c.amenityIds : (DEFAULT_PROPERTY.categories[i]?.amenityIds || []),
+  }));
+  return out;
+}
 
 const loadLS = (key, fallback) => {
   try {
@@ -95,7 +117,7 @@ export default function App() {
   const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, BOOKINGS_SEED.map(b => ({ ...b }))));
   const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
-  const [property, setProperty] = useState(() => loadLS(LS_KEYS.property, DEFAULT_PROPERTY));
+  const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
   const [editing, setEditing] = useState(null);
   const t = useT(lang);
 
@@ -255,7 +277,7 @@ export default function App() {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
     case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;

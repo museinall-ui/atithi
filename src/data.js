@@ -85,6 +85,64 @@ export const COUNTRIES = [
   { code: 'LK', name: 'Sri Lanka',     flag: '🇱🇰', dial: '+94' },
 ];
 
+// Master list of amenities, grouped for browsability. Used by both the
+// property-wide amenity picker and each room category's amenity picker.
+export const AMENITIES = [
+  // Comfort & Connectivity
+  { id: 'wifi',         label: 'Free WiFi',          group: 'Comfort & Connectivity' },
+  { id: 'ac',           label: 'Air conditioning',   group: 'Comfort & Connectivity' },
+  { id: 'heater',       label: 'Room heater',        group: 'Comfort & Connectivity' },
+  { id: 'fan',          label: 'Ceiling fan',        group: 'Comfort & Connectivity' },
+  { id: 'tv',           label: 'TV',                 group: 'Comfort & Connectivity' },
+  { id: 'ethernet',     label: 'Wired internet',     group: 'Comfort & Connectivity' },
+
+  // In-room
+  { id: 'minibar',      label: 'Mini bar / fridge',  group: 'In-room' },
+  { id: 'kettle',       label: 'Tea / coffee maker', group: 'In-room' },
+  { id: 'safe',         label: 'In-room safe',       group: 'In-room' },
+  { id: 'workdesk',     label: 'Work desk',          group: 'In-room' },
+  { id: 'iron',         label: 'Iron',               group: 'In-room' },
+  { id: 'hairdryer',    label: 'Hair dryer',         group: 'In-room' },
+  { id: 'balcony',      label: 'Balcony / patio',    group: 'In-room' },
+  { id: 'bathtub',      label: 'Bathtub',            group: 'In-room' },
+  { id: 'hotwater',     label: '24h hot water',      group: 'In-room' },
+  { id: 'toiletries',   label: 'Toiletries',         group: 'In-room' },
+
+  // Outdoor & View
+  { id: 'desertview',   label: 'Desert view',        group: 'Outdoor & View' },
+  { id: 'poolview',     label: 'Pool view',          group: 'Outdoor & View' },
+  { id: 'gardenview',   label: 'Garden view',        group: 'Outdoor & View' },
+  { id: 'mountainview', label: 'Mountain view',      group: 'Outdoor & View' },
+  { id: 'privatepool',  label: 'Private pool',       group: 'Outdoor & View' },
+  { id: 'bonfire',      label: 'Bonfire area',       group: 'Outdoor & View' },
+  { id: 'bbq',          label: 'BBQ',                group: 'Outdoor & View' },
+  { id: 'garden',       label: 'Garden',             group: 'Outdoor & View' },
+  { id: 'terrace',      label: 'Terrace',            group: 'Outdoor & View' },
+
+  // Property facilities
+  { id: 'pool',         label: 'Swimming pool',      group: 'Property facilities' },
+  { id: 'gym',          label: 'Gym',                group: 'Property facilities' },
+  { id: 'spa',          label: 'Spa / wellness',     group: 'Property facilities' },
+  { id: 'restaurant',   label: 'Restaurant',         group: 'Property facilities' },
+  { id: 'bar',          label: 'Bar / lounge',       group: 'Property facilities' },
+  { id: 'roomservice',  label: 'Room service',       group: 'Property facilities' },
+  { id: 'breakfast',    label: 'Breakfast included', group: 'Property facilities' },
+  { id: 'kitchenette',  label: 'Kitchenette',        group: 'Property facilities' },
+
+  // Services
+  { id: 'parking',      label: 'Free parking',       group: 'Services' },
+  { id: 'valet',        label: 'Valet parking',      group: 'Services' },
+  { id: 'laundry',      label: 'Laundry',            group: 'Services' },
+  { id: 'reception24',  label: '24h reception',      group: 'Services' },
+  { id: 'airportshuttle', label: 'Airport pickup',   group: 'Services' },
+  { id: 'safari',       label: 'Safari arrangement', group: 'Services' },
+
+  // Policies
+  { id: 'petfriendly',  label: 'Pet-friendly',       group: 'Policies' },
+  { id: 'wheelchair',   label: 'Wheelchair access',  group: 'Policies' },
+  { id: 'smoking',      label: 'Smoking allowed',    group: 'Policies' },
+];
+
 export const EXTRAS_DEFAULT = [
   { id: 'breakfast', label: 'Breakfast',       sub: 'Veg buffet',   price: 350,  icon: 'veg' },
   { id: 'safari',    label: 'Desert safari',   sub: 'Per person',   price: 1500, icon: 'sun' },

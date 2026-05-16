@@ -122,7 +122,7 @@ function fmtRelease(b) {
   return b.releaseAt || '';
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, onEdit, onPayment, onSetStatus }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
@@ -147,7 +147,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <ScreenHeader title={b.id} subtitle={rt.name} onBack={() => go('diary')}
         right={
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <button onClick={() => generateVoucher(b, rt)} className="atithi-tap" title="Download voucher PDF" style={{
+            <button onClick={() => generateVoucher(b, rt, property)} className="atithi-tap" title="Download voucher PDF" style={{
               height: 36, width: 36, borderRadius: 10, border: `1px solid ${T.border}`,
               background: T.card, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: T.ink2,

@@ -1,6 +1,24 @@
 import { EXTRAS_DEFAULT } from '../data.js';
 
-export function generateVoucher(b, rt) {
+const FALLBACK_PROPERTY = {
+  profile: {
+    name: 'Yatra Desert Camp',
+    address: 'Sam Sand Dunes Road, near Khuri',
+    city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
+    landmark: '',
+    mapUrl: '',
+    checkIn: '14:00', checkOut: '11:00',
+    phone: '+91 98290 12345',
+  },
+};
+
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+export function generateVoucher(b, rt, property) {
+  const prop = property && property.profile ? property : FALLBACK_PROPERTY;
+  const p = prop.profile;
+  const addressLine = [p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ');
   const checkIn = new Date(2026, 4, 4 + (b.startIdx || 0));
   const checkOut = new Date(2026, 4, 4 + (b.startIdx || 0) + b.nights);
   const fmtDate = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
@@ -17,6 +35,7 @@ export function generateVoucher(b, rt) {
     const price = (b.extraPrices && b.extraPrices[id] != null) ? b.extraPrices[id] : ex.price;
     return { label: ex.label, qty, price, total: price * qty };
   }).filter(Boolean);
+  const logoLetter = (p.name || 'A').trim().charAt(0).toUpperCase();
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -69,14 +88,16 @@ export function generateVoucher(b, rt) {
 <body>
   <div class="head">
     <div class="brand">
-      <div class="logo">A</div>
+      <div class="logo">${esc(logoLetter)}</div>
       <div>
-        <div class="brand-name">Yatra Desert Camp</div>
-        <div class="brand-sub">Sam Sand Dunes Road, Jaisalmer, Rajasthan 345001 · +91 98290 12345</div>
+        <div class="brand-name">${esc(p.name)}</div>
+        <div class="brand-sub">${esc(addressLine)}${p.phone ? ' · ' + esc(p.phone) : ''}</div>
+        ${p.landmark ? `<div class="brand-sub" style="margin-top:1px;">📍 ${esc(p.landmark)}</div>` : ''}
+        ${p.mapUrl ? `<div class="brand-sub" style="margin-top:2px;"><a href="${esc(p.mapUrl)}" style="color:#C8553D; text-decoration:none; font-weight:600;">View on map →</a></div>` : ''}
       </div>
     </div>
     <div class="voucher-meta">
-      <div class="id">${b.id}</div>
+      <div class="id">${esc(b.id)}</div>
       <div>Issued ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
       <div style="margin-top: 8px;"><span class="stamp">${isHold ? 'TENTATIVE · ON HOLD' : balance > 0 ? 'BALANCE DUE' : 'PAID IN FULL'}</span></div>
     </div>
@@ -101,7 +122,7 @@ export function generateVoucher(b, rt) {
     <div>
       <div class="date-label">Check-in</div>
       <div class="date-value">${fmtDate(checkIn)}</div>
-      <div class="date-sub">From 14:00</div>
+      <div class="date-sub">From ${esc(p.checkIn || '14:00')}</div>
     </div>
     <div class="nights">
       <div class="nights-num">${b.nights}</div>
@@ -110,7 +131,7 @@ export function generateVoucher(b, rt) {
     <div style="text-align: right;">
       <div class="date-label">Check-out</div>
       <div class="date-value">${fmtDate(checkOut)}</div>
-      <div class="date-sub">By 11:00</div>
+      <div class="date-sub">By ${esc(p.checkOut || '11:00')}</div>
     </div>
   </div>
 
@@ -143,9 +164,9 @@ export function generateVoucher(b, rt) {
   ${b.notes ? `<div class="note"><div class="lbl">Special request</div>${b.notes}</div>` : ''}
 
   <div class="terms">
-    <strong>Terms:</strong> Check-in from 14:00, check-out by 11:00. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance. GST will be charged as applicable. For any change, WhatsApp +91 98290 12345 quoting <strong>${b.id}</strong>.
+    <strong>Terms:</strong> Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance. GST will be charged as applicable. For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(b.id)}</strong>.
     <br/><br/>
-    <strong>Thank you for choosing Yatra Desert Camp.</strong> We look forward to hosting you in Jaisalmer.
+    <strong>Thank you for choosing ${esc(p.name)}.</strong> We look forward to hosting you${p.city ? ' in ' + esc(p.city) : ''}.
   </div>
 
   <div class="actions">

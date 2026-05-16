@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { T } from '../tokens.js';
+import { AMENITIES } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -7,6 +8,108 @@ import Card from '../components/Card.jsx';
 import Field from '../components/Field.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+
+// Reusable amenity picker: works for property-wide and per-category lists.
+// `selected` is an array of amenity ids; calls `onChange` with the new array.
+function AmenityPicker({ selected = [], onChange, customAmenities = [], onAddCustom, onRemoveCustom, compact = false }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const sel = new Set(selected);
+  const toggle = (id) => {
+    const next = sel.has(id) ? selected.filter(x => x !== id) : [...selected, id];
+    onChange(next);
+  };
+  const groups = useMemo(() => {
+    const map = new Map();
+    AMENITIES.forEach(a => {
+      if (!map.has(a.group)) map.set(a.group, []);
+      map.get(a.group).push(a);
+    });
+    return [...map.entries()];
+  }, []);
+  const submit = () => {
+    const label = draft.trim();
+    if (!label) return;
+    if (onAddCustom) {
+      const id = 'cx_amen_' + Date.now();
+      onAddCustom({ id, label });
+      onChange([...selected, id]);
+    }
+    setDraft(''); setAdding(false);
+  };
+  const chip = (active, dim) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    padding: compact ? '3px 8px' : '5px 10px', borderRadius: 999,
+    border: `1.5px solid ${active ? T.primary : T.border}`,
+    background: active ? T.primaryLt : T.card,
+    color: active ? T.primaryDk : (dim ? T.ink3 : T.ink2),
+    fontSize: compact ? 10 : 11, fontWeight: 700, cursor: 'pointer',
+  });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {groups.map(([groupName, items]) => (
+        <div key={groupName}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 5, textTransform: 'uppercase' }}>{groupName}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {items.map(a => {
+              const active = sel.has(a.id);
+              return (
+                <button key={a.id} onClick={() => toggle(a.id)} style={chip(active)}>
+                  {active && <Icon name="check" size={9} stroke={2.4} />}
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {(customAmenities.length > 0 || onAddCustom) && (
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 5, textTransform: 'uppercase' }}>Custom</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+            {customAmenities.map(a => {
+              const active = sel.has(a.id);
+              return (
+                <button key={a.id} onClick={() => toggle(a.id)} style={chip(active)}>
+                  {active && <Icon name="check" size={9} stroke={2.4} />}
+                  {a.label}
+                  {onRemoveCustom && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); onRemoveCustom(a.id); }}
+                      style={{ marginLeft: 3, color: T.ink3, display: 'inline-flex' }}
+                      title="Remove from list"
+                    >
+                      <Icon name="x" size={9} stroke={2} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {onAddCustom && !adding && (
+              <button onClick={() => setAdding(true)} style={{ ...chip(false, true), borderStyle: 'dashed' }}>
+                <Icon name="plus" size={9} stroke={2.4} /> Add your own
+              </button>
+            )}
+            {onAddCustom && adding && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px', borderRadius: 999, border: `1.5px solid ${T.primary}`, background: T.primaryLt }}>
+                <input
+                  autoFocus
+                  value={draft}
+                  placeholder="e.g. Sky lounge"
+                  onChange={e => setDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+                  style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 11, fontWeight: 700, color: T.primaryDk, width: 120, padding: '2px 6px' }}
+                />
+                <button onClick={submit} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '3px 9px', cursor: 'pointer' }}>Add</button>
+                <button onClick={() => { setAdding(false); setDraft(''); }} style={{ border: 'none', background: 'none', color: T.ink3, fontSize: 10, cursor: 'pointer', padding: '0 6px' }}>×</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GstnSheet({ t, onClose }) {
   const [step, setStep] = useState(1);
@@ -117,10 +220,19 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
   const [newRule, setNewRule] = useState('');
-  const [amenities, setAmenities] = useState(property.amenities);
+  const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
+  const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
+  const [openCatAmenities, setOpenCatAmenities] = useState({});
+
+  const addCustomAmenity = (a) => setCustomAmenities(arr => arr.some(x => x.id === a.id) ? arr : [...arr, a]);
+  const removeCustomAmenity = (id) => {
+    setCustomAmenities(arr => arr.filter(x => x.id !== id));
+    setAmenityIds(arr => arr.filter(x => x !== id));
+    setCategories(arr => arr.map(c => ({ ...c, amenityIds: (c.amenityIds || []).filter(x => x !== id) })));
+  };
 
   const handleSave = () => {
-    onSave({ profile, categories, rules, amenities });
+    onSave({ profile, categories, rules, amenityIds, customAmenities });
     onClose();
   };
   const propTypes = [
@@ -130,15 +242,6 @@ function PropertyProfile({ t, onClose, property, onSave }) {
     { id: 'villa',      label: t('ptVilla') },
     { id: 'guesthouse', label: t('ptGuesthouse') },
   ];
-  const amenityList = [
-    { id: 'wifi',       label: t('wifi'),       icon: 'plug' },
-    { id: 'parking',    label: t('parking'),    icon: 'plug' },
-    { id: 'pool',       label: t('pool'),       icon: 'plug' },
-    { id: 'restaurant', label: t('restaurant'), icon: 'veg'  },
-    { id: 'ac',         label: 'AC',            icon: 'plug' },
-    { id: 'bonfire',    label: 'Bonfire',       icon: 'sun'  },
-  ];
-
   return (
     <div style={{ position: 'absolute', inset: 0, background: T.bg, zIndex: 40, display: 'flex', flexDirection: 'column' }}>
       <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
@@ -194,6 +297,21 @@ function PropertyProfile({ t, onClose, property, onSave }) {
               <Field label={t('pincode')} value={profile.pincode} onChange={e => setProfile({ ...profile, pincode: e.target.value })} />
             </div>
             <Field label={t('state')} value={profile.state} onChange={e => setProfile({ ...profile, state: e.target.value })} />
+            <Field
+              label="Landmark / area"
+              value={profile.landmark || ''}
+              onChange={e => setProfile({ ...profile, landmark: e.target.value })}
+              placeholder="e.g. 200m from Sam Sand Dunes"
+              hint="Shown on the booking voucher to help guests find you."
+            />
+            <Field
+              label="Google Maps link"
+              value={profile.mapUrl || ''}
+              onChange={e => setProfile({ ...profile, mapUrl: e.target.value })}
+              placeholder="https://maps.google.com/?q=…"
+              prefix={<Icon name="flag" size={12} color={T.ink3} />}
+              hint="Paste a Google Maps share link. Appears as 'View on map' on the voucher."
+            />
           </div>
         </Card>
 
@@ -207,50 +325,67 @@ function PropertyProfile({ t, onClose, property, onSave }) {
         </Card>
 
         <SectionHead title={t('roomCategories')} style={{ marginTop: 16 }} action={
-          <button onClick={() => setCategories(c => [...c, { id: 'new-' + Date.now(), name: 'New category', units: 1, base: 3000 }])} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => setCategories(c => [...c, { id: 'new-' + Date.now(), name: 'New category', units: 1, base: 3000, amenityIds: [] }])} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="plus" size={11} stroke={2.2} /> {t('addCategory')}
           </button>
         } />
         <Card padding={0}>
-          {categories.map((c, i, arr) => (
-            <div key={c.id} style={{ padding: 12, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input value={c.name} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, name: e.target.value } : x))} style={{ flex: 1, border: `1px solid ${T.borderSoft}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: T.ink, background: T.card }} />
-                <button onClick={() => setCategories(arr => arr.filter(x => x.id !== c.id))} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
-                  <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('units')}:</span>
-                  <input type="number" value={c.units} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: +e.target.value || 1 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+          {categories.map((c, i, arr) => {
+            const catAmen = c.amenityIds || [];
+            const open = !!openCatAmenities[c.id];
+            return (
+              <div key={c.id} style={{ padding: 12, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input value={c.name} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, name: e.target.value } : x))} style={{ flex: 1, border: `1px solid ${T.borderSoft}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: T.ink, background: T.card }} />
+                  <button onClick={() => setCategories(arr => arr.filter(x => x.id !== c.id))} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
                 </div>
-                <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
-                  <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('baseRateLabel')}: ₹</span>
-                  <input type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('units')}:</span>
+                    <input type="number" value={c.units} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: +e.target.value || 1 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                  </div>
+                  <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('baseRateLabel')}: ₹</span>
+                    <input type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                  </div>
                 </div>
+                <button
+                  onClick={() => setOpenCatAmenities(s => ({ ...s, [c.id]: !s[c.id] }))}
+                  style={{ marginTop: 8, background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}
+                >
+                  <Icon name={open ? 'chevD' : 'chev'} size={11} stroke={2} />
+                  Room amenities {catAmen.length > 0 && <span style={{ fontWeight: 600, color: T.ink3 }}>· {catAmen.length} picked</span>}
+                </button>
+                {open && (
+                  <div style={{ marginTop: 8, padding: 10, background: T.bgSoft, borderRadius: 8, border: `1px solid ${T.borderSoft}` }}>
+                    <AmenityPicker
+                      selected={catAmen}
+                      onChange={(ids) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, amenityIds: ids } : x))}
+                      customAmenities={customAmenities}
+                      compact
+                    />
+                    <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>
+                      Tip: add custom amenities from the property-wide list below so they're available here too.
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </Card>
 
-        <SectionHead title={t('amenities')} style={{ marginTop: 16 }} />
-        <Card padding={10}>
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-            {amenityList.map(a => {
-              const on = amenities[a.id];
-              return (
-                <button key={a.id} onClick={() => setAmenities(m => ({ ...m, [a.id]: !m[a.id] }))} style={{
-                  padding: '6px 10px', borderRadius: 999,
-                  border: `1.5px solid ${on ? T.primary : T.border}`,
-                  background: on ? T.primaryLt : T.card,
-                  color: on ? T.primaryDk : T.ink2,
-                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                }}>
-                  {on && <Icon name="check" size={10} stroke={2.4} />} {a.label}
-                </button>
-              );
-            })}
+        <SectionHead title={`Property-wide ${t('amenities').toLowerCase()}`} style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
+            Pick what your property as a whole offers. Each room type's amenities live inside that category above.
           </div>
+          <AmenityPicker
+            selected={amenityIds}
+            onChange={setAmenityIds}
+            customAmenities={customAmenities}
+            onAddCustom={addCustomAmenity}
+            onRemoveCustom={removeCustomAmenity}
+          />
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />

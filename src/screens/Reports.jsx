@@ -78,7 +78,20 @@ export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
 
     const formC = active.filter(b => b.formC).length;
 
-    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits };
+    // Bookings that would go into a month-end invoice export to the CA.
+    // Excludes tentative holds. Bookings with payment gaps need to be reconciled
+    // before invoices can be finalised.
+    const invoiceable = active.filter(b => b.status !== 'tentative');
+    const reconciliationGaps = invoiceable.filter(b =>
+      (b.status === 'checkedin' || b.status === 'checkout') && (b.paid || 0) < (b.total || 0)
+    );
+    const overdueArrivals = invoiceable.filter(b =>
+      b.status === 'confirmed' && b.startIdx <= 1 && (b.paid || 0) < (b.total || 0)
+    );
+    const gapCount = reconciliationGaps.length + overdueArrivals.length;
+    const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
+
+    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount };
   }, [bookings]);
 
   return (
@@ -93,6 +106,50 @@ export default function Reports({ go, t, bookings = [], plan = 'engine' }) {
           <KPI label="ADR" value={fmtINR(stats.adr)} sub="per night" icon="tag" color={T.teal} />
           <KPI label="RevPAR" value={fmtINR(stats.revpar)} sub="per available" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
+
+        <Card padding={14} style={{ marginBottom: 16, borderColor: stats.gapCount > 0 ? 'oklch(85% 0.10 75)' : 'oklch(85% 0.06 175)', background: stats.gapCount > 0 ? 'oklch(98% 0.018 75)' : 'oklch(98% 0.014 175)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Icon name="download" size={14} color={T.teal} stroke={2} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.teal, letterSpacing: 0.2 }}>MONTH-END · SEND TO CA</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+            <div className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{stats.invoiceableCount}</div>
+            <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>bookings ready for invoice export</span>
+          </div>
+          {stats.gapCount > 0 ? (
+            <div style={{ padding: '10px 12px', background: 'oklch(95% 0.05 75)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <Icon name="info" size={14} color="oklch(48% 0.14 75)" stroke={2} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>
+                  {stats.gapCount} booking{stats.gapCount > 1 ? 's' : ''} need payment reconciliation
+                </div>
+                <div className="tnum" style={{ fontSize: 11, color: T.ink2, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
+                  ₹{stats.gapAmount.toLocaleString('en-IN')} unaccounted. Resolve via the "Pending payments" card on the Dashboard before sending invoices to your CA.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '10px 12px', background: 'oklch(95% 0.04 155)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="check" size={13} color={T.ok} stroke={2.4} />
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ok }}>No payment gaps · invoices ready</div>
+            </div>
+          )}
+          <button
+            disabled={stats.gapCount > 0}
+            onClick={() => alert('Monthly invoice export to CA is coming soon. The system will email a sequenced list of invoices (PDF + Excel) to your accountant.')}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 10,
+              border: 'none',
+              background: stats.gapCount > 0 ? T.bgSoft : T.teal,
+              color: stats.gapCount > 0 ? T.ink3 : '#fff',
+              fontSize: 12, fontWeight: 700, cursor: stats.gapCount > 0 ? 'not-allowed' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="wa" size={13} stroke={2} />
+            {stats.gapCount > 0 ? `Resolve ${stats.gapCount} gap${stats.gapCount > 1 ? 's' : ''} to enable export` : 'Email invoice list to CA'}
+          </button>
+        </Card>
 
         {gstEnabled && (
           <Card padding={14} style={{ marginBottom: 16, borderColor: T.indigoLt, background: 'oklch(98% 0.012 265)' }}>

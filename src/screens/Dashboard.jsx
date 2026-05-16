@@ -62,7 +62,7 @@ function ArrivalRow({ b, go, dayName, t }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, t, lang }) {
+export default function Dashboard({ go, bookings, property, t, lang, onAddPayment }) {
   const isHi = lang === 'hi';
   const [toast, setToast] = useState(null);
 
@@ -102,6 +102,31 @@ export default function Dashboard({ go, bookings, property, t, lang }) {
   const peak = Math.max(...monthlySales);
 
   const onHold = bookings.filter(b => b.status === 'tentative');
+
+  // Pending payments: guest has arrived (or should have) but balance is still due.
+  // These are the bookings most likely to be missing payment data needed for invoicing.
+  const TODAY_IDX = 1;
+  const pendingPayments = bookings.filter(b => {
+    if (b.status === 'cancelled' || b.status === 'tentative') return false;
+    const balance = (b.total || 0) - (b.paid || 0);
+    if (balance <= 0) return false;
+    if (b.status === 'checkedin' || b.status === 'checkout') return true;
+    if (b.status === 'confirmed' && b.startIdx <= TODAY_IDX) return true;
+    return false;
+  });
+  const pendingTotal = pendingPayments.reduce((s, b) => s + (b.total - b.paid), 0);
+  const markSettled = (b) => {
+    if (!onAddPayment) return;
+    const balance = b.total - b.paid;
+    onAddPayment(b.id, {
+      id: 'p_' + Date.now(),
+      kind: 'payment',
+      method: 'cash',
+      amount: balance,
+      note: 'Settled at property · cash',
+      date: 'now',
+    });
+  };
 
   const dayName = (idx, withDow = false) => {
     const d = DAYS[idx]; if (!d) return '';
@@ -237,6 +262,54 @@ export default function Dashboard({ go, bookings, property, t, lang }) {
         <StatTile label={t('inhouse')} value={inhouse} icon="bed" color={T.indigo} />
         <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} />
       </div>
+
+      {pendingPayments.length > 0 && (
+        <div style={{ padding: '0 16px 14px' }}>
+          <SectionHead title="Pending payments" action={
+            <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.danger }}>
+              ₹{pendingTotal.toLocaleString('en-IN')} due
+            </span>
+          } />
+          <Card padding={0} style={{ overflow: 'hidden' }}>
+            {pendingPayments.map((b, i) => {
+              const balance = b.total - b.paid;
+              const statusLabel = b.status === 'checkedin' ? 'In-house' : b.status === 'checkout' ? 'Departed' : 'Arrived today';
+              return (
+                <div key={b.id} style={{
+                  padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10,
+                  borderBottom: i < pendingPayments.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
+                }}>
+                  <div onClick={() => go('booking', b.id)} style={{ flex: 1, minWidth: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: T.dangerLt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.danger, flexShrink: 0 }}>
+                      <Icon name="inr" size={16} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.guest}</div>
+                      <div style={{ fontSize: 11, color: T.ink3 }} className="tnum">
+                        {b.id} · {statusLabel} · ₹{balance.toLocaleString('en-IN')} due
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => markSettled(b)}
+                    className="atithi-tap"
+                    style={{
+                      padding: '6px 10px', borderRadius: 8, border: 'none',
+                      background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                    }}
+                  >
+                    Mark paid · cash
+                  </button>
+                </div>
+              );
+            })}
+            <div style={{ padding: '8px 14px', background: T.bgSoft, fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35 }}>
+              "Mark paid · cash" records the balance instantly. For card/UPI or split payments, tap the row to open the booking and use Add payment.
+            </div>
+          </Card>
+        </div>
+      )}
 
       {onHold.length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>

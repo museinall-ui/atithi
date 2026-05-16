@@ -11,7 +11,7 @@ const iconBtn = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: T.ink2,
 };
 
-function BookingPill({ b, colW, labelW, dx, onPointerDown, onClick }) {
+function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
   const ch = CHANNELS[b.channel];
   const isHold = b.status === 'tentative';
   const isCheckedin = b.status === 'checkedin';
@@ -19,7 +19,6 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown, onClick }) {
   return (
     <div
       onPointerDown={onPointerDown}
-      onClick={() => { if (Math.abs(dx) < 0.1) onClick(); }}
       style={{
         position: 'absolute',
         left: labelW + (b.startIdx + dx) * colW + 3,
@@ -100,7 +99,6 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
                 <BookingPill
                   key={b.id} b={b} colW={colW} labelW={labelW} dx={dx}
                   onPointerDown={(e) => onPointerDown(e, b)}
-                  onClick={() => !drag && go('booking', b.id)}
                 />
               );
             })}
@@ -159,10 +157,13 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
   const onPointerDown = (e, b) => {
     e.preventDefault();
     const startX = e.clientX;
+    const startY = e.clientY;
     const origStart = b.startIdx;
+    let moved = false; // becomes true once the pointer travels far enough to count as a drag
     const move = (ev) => {
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
+      if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) moved = true;
       setDrag({ id: b.id, dx, target });
     };
     const up = (ev) => {
@@ -175,7 +176,12 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = newStart !== origStart;
       if (slotChanged || dateChanged) {
+        // Pointer travelled to a different slot/date → ask for confirmation, do not navigate.
         setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
+      } else if (!moved) {
+        // Treat as a tap → open the booking. Done here so the synthetic click that follows
+        // pointerup can't race ahead and navigate after a real drag was attempted.
+        go('booking', b.id);
       }
     };
     window.addEventListener('pointermove', move);

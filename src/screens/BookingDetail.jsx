@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes } from '../data.js';
+import { CHANNELS, STATUS, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
 import { generateVoucher } from '../utils/voucher.js';
 import Toggle from '../components/Toggle.jsx';
 import Icon from '../components/Icon.jsx';
@@ -251,6 +251,13 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const statusInfo = STATUS[b.status];
   const withTax = bookingGstApplies(b);
   const tx = withTax ? getTaxBreakdown({ ...b, gstApplies: true }, property) : null;
+  const repeats = repeatGuestKeys(bookings);
+  const isRepeat = repeats.has(normPhone(b.phone));
+  // Count this guest's previous non-cancelled stays before today's booking
+  // so we can surface "3rd stay" context on the header.
+  const prevStays = bookings.filter(x =>
+    x.id !== b.id && x.status !== 'cancelled' && normPhone(x.phone) === normPhone(b.phone)
+  ).length;
   const [payOpen, setPayOpen] = useState(false);
   const [payKind, setPayKind] = useState('payment');
   const [waStatus, setWaStatus] = useState('sent');
@@ -323,6 +330,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{b.guest}</span>
                   {b.vip && <Chip color="warn" icon="star">VIP</Chip>}
+                  {isRepeat && prevStays > 0 && (
+                    <Chip color="ok" icon="sync" style={{ fontSize: 10 }}>{prevStays === 1 ? '2nd stay' : `${prevStays + 1}th stay`}</Chip>
+                  )}
                 </div>
                 <div className="tnum" style={{ fontSize: 13, color: T.ink2, marginTop: 4 }}>{b.phone}</div>
                 <div style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>{b.guests} · {b.formC ? 'Foreign · Form C filed' : 'Indian · Aadhaar verified'}</div>

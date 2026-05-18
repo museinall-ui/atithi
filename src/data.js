@@ -85,6 +85,33 @@ export function bookingGstApplies(b) {
   return !!b.channel && b.channel !== 'direct';
 }
 
+// Normalise a phone string to digits-only for matching across formats
+// ("+91 98100 ··· 21" → "9198100·21"-ish, but cleaned of all non-digits).
+export function normPhone(s) {
+  return String(s || '').replace(/\D+/g, '');
+}
+
+// Identify repeat guests by phone match across bookings. Returns a Set of
+// normalised phone strings that appear on 2+ non-cancelled bookings. Cheap
+// O(n) — recompute per render is fine for a small hotel's booking set.
+export function repeatGuestKeys(bookings) {
+  const counts = new Map();
+  (bookings || []).forEach(b => {
+    if (b.status === 'cancelled') return;
+    const key = normPhone(b.phone);
+    if (!key) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const out = new Set();
+  counts.forEach((n, k) => { if (n >= 2) out.add(k); });
+  return out;
+}
+
+export function isRepeatGuest(booking, repeats) {
+  if (!booking || !repeats) return false;
+  return repeats.has(normPhone(booking.phone));
+}
+
 // Indian states + UTs. Used by the state picker in NewBooking so the tax
 // breakdown can split into CGST + SGST (same state as the property) vs IGST
 // (different state, "inter-state supply" in GST terms).

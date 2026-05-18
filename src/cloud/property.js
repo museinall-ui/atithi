@@ -103,15 +103,21 @@ export async function loadCurrentProperty(userId) {
 // user, seeded from `seedLocalProperty` (typically their existing
 // localStorage data so they don't lose customisations on first cloud login).
 // Re-uses loadCurrentProperty() at the end so the caller gets the canonical
-// post-insert shape (with server-generated id, timestamps, etc.).
+// post-insert shape (with server-generated timestamps, etc.).
+//
+// Why we generate the property id client-side: the natural ".insert(...).select()"
+// pattern doesn't work for the very first property a user creates. INSERT
+// RLS accepts the row (with check (true) for authenticated users), but the
+// SELECT-after-INSERT runs against the read policy, which requires the user
+// to already be a member of the property. They aren't yet — that's literally
+// the next step. So we mint a UUID locally, skip the SELECT, then create the
+// membership; from that point on the row is fully accessible.
 export async function bootstrapProperty(user, seedLocalProperty) {
-  // 1. Insert the property row. RLS allows any authenticated user to insert.
-  const propData = localToCloudProperty(seedLocalProperty);
-  const { data: newProp, error: pErr } = await supabase
-    .from('properties')
-    .insert(propData)
-    .select()
-    .single();
+  const propertyId = crypto.randomUUID();
+
+  // 1. Insert the property row. No .select() back — see comment above.
+  const propData = { id: propertyId, ...localToCloudProperty(seedLocalProperty) };
+  const { error: pErr } = await supabase.from('properties').insert(propData);
   if (pErr) throw pErr;
 
   // 2. Claim ownership via a membership. RLS allows a user to insert their
@@ -121,7 +127,7 @@ export async function bootstrapProperty(user, seedLocalProperty) {
     .from('memberships')
     .insert({
       user_id: user.id,
-      property_id: newProp.id,
+      property_id: propertyId,
       role: 'owner',
       accepted_at: new Date().toISOString(),
     });
@@ -135,7 +141,7 @@ export async function bootstrapProperty(user, seedLocalProperty) {
     const { error: cErr } = await supabase
       .from('room_categories')
       .insert(cats.map((c, i) => ({
-        property_id: newProp.id,
+        property_id: propertyId,
         code: c.id,
         name: c.name,
         units: c.units || 1,
@@ -146,6 +152,8 @@ export async function bootstrapProperty(user, seedLocalProperty) {
     if (cErr) throw cErr;
   }
 
+  // Now that the membership exists, the SELECT policy passes and the full
+  // round-trip works.
   return loadCurrentProperty(user.id);
 }
 

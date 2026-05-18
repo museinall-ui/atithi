@@ -427,10 +427,19 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, t }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, t, session, onSignOut }) {
   const [showProfile, setShowProfile] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
   const locationLabel = [property.profile.city, property.profile.state].filter(Boolean).join(', ');
+
+  const handleSignOut = async () => {
+    if (signingOut || !onSignOut) return;
+    setSigningOut(true);
+    await onSignOut();
+    // App.jsx swaps to <SignIn /> on the SIGNED_OUT event, so we don't need
+    // to reset signingOut here — this component will unmount.
+  };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -528,6 +537,30 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             </div>
           ))}
         </Card>
+
+        {session && (
+          <>
+            <SectionHead title={t('account')} style={{ marginTop: 16 }} />
+            <Card padding={14}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                    {t('signedInAs')}
+                  </div>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: T.ink, marginTop: 3,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {session.user?.email}
+                  </div>
+                </div>
+                <Btn variant="ghost" size="sm" icon="door" onClick={handleSignOut} disabled={signingOut}>
+                  {signingOut ? t('signingOut') : t('signOut')}
+                </Btn>
+              </div>
+            </Card>
+          </>
+        )}
       </div>
 
       {showProfile && <PropertyProfile t={t} property={property} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}

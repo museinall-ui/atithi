@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useT } from './i18n.js';
-import { applyTheme } from './tokens.js';
+import { T, applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, effectiveRoomTypes } from './data.js';
+import { supabase, signOut as supaSignOut } from './supabase.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -14,6 +15,7 @@ import Reports from './screens/Reports.jsx';
 import Guests from './screens/Guests.jsx';
 import Settings from './screens/Settings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
+import SignIn from './screens/SignIn.jsx';
 
 const LS_KEYS = {
   bookings: 'atithi.bookings.v1',
@@ -149,6 +151,12 @@ export default function App() {
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
   const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
   const [editing, setEditing] = useState(null);
+  // Auth: session is null until Supabase tells us whether the user is signed
+  // in. authReady gates the initial render so we don't briefly flash SignIn
+  // for a user who's already logged in (the magic-link flow puts the access
+  // token in the URL hash, which the Supabase client reads on init).
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const t = useT(lang);
 
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
@@ -164,6 +172,24 @@ export default function App() {
   useEffect(() => {
     applyTheme(property?.theme);
   }, [property?.theme?.hue, property?.theme?.color]);
+
+  // Load Supabase session on mount + subscribe to auth state changes (sign-in,
+  // sign-out, token refresh). detectSessionInUrl picks up the magic-link
+  // token from the URL hash automatically when the user lands back.
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data?.session || null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      if (!mounted) return;
+      setSession(sess);
+      setAuthReady(true);
+    });
+    return () => { mounted = false; sub.subscription.unsubscribe(); };
+  }, []);
 
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
   useEffect(() => {
@@ -384,9 +410,27 @@ export default function App() {
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} session={session} onSignOut={supaSignOut} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />;
+  }
+
+  // Splash while Supabase tells us whether the user is signed in. Brief —
+  // getSession() reads from localStorage so this usually flashes for one tick.
+  if (!authReady) {
+    return (
+      <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{
+        height: '100%', background: T.bg, color: T.ink3,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, fontWeight: 600,
+      }}>{t('loading')}</div>
+    );
+  }
+
+  // No session → sign-in screen. localStorage data is preserved underneath
+  // and will be picked up on the same browser after sign-in.
+  if (!session) {
+    return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
   }
 
   return (

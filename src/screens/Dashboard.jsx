@@ -6,6 +6,7 @@ import Card from '../components/Card.jsx';
 import Chip from '../components/Chip.jsx';
 import Avatar from '../components/Avatar.jsx';
 import SectionHead from '../components/SectionHead.jsx';
+import ExtendOptions from '../components/ExtendOptions.jsx';
 
 const D_MONTH_HI = ['जन','फ़र','मार्च','अप्रैल','मई','जून','जुल','अग','सित','अक्ट','नव','दिस'];
 const D_DOW_HI   = ['सोम','मंगल','बुध','गुरु','शुक्र','शनि','रवि'];
@@ -62,7 +63,7 @@ function ArrivalRow({ b, go, dayName, t }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, t, lang, onAddPayment }) {
+export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold }) {
   const isHi = lang === 'hi';
   const [toast, setToast] = useState(null);
 
@@ -101,6 +102,15 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
   const totalMonth = monthlySales.reduce((a, v) => a + v * 1100, 0);
   const peak = Math.max(...monthlySales);
 
+  // Live "month so far" numbers, computed from real bookings so labels and values agree.
+  const activeBookings = bookings.filter(b => b.status !== 'cancelled');
+  const monthBookings = activeBookings.length;
+  const monthRevenue = activeBookings.reduce((s, b) => s + (b.total || 0), 0);
+  const monthRoomNights = activeBookings.reduce((s, b) => s + (b.nights || 0), 0);
+  const availableRoomNights = totalRooms * DAYS.length;
+  const monthOccPct = availableRoomNights > 0 ? Math.round((monthRoomNights / availableRoomNights) * 100) : 0;
+  const monthAvgPerRoom = monthRoomNights > 0 ? Math.round(monthRevenue / monthRoomNights) : 0;
+
   const onHold = bookings.filter(b => b.status === 'tentative');
 
   // Pending payments: guest has arrived (or should have) but balance is still due.
@@ -115,15 +125,16 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
     return false;
   });
   const pendingTotal = pendingPayments.reduce((s, b) => s + (b.total - b.paid), 0);
-  const markSettled = (b) => {
+  const markSettled = (b, method = 'cash') => {
     if (!onAddPayment) return;
     const balance = b.total - b.paid;
+    const noteByMethod = { cash: 'Settled at property · cash', upi: 'Settled at property · UPI' };
     onAddPayment(b.id, {
       id: 'p_' + Date.now(),
       kind: 'payment',
-      method: 'cash',
+      method,
       amount: balance,
-      note: 'Settled at property · cash',
+      note: noteByMethod[method] || `Settled at property · ${method}`,
       date: 'now',
     });
   };
@@ -159,7 +170,7 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
       )}
 
       <div style={{
-        background: `linear-gradient(160deg, ${T.primary} 0%, oklch(52% 0.16 28) 100%)`,
+        background: `linear-gradient(160deg, ${T.primary} 0%, ${T.primaryDk} 100%)`,
         padding: '56px 20px 18px', color: '#fff', position: 'relative', overflow: 'hidden',
       }}>
         <svg style={{ position: 'absolute', right: -20, top: -10, opacity: 0.1 }} width="180" height="180" viewBox="0 0 180 180">
@@ -239,16 +250,35 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
           {/* Card 3 — Month summary */}
           <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'महीने का सार' : 'MONTH SO FAR'}</span>
-              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>May 2026</span>
+              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'इस महीने कमाई' : 'EARNED THIS MONTH'}</span>
+              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>{isHi ? 'मई 2026' : 'May 2026'}</span>
             </div>
             <div className="tnum" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, lineHeight: 1 }}>
-              ₹{Math.round(totalMonth/100000)}.{Math.round((totalMonth%100000)/10000)}<span style={{ fontSize: 13, opacity: 0.75, fontWeight: 600 }}>L</span>
+              ₹{monthRevenue >= 100000
+                ? (monthRevenue/100000).toFixed(1)
+                : monthRevenue.toLocaleString('en-IN')}
+              {monthRevenue >= 100000 && (
+                <span style={{ fontSize: 13, opacity: 0.75, fontWeight: 600 }} className={isHi ? 'hi' : ''}>
+                  {isHi ? ' लाख' : ' lakh'}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4, fontWeight: 600 }}>
+              {isHi ? 'अब तक कुल आय' : 'Total received so far'}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 10, opacity: 0.85, fontWeight: 600 }}>
-              <div><div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>78%</div>avg occ</div>
-              <div><div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>₹6,420</div>ADR</div>
-              <div><div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>14</div>days</div>
+              <div>
+                <div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>{monthBookings}</div>
+                {isHi ? 'बुकिंग' : 'bookings'}
+              </div>
+              <div>
+                <div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>{monthOccPct}%</div>
+                {isHi ? 'कमरे भरे' : 'rooms full'}
+              </div>
+              <div>
+                <div className="tnum" style={{ fontSize: 14, fontWeight: 700 }}>₹{monthAvgPerRoom.toLocaleString('en-IN')}</div>
+                {isHi ? '/कमरा/रात' : '/room/night'}
+              </div>
             </div>
           </div>
         </div>
@@ -290,22 +320,39 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => markSettled(b)}
-                    className="atithi-tap"
-                    style={{
-                      padding: '6px 10px', borderRadius: 8, border: 'none',
-                      background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                      whiteSpace: 'nowrap', flexShrink: 0,
-                    }}
-                  >
-                    Mark paid · cash
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => markSettled(b, 'cash')}
+                      className="atithi-tap"
+                      aria-label={isHi ? 'कैश से चुकाया' : 'Mark paid by cash'}
+                      style={{
+                        padding: '7px 12px', borderRadius: 8, border: 'none',
+                        background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isHi ? 'कैश' : 'Cash'}
+                    </button>
+                    <button
+                      onClick={() => markSettled(b, 'upi')}
+                      className="atithi-tap"
+                      aria-label={isHi ? 'UPI से चुकाया' : 'Mark paid by UPI'}
+                      style={{
+                        padding: '7px 12px', borderRadius: 8, border: 'none',
+                        background: T.ok, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      UPI
+                    </button>
+                  </div>
                 </div>
               );
             })}
             <div style={{ padding: '8px 14px', background: T.bgSoft, fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35 }}>
-              "Mark paid · cash" records the balance instantly. For card/UPI or split payments, tap the row to open the booking and use Add payment.
+              {isHi
+                ? 'पूरी बकाया रकम तुरंत दर्ज करने के लिए कैश या UPI दबाएँ। कार्ड या आधी-आधी रकम के लिए, बुकिंग खोलें।'
+                : 'Tap Cash or UPI to instantly record the full balance. For card or split payments, tap the row to open the booking.'}
             </div>
           </Card>
         </div>
@@ -316,23 +363,34 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
           <SectionHead title={t('autoRelease')} />
           <Card padding={0} style={{ overflow: 'hidden' }}>
             {onHold.map((b, i) => (
-              <div key={b.id} onClick={() => go('booking', b.id)} style={{
-                padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
-                borderBottom: i < onHold.length - 1 ? `1px solid ${T.borderSoft}` : 'none', cursor: 'pointer',
+              <div key={b.id} style={{
+                padding: '12px 14px',
+                borderBottom: i < onHold.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
               }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: T.warnLt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'oklch(48% 0.14 75)' }}>
-                  <Icon name="clock" size={16} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{b.guest}</div>
-                  <div style={{ fontSize: 11, color: T.ink3 }} className="tnum">
-                    {dayName(b.startIdx)} → {dayName(b.startIdx + b.nights)} · ₹{b.total.toLocaleString('en-IN')} {t('unpaid')}
+                <div onClick={() => go('booking', b.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: T.warnLt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'oklch(48% 0.14 75)' }}>
+                    <Icon name="clock" size={16} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{b.guest}</div>
+                    <div style={{ fontSize: 11, color: T.ink3 }} className="tnum">
+                      {dayName(b.startIdx)} → {dayName(b.startIdx + b.nights)} · ₹{b.total.toLocaleString('en-IN')} {t('unpaid')}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>{b.releaseAt}</div>
+                    <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('releasesToday')}</div>
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>{b.releaseAt}</div>
-                  <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('releasesToday')}</div>
-                </div>
+                {onExtendHold && (
+                  <div style={{ paddingLeft: 48 }}>
+                    <ExtendOptions
+                      onExtend={(hours) => onExtendHold(b.id, hours)}
+                      colors={{ border: 'oklch(75% 0.10 75)', text: 'oklch(40% 0.14 75)' }}
+                      hi={isHi}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </Card>

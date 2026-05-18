@@ -1,6 +1,6 @@
 export const STRINGS = {
   en: {
-    home: 'Home', diary: 'Diary', guests: 'Guests', more: 'More', newBk: 'New',
+    home: 'Home', diary: 'Diary', guests: 'Guests', more: 'Manage', newBk: 'New',
     namaste: 'Namaste', occupancyToday: 'OCCUPANCY · TODAY', dailyIncome: 'DAILY INCOME', monthlySales: 'MONTHLY SALES',
     arriving: 'Arriving', inhouse: 'In-house', departing: 'Departing',
     autoRelease: 'Auto-release timers', arrivingToday: 'Arriving today', channelMix: 'Channel mix this week',
@@ -61,7 +61,7 @@ export const STRINGS = {
     ptResort: 'Resort / camp', ptHotel: 'Hotel', ptHomestay: 'Homestay', ptVilla: 'Villa', ptGuesthouse: 'Guest house',
   },
   hi: {
-    home: 'होम', diary: 'डायरी', guests: 'मेहमान', more: 'और', newBk: 'नया',
+    home: 'होम', diary: 'डायरी', guests: 'मेहमान', more: 'प्रबंधन', newBk: 'नया',
     namaste: 'नमस्ते', occupancyToday: 'आज की ऑक्यूपेंसी', dailyIncome: 'आज की आय', monthlySales: 'महीने की बिक्री',
     arriving: 'आगमन', inhouse: 'ठहरे हुए', departing: 'प्रस्थान',
     autoRelease: 'ऑटो-रिलीज़ टाइमर', arrivingToday: 'आज आ रहे हैं', channelMix: 'इस हफ़्ते के चैनल',

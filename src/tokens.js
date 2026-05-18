@@ -11,9 +11,11 @@ export const T = {
   ink3:      'oklch(55% 0.018 60)',
   ink4:      'oklch(70% 0.014 60)',
 
-  primary:   'oklch(60% 0.16 38)',
-  primaryDk: 'oklch(50% 0.16 38)',
-  primaryLt: 'oklch(94% 0.04 38)',
+  // Brand colours read CSS variables so a hotelier can pick their own theme
+  // in Settings (see applyTheme below). Fallbacks are the default Atithi orange.
+  primary:   'var(--atithi-primary, oklch(60% 0.16 38))',
+  primaryDk: 'var(--atithi-primary-dk, oklch(50% 0.16 38))',
+  primaryLt: 'var(--atithi-primary-lt, oklch(94% 0.04 38))',
 
   indigo:    'oklch(48% 0.14 265)',
   indigoLt:  'oklch(94% 0.03 265)',
@@ -40,6 +42,59 @@ export const T = {
   shadow: '0 1px 2px rgba(20,15,10,.04), 0 4px 16px rgba(20,15,10,.05)',
   shadowLg: '0 8px 28px rgba(20,15,10,.10), 0 2px 6px rgba(20,15,10,.05)',
 };
+
+// Hotelier-pickable brand palette. Each entry is a hue angle (oklch) plus a
+// human-friendly name and a representative swatch for the picker. Saturation
+// and lightness are derived in `themeColorsFromHue` so every theme stays
+// coherent with the rest of the UI tokens.
+export const THEME_PRESETS = [
+  { id: 'orange',   hue: 38,  label: 'Sunset',    swatch: 'oklch(60% 0.16 38)'  }, // default Atithi
+  { id: 'red',      hue: 25,  label: 'Heritage',  swatch: 'oklch(55% 0.18 25)'  },
+  { id: 'saffron',  hue: 75,  label: 'Saffron',   swatch: 'oklch(65% 0.14 75)'  },
+  { id: 'green',    hue: 155, label: 'Forest',    swatch: 'oklch(52% 0.13 155)' },
+  { id: 'teal',     hue: 195, label: 'Lagoon',    swatch: 'oklch(58% 0.12 195)' },
+  { id: 'blue',     hue: 260, label: 'Royal',     swatch: 'oklch(50% 0.16 260)' },
+  { id: 'plum',     hue: 320, label: 'Plum',      swatch: 'oklch(52% 0.16 320)' },
+];
+
+export function themeColorsFromHue(hue) {
+  const h = (hue == null || isNaN(hue)) ? 38 : hue;
+  return {
+    primary:   `oklch(60% 0.16 ${h})`,
+    primaryDk: `oklch(50% 0.16 ${h})`,
+    primaryLt: `oklch(94% 0.04 ${h})`,
+    hue: h,
+  };
+}
+
+// Derive the three brand-colour tokens (primary, dark, light) from a theme
+// object. Theme can be either a preset (`{ hue: number }`) or a custom hex
+// colour (`{ color: '#aabbcc' }`). When a custom hex is provided, dark/light
+// shades are derived via CSS color-mix so they stay coherent with whatever
+// the hotelier picked.
+export function themeColors(theme) {
+  if (theme && typeof theme.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(theme.color)) {
+    const hex = theme.color;
+    return {
+      primary:   hex,
+      primaryDk: `color-mix(in oklch, ${hex} 80%, black)`,
+      primaryLt: `color-mix(in oklch, ${hex} 14%, white)`,
+      color: hex,
+    };
+  }
+  return themeColorsFromHue(theme?.hue);
+}
+
+export function applyTheme(theme) {
+  if (typeof document === 'undefined') return;
+  // Back-compat: accept a raw hue number too, so older callers keep working.
+  const t = (typeof theme === 'number') ? { hue: theme } : theme;
+  const c = themeColors(t);
+  const root = document.documentElement;
+  root.style.setProperty('--atithi-primary', c.primary);
+  root.style.setProperty('--atithi-primary-dk', c.primaryDk);
+  root.style.setProperty('--atithi-primary-lt', c.primaryLt);
+}
 
 export function injectBaseStyles() {
   if (document.getElementById('atithi-base')) return;

@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar.jsx';
 import Row from '../components/Row.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+import ExtendOptions from '../components/ExtendOptions.jsx';
 
 const METHOD_LABELS = { cash: 'Cash', card: 'Card', upi: 'UPI', account: 'Bank a/c', other: 'Other' };
 const METHOD_OPTIONS = [
@@ -239,7 +240,7 @@ function IssueInvoiceSheet({ booking, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onSetGst, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
@@ -303,6 +304,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               <div style={{ fontSize: 12, color: T.ink2, marginTop: 2, lineHeight: 1.4 }}>
                 ₹{balance.toLocaleString('en-IN')} due before <span className="tnum" style={{ fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{fmtRelease(b)}</span>, otherwise the booking will be released automatically and the inventory re-opened.
               </div>
+              {onExtendHold && (
+                <ExtendOptions
+                  onExtend={(hours) => onExtendHold(b.id, hours)}
+                  colors={{ border: 'oklch(75% 0.10 75)', text: 'oklch(40% 0.14 75)' }}
+                />
+              )}
             </div>
           </div>
         )}

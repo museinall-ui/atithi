@@ -11,24 +11,96 @@ const iconBtn = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: T.ink2,
 };
 
+// Compact initials from a name. "Aanya Sharma" → "AS"; "Rohan" → "R".
+function initialsOf(name) {
+  return (name || '').trim().split(/\s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+}
+
 function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
   const ch = CHANNELS[b.channel];
   const isHold = b.status === 'tentative';
   const isCheckedin = b.status === 'checkedin';
+  const isCheckedout = b.status === 'checkout';
   const isCancelled = b.status === 'cancelled';
+
+  // Per-status visual recipe: a saturated tint (~18%) for the background so
+  // it's instantly readable across the calendar, a bold matching border,
+  // and a small filled badge on the right edge that flags the status with
+  // white-on-colour for maximum contrast.
+  const HOLD = 'oklch(60% 0.14 75)';
+  let bg = T.card;
+  let border = `1px solid ${T.border}`;
+  let badge = null;
+  if (isCancelled) {
+    bg = T.bgSunk;
+    border = `1px dashed ${T.border}`;
+  } else if (isHold) {
+    bg = `color-mix(in oklch, ${HOLD} 18%, white)`;
+    border = `2px dashed ${HOLD}`;
+    badge = { color: HOLD, icon: 'clock', label: b.releaseAt || '' };
+  } else if (isCheckedin) {
+    bg = `color-mix(in oklch, ${T.indigo} 18%, white)`;
+    border = `2px solid ${T.indigo}`;
+    badge = { color: T.indigo, icon: 'bed', label: 'IN' };
+  } else if (isCheckedout) {
+    bg = `color-mix(in oklch, ${T.ok} 18%, white)`;
+    border = `2px solid ${T.ok}`;
+    badge = { color: T.ok, icon: 'check', label: 'OUT' };
+  }
+
+  // Responsive name + badge rendering. A 1-night pill at default zoom is only
+  // ~52px wide. With a status badge competing for space, the name can
+  // disappear entirely. So we step both the name (full → first → initials)
+  // and the badge (full label → icon-only → hidden) down based on actual
+  // available width — the bg tint + matching border still convey the status
+  // even when the badge is hidden on the very tightest pills. The full name
+  // stays in the `title` attribute for desktop hover; mobile users tap to
+  // open the booking detail where everything is shown in full.
+  const totalW = b.nights * colW - 6;
+  const fullBadgeW = isHold ? 56 : 36;
+  const iconBadgeW = 22;
+  const fixedChrome = 4 /*channel stripe*/ + 6 /*paddings + gaps*/;
+  let usedBadgeW = 0;
+  let badgeMode = 'hidden'; // 'full' | 'icon' | 'hidden'
+  if (badge) {
+    if (totalW - fixedChrome - fullBadgeW >= 42) {
+      badgeMode = 'full';
+      usedBadgeW = fullBadgeW;
+    } else if (totalW - fixedChrome - iconBadgeW >= 28) {
+      badgeMode = 'icon';
+      usedBadgeW = iconBadgeW;
+    } else {
+      badgeMode = 'hidden';
+    }
+  }
+  const innerW = totalW - fixedChrome - usedBadgeW;
+  // Width thresholds tuned to fontSize 11: ~6px per char + ellipsis budget.
+  // Fall back to initials before truncation eats the name into "Kart…".
+  const firstName = (b.guest || '').split(/\s+/)[0] || '';
+  const firstNameW = firstName.length * 6 + 4;
+  const showInitials = innerW < Math.min(firstNameW + 4, 48);
+  const showFirstNameOnly = !showInitials && innerW < 80;
+  const showVipStar = innerW >= 50;
+  const displayName = showInitials
+    ? initialsOf(b.guest)
+    : showFirstNameOnly
+      ? firstName
+      : b.guest;
+
   return (
     <div
       onPointerDown={onPointerDown}
+      title={`${b.guest}${b.vip ? ' · VIP' : ''}`}
       style={{
         position: 'absolute',
         left: labelW + (b.startIdx + dx) * colW + 3,
-        width: b.nights * colW - 6,
+        width: totalW,
         top: 4, bottom: 4,
-        background: isCancelled ? T.bgSunk : isHold ? T.warnLt : isCheckedin ? T.indigoLt : T.card,
-        border: isHold ? `1.5px dashed oklch(60% 0.14 75)` : isCheckedin ? `1.5px solid ${T.indigo}` : isCancelled ? `1px dashed ${T.border}` : `1px solid ${T.border}`,
+        background: bg,
+        border,
         borderRadius: 8,
         boxShadow: isHold ? 'none' : '0 1px 2px rgba(20,15,10,.06)',
-        padding: '0 6px 0 4px',
+        padding: '0 4px 0 4px',
         display: 'flex', alignItems: 'center', gap: 6,
         cursor: 'grab', userSelect: 'none', overflow: 'hidden',
         touchAction: 'none',
@@ -41,16 +113,48 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
     >
       <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, flexShrink: 0, background: ch.color, marginTop: 4, marginBottom: 4 }} />
       <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
-          {b.vip && '★ '}{b.guest}
+        <div
+          className={showInitials ? 'tnum' : ''}
+          style={{
+            fontSize: showInitials ? 12 : 11,
+            fontWeight: showInitials ? 800 : 600,
+            color: T.ink,
+            letterSpacing: showInitials ? 0.4 : 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2,
+          }}
+        >
+          {showVipStar && b.vip && '★ '}{displayName}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
-          {isHold && <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>⏱ {b.releaseAt}</span>}
-          {!isHold && !isCancelled && b.paid < b.total && <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k due</span>}
-          {!isHold && !isCancelled && b.paid >= b.total && <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> paid</span>}
-          {isCancelled && <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>cancelled</span>}
-        </div>
+        {/* Inner line stays only for confirmed bookings to show payment state,
+            and only when there's enough room to read it. */}
+        {!isHold && !isCheckedin && !isCheckedout && !isCancelled && !showInitials && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+            {b.paid < b.total
+              ? <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k due</span>
+              : <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> paid</span>}
+          </div>
+        )}
+        {isCancelled && !showInitials && (
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, marginTop: 1 }}>cancelled</div>
+        )}
       </div>
+      {badge && badgeMode !== 'hidden' && (
+        <span
+          className={isHold && badgeMode === 'full' ? 'tnum' : ''}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: badgeMode === 'full' ? 3 : 0,
+            background: badge.color, color: '#fff',
+            padding: badgeMode === 'full' ? '2px 6px' : '2px 4px',
+            borderRadius: 5,
+            fontSize: 9, fontWeight: 800, letterSpacing: 0.3,
+            flexShrink: 0,
+            boxShadow: '0 1px 2px rgba(20,15,10,.12)',
+          }}
+        >
+          <Icon name={badge.icon} size={9} stroke={2.5} />
+          {badgeMode === 'full' && badge.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -68,8 +172,8 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
             <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} units · ₹{rt.base.toLocaleString('en-IN')}</div>
           </div>
         </div>
-        {DAYS.map((d) => (
-          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
+        {DAYS.map((d, i) => (
+          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
         ))}
       </div>
       {!collapsed && Array.from({ length: rt.units }).map((_, ui) => {
@@ -91,7 +195,7 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
               <span style={{ fontSize: 10, fontWeight: 600, color: T.ink3, letterSpacing: 0.4 }}>#{ui + 1}</span>
             </div>
             {DAYS.map((d, i) => (
-              <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: d.isWknd ? 'oklch(98% 0.012 65)' : i === 1 ? 'oklch(98% 0.025 38)' : 'transparent' }} />
+              <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
             ))}
             {bookings.filter(b => b.unitIdx === ui).map(b => {
               const dx = drag && drag.id === b.id ? drag.dx : 0;
@@ -258,7 +362,17 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
               const isToday = i === 1;
               return (
                 <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}` }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, color: d.isWknd ? T.primary : T.ink3, letterSpacing: 0.4 }}>{d.dow.toUpperCase()}</div>
+                  {isToday ? (
+                    <div style={{
+                      display: 'inline-block',
+                      background: T.primary, color: '#fff',
+                      fontSize: 8, fontWeight: 700, letterSpacing: 0.6,
+                      padding: '1px 6px', borderRadius: 999,
+                      lineHeight: 1.3,
+                    }}>{t('today').toUpperCase()}</div>
+                  ) : (
+                    <div style={{ fontSize: 9, fontWeight: 600, color: d.isWknd ? T.primary : T.ink3, letterSpacing: 0.4 }}>{d.dow.toUpperCase()}</div>
+                  )}
                   <div className="tnum" style={{ fontSize: 16, fontWeight: 700, color: isToday ? T.primary : T.ink, letterSpacing: -0.3, marginTop: 1 }}>{d.dom}</div>
                 </div>
               );
@@ -275,7 +389,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
               const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
               const occ = Math.round((occRooms / totalRooms) * 100);
               return (
-                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}` }}>
+                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : 'transparent' }}>
                   <div className="tnum" style={{ fontSize: 11, fontWeight: 700, color: occ > 80 ? T.danger : occ > 50 ? 'oklch(48% 0.14 75)' : T.ok }}>{occ}%</div>
                 </div>
               );
@@ -296,7 +410,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
           ))}
         </div>
 
-        <div style={{ position: 'absolute', top: 60, bottom: 0, left: labelW + colW + colW / 2, width: 2, background: T.primary, opacity: 0.5, pointerEvents: 'none' }} />
+        {/* "Today" is now marked as a soft brand-coloured vertical band running
+            through the day column, with a TODAY pill sitting inside the header
+            cell. No floating overlay — scrolls naturally with the grid. */}
       </div>
 
       {confirmDrop && (

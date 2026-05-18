@@ -78,12 +78,16 @@ To wipe state (back to seed), open DevTools → Application → Local Storage �
 ### Action functions in App.jsx (passed down as props)
 - `addPayment(bookingId, entry)` — append to payments ledger; auto-confirms a tentative booking if balance hits zero
 - `setStatus(bookingId, status)` — update status; clears `releaseTs/releaseAt` when leaving tentative
+- `extendHold(bookingId, hours)` — push a tentative booking's `releaseTs` further out by N hours; resyncs `releaseAt` and bumps `holdHours`. No-op for non-tentative bookings.
 - `setBookingGst(bookingId, value)` — toggle the per-booking GST/invoice-include flag
 - `issueInvoice(bookingId, parts)` — issue one or more sequential tax invoices against a booking. `parts` is `[{ amount, recipient: { name, gstin?, address? } }]`; omitted = single invoice for full booking total
 - `voidInvoice(bookingId, invoiceId)` — mark an invoice voided (number stays reserved per GST law)
 - `moveBooking(bookingId, patch)` — update startIdx, roomTypeId, unitIdx (used by Diary drag-drop)
 - `addSavedCustomExtra(extra)` / `removeSavedCustomExtra(id)` — global extras pool
 - `onCreate(data, total)` — creates or edits a booking. For new bookings: parses `data.checkIn` via `parseCheckInIdx()` to derive `startIdx`, then `findFirstFreeUnit()` picks the lowest free unit of the chosen room type for the requested dates. Sets `gstApplies` from data, `releaseTs` from holdHours, promotes new custom extras to the saved pool
+
+### Theme injector (App.jsx, useEffect)
+On mount and whenever `property.theme` changes, `applyTheme(theme)` writes `--atithi-primary`, `--atithi-primary-dk`, and `--atithi-primary-lt` onto `:root`. All `T.primary*` references in the app are CSS vars pointing at these, so the chosen brand colour propagates instantly without rerendering components.
 
 ### Auto-release ticker (App.jsx, useEffect)
 Every 30s, scans bookings. Any tentative booking whose `releaseTs <= now` and `paid < total` gets `status: 'cancelled'` with `autoReleased: true`. Seed bookings have `releaseAt` (string clock time) but no `releaseTs` — they don't auto-release in the demo.
@@ -161,6 +165,9 @@ Every 30s, scans bookings. Any tentative booking whose `releaseTs <= now` and `p
   invoiceCounters: { '2627': 12 },        // last-used sequence per Indian FY
   accountant: { name, email, firm },      // CA contact for monthly export
   gstin: '08AABCY1234M1Z5',               // optional, appears on tax invoices
+  // Brand colour. Two shapes — pick one:
+  theme: { hue: 38 },                      // one of THEME_PRESETS (38 = default sunset orange)
+  // theme: { color: '#7B3F99' },          // OR custom hex from native colour picker
 }
 ```
 
@@ -206,12 +213,15 @@ These are the static catalog used by Diary/Booking; per-category amenities + dis
 ## Screens & Components
 
 ### Screens (`src/screens/`)
-- **Dashboard.jsx** — Hero stats (with property name pulled live), OTA toast notifications, **Pending payments card** (bookings where guest has arrived/left but balance is unpaid; one-tap "Mark paid · cash" instantly records balance as cash payment), auto-release alerts, arrivals list, channel donut chart.
+- **Dashboard.jsx** — Hero stats (with property name pulled live), OTA toast notifications, **Pending payments card** (bookings where guest has arrived/left but balance is unpaid; two one-tap buttons — **Cash** (orange) and **UPI** (green) — instantly record the full balance with the right method), **Auto-release timers card** with inline Extend Hold buttons (+2h / +1d / +2d / Custom), arrivals list, channel donut chart.
+  - **"Earned this month" card** (third card in the hero carousel) — header is **"EARNED THIS MONTH"**, big number is **live** rupees summed from real bookings, subtitle "Total received so far". Stats row shows plain-English `bookings / rooms full / per room/night` (was the jargon ADR / RevPAR).
 - **Diary.jsx** — Gantt calendar.
   - **Drag-drop** works for both date and room/unit. Navigation handled inside `pointerup` (not a separate `onClick`) so a drag never accidentally opens the booking detail. Movement >4px = drag → confirmation modal; no movement = tap → open booking.
+  - **Today marker** — the today column is a single brand-coloured vertical band (header + occupancy row + every room row), with a TODAY pill inside the header cell. No floating overlay line.
+  - **Status-coloured pills** — saturated 18%-mix tinted background, bold 2px coloured border, and a filled white-on-colour badge on the right edge: 🛏 **IN** (checkedin/indigo), ✓ **OUT** (checkout/green), ⏱ time (hold/yellow). Confirmed = white card, cancelled = struck-through grey.
+  - **Responsive pill rendering** — full name when wide, first name when medium, initials ("AS") when very tight; status badge degrades from full label → icon-only → hidden. Full name always available via `title` (hover) or tap-to-open.
   - **Conflict detection:** warns if another non-cancelled booking already overlaps the target slot/dates.
   - **Filters:** All / Confirmed / On-hold / Form C / OTA with live counts.
-  - Cancelled bookings rendered struck-through and excluded from occupancy.
 - **NewBooking.jsx** — 4-step flow: Dates → Room → Guest → Payment.
   - Per-night rate editor (toggle when nights > 1).
   - 28-country picker with auto Form C detection and dial-code phone prefix.
@@ -219,6 +229,7 @@ These are the static catalog used by Diary/Booking; per-category amenities + dis
   - **GST toggle** on Step 4 (only when plan='gst'). Adds CGST/SGST; default off, channel-based future-proofing.
   - Hold/release with auto-cancel timer.
 - **BookingDetail.jsx** — Folio, payments ledger, **Invoices section**, payment sheet (payment/refund/credit note), WhatsApp activity feed.
+  - **Auto-release banner** (tentative bookings only) has inline **Extend by** buttons: + 2 hours / + 1 day / + 2 days / Custom… (number + hours/days toggle).
   - **Invoices section** lists every issued invoice with number/date/recipient/GSTIN/amount. Each row has "View invoice PDF" and "Void" actions. The **IssueInvoiceSheet** modal supports single or split invoicing (multiple recipients/amounts in one go).
   - **GST toggle row** (only on plan=gst) flips `gstApplies` and shows the rupee impact.
   - **Action buttons (wired):** Log check-in / Log check-out / Cancel / Confirm / Re-open. Soft-styled with "Optional" hint.
@@ -226,26 +237,30 @@ These are the static catalog used by Diary/Booking; per-category amenities + dis
 - **Rates.jsx** — 30-day calendar grid with drag-select. Overrides lifted to App.jsx and consumed by NewBooking.
 - **Channels.jsx** — OTA sync hero, per-channel markup/independent rate, live OTA event stream (still fake).
 - **Reports.jsx** — **Lives data** (no hardcoded numbers).
-  - KPI grid (Revenue, Avg occupancy, ADR, RevPAR) computed from bookings + DAYS + ROOM_TYPES.
+  - KPI grid (Revenue, Avg occupancy, ADR, RevPAR) computed from bookings + DAYS + ROOM_TYPES. _Still uses jargon labels — same plain-English treatment as Dashboard is pending._
   - **Month-end · Send to CA card** at top: counts of invoices issued, bookings ready, payment gaps. Disabled when gaps exist, when no invoices issued, or no CA email configured. Active → opens printable A4-landscape invoice register in new tab + prefills mailto to CA.
   - **GST Applicability card** (plan=gst only): Reported vs Not Reported split.
   - Daily occupancy bar chart, top room types, compliance section.
 - **Guests.jsx** — Functional search + filters (All / VIP / Repeat / Foreign / In-house) with live counts.
 - **Settings.jsx** — Plan picker, language toggle, integrations, **PropertyProfile sheet**, GSTN OTP flow.
-  - **PropertyProfile** sections: Logo, Basics, Address (now with Landmark + Google Maps link), Contact, **Accountant (CA email/name/firm + GSTIN)**, Room categories (each with collapsible amenity picker), Property-wide amenities, House rules.
+  - **PropertyProfile** sections: Logo, **Brand colour** (7 presets — Sunset, Heritage, Saffron, Forest, Lagoon, Royal, Plum — plus a Custom chip with native OS colour picker; live preview, revert-on-cancel), Basics, Address (Landmark + Google Maps link), Contact, **Accountant (CA email/name/firm + GSTIN)**, Room categories (each with collapsible amenity picker), Property-wide amenities, House rules.
   - **AmenityPicker** is a reusable grouped-chip component: master list grouped into 6 sections, custom-add input ("Add your own"), reuses custom amenities across property + every category.
-- **MoreMenu.jsx** — 2×2 grid linking to Rates/Channels/Reports/Settings. **User flagged this for refinement — make it more intuitive/practical/functional. Not yet started.**
+- **MoreMenu.jsx** — 2×2 grid linking to Rates/Channels/Reports/Settings. Renamed to **"Manage"** / **"प्रबंधन"** (tab + screen header) per owner feedback.
 
 ### Components (`src/components/`)
 - **Icon.jsx** — 40+ SVG icons
 - **Btn.jsx** — variants: primary/dark/ghost/soft/indigo/danger/wa; sizes: sm/md/lg
+- **ExtendOptions.jsx** — preset buttons (+2h / +1d / +2d) + Custom inline expander (number input + hours/days toggle + Add). Shared between BookingDetail banner and Dashboard auto-release card. Bilingual.
 - **Chip.jsx**, **Field.jsx**, **Card.jsx**, **Avatar.jsx**, **Row.jsx**, **SectionHead.jsx**, **ScreenHeader.jsx**, **TabBar.jsx**, **Toggle.jsx**
 
-### Utilities (`src/utils/`)
-- **voucher.js** — `generateVoucher(b, rt, property, invoice?)`. Opens a print-ready A4 HTML page. When `invoice` is passed, renders as **TAX INVOICE** with the sequential number, HSN 996311, place of supply, property GSTIN, and recipient details (incl. recipient GSTIN if B2B). Without `invoice`, renders as the booking voucher with the auto-release notice for tentative holds. Pulls property name/address/landmark/mapUrl/phone live (no hardcoded "Yatra Desert Camp" anywhere).
+### Pattern: "presets + Custom"
+Anywhere the UI offers preset choices (hold duration, theme colour, etc.), always include a "Custom" option alongside. Presets cover the common cases for speed; the Custom escape hatch handles everything else. Apply consistently going forward.
+
+### Utilities (`src/utils/`) + top-level helpers
+- **voucher.js** — `generateVoucher(b, rt, property, invoice?)`. Opens a print-ready A4 HTML page. When `invoice` is passed, renders as **TAX INVOICE** with the sequential number, HSN 996311, place of supply, property GSTIN, and recipient details (incl. recipient GSTIN if B2B). Without `invoice`, renders as the booking voucher with the auto-release notice for tentative holds. Pulls property name/address/landmark/mapUrl/phone live (no hardcoded "Yatra Desert Camp" anywhere). **Theme-aware:** reads `property.theme` via `themeColors()` and inline-injects the brand colour into the printable HTML.
 - **invoiceExport.js** — `exportInvoiceList(bookings, property)` opens a printable A4-landscape **invoice register** in a new tab: summary cards (count / pre-tax / GST / grand total), full table of every issued non-voided invoice (number, date, recipient, GSTIN, taxable, GST, total, booking ID). `emailToAccountant(invoices, property)` triggers a `mailto:` to the CA email with a pre-filled subject/body referencing the period.
-- **i18n.js** — `useT(lang)` hook, `STRINGS` with `en` and `hi` keys. Note: many new strings added in 2026-05 session are English-only.
-- **tokens.js** — `T` design tokens + `injectBaseStyles()`.
+- **`src/i18n.js`** (NOT under `utils/`) — `useT(lang)` hook, `STRINGS` with `en` and `hi` keys. Newly bilingual: extend-hold options, pending-payments helper text, Cash/UPI buttons, Manage label. Many older strings still English-only.
+- **`src/tokens.js`** — `T` design tokens + `injectBaseStyles()` + theme helpers (`THEME_PRESETS`, `themeColors(theme)`, `themeColorsFromHue(hue)`, `applyTheme(theme)`). Brand-colour tokens (`primary`, `primaryDk`, `primaryLt`) read CSS variables (`--atithi-primary*`) so the hotelier's picked colour propagates everywhere with no per-screen rewrites.
 
 ---
 
@@ -320,50 +335,130 @@ The product positioning is: **Atithi keeps clean books; the CA decides what gets
 - Reports GST Applicability card (Reported vs Not Reported)
 - **Direction:** the user has shifted away from app-managed GST toward CA-managed via invoice handoff. The GST flag is effectively a "include in monthly invoice export" flag
 
+### Branding + theming (2026-05-18)
+- Hotelier picks a brand colour. Two shapes: `theme: { hue: 38 }` (one of 7 named presets — Sunset, Heritage, Saffron, Forest, Lagoon, Royal, Plum) OR `theme: { color: '#hex' }` (custom from native colour picker).
+- Picker lives in Settings → Property profile, below Logo. Live preview as you select; revert on cancel; persist on save.
+- Implementation: `tokens.js` exposes `themeColors(theme)`, `themeColorsFromHue(hue)`, `applyTheme(theme)`, and `THEME_PRESETS`. App.jsx `useEffect` writes `--atithi-primary*` CSS variables; all `T.primary*` references read those variables.
+- Voucher / tax invoice template (`voucher.js`) reads the same theme and inline-injects the colour into the printable HTML (CSS vars don't propagate to new windows).
+
+### Diary polish (2026-05-18)
+- Removed the floating orange "today line" overlay. Replaced with a clean brand-coloured vertical band spanning the entire today column + a **TODAY** pill in the header cell.
+- Status-coloured pills: saturated bg tint (`color-mix 18%`), bold 2px matching border, filled white-on-colour badge on the right edge (🛏 IN, ✓ OUT, ⏱ time).
+- Distinct visuals for checkedin (indigo), checkout (green), tentative (yellow dashed), confirmed (white), cancelled (struck-through grey).
+- Responsive pill rendering — full name → first name → initials based on actual pill width; badge degrades full → icon-only → hidden; `title` attribute always carries the full guest name.
+
+### Extend Hold (2026-05-18)
+- New `extendHold(bookingId, hours)` action.
+- Surfaced inline on **BookingDetail's auto-release banner** and on **each row of Dashboard's auto-release card**.
+- Shared `<ExtendOptions>` component: presets +2h / +1d / +2d plus a Custom expander (number input + hours/days toggle + Add).
+- Bilingual (Hindi labels).
+
+### UX polish (2026-05-18)
+- Bottom tab "More" renamed → **"Manage"** (en) / **"प्रबंधन"** (hi).
+- Pending Payments card: single "Mark paid · cash" button replaced with **Cash + UPI** side-by-side. Each records the full balance instantly with the correct method. Bilingual.
+- **Earned This Month** card on Dashboard:
+  - Header: "MONTH SO FAR" → "EARNED THIS MONTH" / "इस महीने कमाई"
+  - Added subtitle: "Total received so far" / "अब तक कुल आय"
+  - Big number is now **live** — sums real booking totals (was a hardcoded ₹11L which was actually a 12-month sum mislabelled).
+  - Number formatted with "lakh" written out, not just "L".
+  - Stats line replaced jargon (78% avg occ / ₹6,420 ADR / 14 days) with plain English: **N bookings · X% rooms full · ₹Y /room/night** — all computed live.
+
 ---
 
 ## What still needs work
 
 ### Deferred features (per user, in order)
-1. **"More" section refinement** — user said: "we shall work on the 'more' section by making it more intuitive, practical and functional." Not yet started. Currently just a 2×2 grid linking to Rates/Channels/Reports/Settings.
-2. **End-of-day cash reconciliation section** — owner asked to add after the pending-payments card has been used a bit. Day-end: enter total cash collected, system suggests allocation to bookings. (See `~/.claude/projects/C--atithi/memory/atithi_followups.md`.)
+1. **End-of-day cash reconciliation section** — owner asked to add after the pending-payments card has been used a bit. Day-end: enter total cash collected, system suggests allocation to bookings. (See `~/.claude/projects/C--atithi/memory/atithi_followups.md`.)
+2. **Reports screen plain-English pass** — same treatment as Dashboard's "Earned this month" card. "ADR / RevPAR / Avg occupancy" → plain words a non-school-educated owner understands.
 
 ### Renames still pending (low priority — cosmetic only)
 - `gstApplies` field could be renamed to `includeInvoice` to match the new CA-handoff framing (UI already says "Include in invoice"-style copy)
 - Reports "GST Applicability" card could be rebranded as "Invoicing summary"
 
-### Functional gaps (still UI-only)
+### Functional gaps (UI-only, waiting on external services — see Production roadmap below)
 - **Channels** — OTA event stream is fake; "Push now" has no effect (needs channel manager partnership)
 - **Settings property profile categories** persist, but they don't influence `ROOM_TYPES` (which is the source of truth for Diary/Booking). Editing categories is currently form-only.
 - **Form C filing** — UI works, no e-FRRO API integration
 - **GSTR-1 filing** — not in scope; we hand to the CA instead
 - **WhatsApp confirmations** — UI works, no real Business API hookup
-- **Razorpay UPI QR** — fake SVG, needs real Razorpay
+- **Razorpay UPI QR** — fake SVG, needs real Razorpay or raw UPI deeplink
 - **OTA channel sync** — bookings from MMT/Goibibo/etc. don't flow in (channel manager partnership)
 - **Email-to-CA "send"** — currently opens `mailto:` and a printable register tab. No actual SMTP — the hotelier saves the PDF themselves and replies-with-attachment.
+- **localStorage-only persistence** — data lives in the browser. Lost on browser wipe; no cross-device sync. Phase 1 of the roadmap below.
 
 ### Polish opportunities
-- Hindi translations for new UI strings added in 2026-05 (invoice section, pending payments, accountant section, etc.)
+- Hindi translations for older UI strings (invoice section, accountant section, Reports labels still English-only)
 - Editable saved-custom-extra prices (currently can only delete)
 - Undo for cancellations / auto-releases
 - Configurable Diary horizon (currently hardcoded 14 days)
 
 ---
 
-## Production roadmap (prototype → real business)
+## Production roadmap — external services (prototype → real business)
 
-8 stages to a real product:
+**Constraint:** owner wants only free-tier services for now. The list below is sequenced by dependency — each phase unlocks the next. Pick the recommended option unless you have a strong reason to switch (free tiers can change; verify before commit).
 
-1. **Real database + auth** (Supabase / Firebase / custom backend) — replace localStorage with cloud DB
-2. **PWA wrapper** — manifest + service worker for "Add to Home Screen"
-3. **Razorpay integration** — real UPI QR + payment links + WhatsApp pay button
-4. **WhatsApp Business API** via Gupshup / Wati / Twilio
-5. **Channel manager partnership** (RateGain / Cloudbeds / STAAH) for OTA sync
-6. **Real email/SMTP** for monthly CA exports (currently `mailto:` only)
-7. **e-FRRO Form C filing** — government API for foreign-guest reporting
-8. **Multi-user + permissions** — owner vs reception vs manager logins
+### Phase 1 — Foundation (data, auth, install) — START HERE
+**Why first:** without this, every other phase is duct-tape. The app loses everything on browser wipe and can't be used from a second device.
 
-Operating cost estimate per hotel: ~₹1,500–4,000/month. Suggested SaaS pricing: ₹5,000–8,000/month per hotel.
+1. **Cloud database + auth** — replace localStorage so data persists across devices and users
+   - **Recommendation: Supabase** (free tier: 500MB Postgres, 50k MAU auth, 5GB bandwidth, real-time subscriptions, no credit card to start, generous quotas)
+   - Alternatives: Firebase (Google, NoSQL, more vendor lock-in), PocketBase (single-binary self-host, ~$5/mo VPS needed), Convex (newer, generous free tier but smaller community)
+   - Schema port: each localStorage key (`atithi.bookings.v1`, `atithi.property.v1`, etc.) → corresponding Postgres table with the hotelier as `owner_id` foreign key
+   - Auth strategy: email magic-link + Google OAuth (both included in Supabase free)
+
+2. **PWA wrapper** — installable on phones with "Add to Home Screen"
+   - **No service needed** — just code: `manifest.json`, service worker for offline shell, app icons
+   - Vite has good PWA support via `vite-plugin-pwa`
+
+### Phase 2 — Money flow (India-specific)
+**Why second:** core to the business. The booking engine is useless if you can't actually collect payment.
+
+3. **Payment links + UPI** — real UPI QR codes and shareable payment links replace the mock SVG
+   - **Recommendation: Razorpay** (no fixed monthly fee — pay-as-you-go ~2% per transaction. Counts as "free" since there's no fixed cost until money flows.) Has prebuilt UPI QR, payment links via API, dashboard, webhooks.
+   - Free fallback (truly zero cost): generate raw **UPI deep links** (`upi://pay?pa=<vpa>&pn=<name>&am=<amount>...`) — works for any UPI app, less polished UX, no automatic reconciliation.
+   - Alternatives: PayU, Cashfree, PhonePe ForBusiness — all similar fee structure.
+   - Generate QR codes locally with `qrcode` npm package (no service needed).
+
+### Phase 3 — Communication (high-value for India)
+4. **WhatsApp Business API** — send booking confirmations, vouchers, payment reminders
+   - **Recommendation: Meta Cloud API direct** (free: 1000 user-initiated conversations/month, ~$0.005 each beyond. Skips the BSP/reseller markup.) Requires WhatsApp Business account verification, takes ~1-2 days.
+   - Alternatives (paid BSPs): Wati (₹2999/mo), Gupshup (₹999/mo + per-msg), 360Dialog. Easier dashboards but recurring cost.
+   - Templates need pre-approval from Meta — plan for "booking_confirmation", "payment_reminder", "voucher_link".
+
+5. **Transactional email** — booking confirmation emails, monthly CA exports (replace `mailto:`), password resets
+   - **Recommendation: Resend** (free: 3000 emails/month, 100/day, clean modern API). Generous for a small hotel.
+   - Alternatives: Brevo/Sendinblue (300/day free), SendGrid (100/day free), Mailgun (5k/3-month trial then paid).
+
+### Phase 4 — Storage + polish (when needed)
+6. **Image/file storage** — property logos, future amenity photos, ID proofs uploaded for Form C
+   - **Recommendation:** **Supabase Storage** (1GB free, bundled with Phase 1) — keep everything in one provider
+   - Alternative: **Cloudinary** (25GB free + on-the-fly transformations) if you need image resizing/optimization for guest-facing galleries
+
+7. **Booking widget for hotel's own website** — `<script>`-embeddable mini app on the hotelier's site
+   - **No service needed** — build a `widget.js` that injects a styled booking form, posts to the Supabase API
+   - Free hosting: same Vercel deploy (`/widget.js` route)
+
+8. **Usage analytics** (optional, when there are real users)
+   - **Recommendation: PostHog** (1M events/month free) or **Plausible** (paid only, GDPR-friendly)
+   - Alternative: Vercel Analytics (2.5k events/mo free, basic)
+
+### Phase 5 — Deferred (paid, gov, or partner-only)
+9. **OTA channel sync** (MMT, Goibibo, Booking.com, Agoda) — **no viable free option**. Channel managers (STAAH, RateGain, Cloudbeds) start ~₹1000-5000/mo. Skip until paid tier.
+10. **e-FRRO Form C filing** — government portal only. Manual filing in the UI; no API available without GSP partnership.
+11. **GSTN / GSTR-1 auto-filing** — only via paid GSPs. **Out of scope by product principle** — the CA decides what's filed (see Important product principle below).
+
+### Phase 6 — Multi-user
+12. **Owner / reception / manager roles** with permissions — built on Phase 1's Supabase auth + RLS (row-level security) policies. Free with Supabase.
+
+### Cost summary (free-tier path)
+At small-hotel scale (≤30 rooms, ≤500 bookings/month):
+- Phase 1-2: ₹0/month (Supabase + Vercel free, Razorpay only on transactions)
+- Phase 3: ₹0/month (Meta WA Cloud free tier, Resend free tier)
+- Phase 4: ₹0/month
+- Per-transaction: ~2% Razorpay fee if used
+
+**Estimated free-tier ceiling per hotel:** ~50 bookings/day before any phase outgrows its free quota.
 
 ---
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useT } from './i18n.js';
+import { applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber } from './data.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
@@ -55,6 +56,10 @@ const DEFAULT_PROPERTY = {
   accountant: { name: '', email: '', firm: '' },
   // Optional GSTIN — shown on tax invoices when present.
   gstin: '',
+  // Hotelier-picked brand colour. Stored as an oklch hue angle so the picker
+  // is just a hue choice; saturation/lightness are derived to stay coherent.
+  // 38 = default Atithi sunset orange.
+  theme: { hue: 38 },
 };
 
 // Older saved property objects used { amenities: { wifi: true, ... } }; convert that to
@@ -77,6 +82,13 @@ function migrateProperty(p) {
   if (!out.accountant || typeof out.accountant !== 'object') out.accountant = { ...DEFAULT_PROPERTY.accountant };
   else out.accountant = { ...DEFAULT_PROPERTY.accountant, ...out.accountant };
   if (typeof out.gstin !== 'string') out.gstin = '';
+  // Theme: accept either a preset hue or a custom hex colour. Fall back to
+  // the default sunset orange if neither field is valid.
+  const validHue = out.theme && typeof out.theme === 'object' && typeof out.theme.hue === 'number';
+  const validColor = out.theme && typeof out.theme === 'object' && typeof out.theme.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(out.theme.color);
+  if (!validHue && !validColor) {
+    out.theme = { ...DEFAULT_PROPERTY.theme };
+  }
   return out;
 }
 
@@ -139,6 +151,13 @@ export default function App() {
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
   useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
 
+  // Push the hotelier's chosen brand colour into CSS variables that all
+  // T.primary references read from. Runs on mount and whenever the theme
+  // changes — including a fresh DEFAULT_PROPERTY install on first boot.
+  useEffect(() => {
+    applyTheme(property?.theme);
+  }, [property?.theme?.hue, property?.theme?.color]);
+
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
   useEffect(() => {
     const tick = () => {
@@ -194,6 +213,22 @@ export default function App() {
         delete next.releaseTs; delete next.releaseAt;
       }
       return next;
+    }));
+  };
+
+  // Push a tentative booking's auto-release deadline further out. Adds `hours`
+  // to the current releaseTs (or to now, if the timer has somehow gone stale)
+  // and resyncs releaseAt + holdHours so the UI stays in sync.
+  const extendHold = (bookingId, hours) => {
+    if (!hours || hours <= 0) return;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId || b.status !== 'tentative') return b;
+      const fromTs = (b.releaseTs && b.releaseTs > Date.now()) ? b.releaseTs : Date.now();
+      const releaseTs = fromTs + hours * 3600 * 1000;
+      const d = new Date(releaseTs);
+      const releaseAt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const holdHours = (b.holdHours || 0) + hours;
+      return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false };
     }));
   };
 
@@ -332,10 +367,10 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
     case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
@@ -343,7 +378,7 @@ export default function App() {
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />;
   }
 
   return (

@@ -1,4 +1,5 @@
 import { EXTRAS_DEFAULT, bookingGstApplies } from '../data.js';
+import { themeColors } from '../tokens.js';
 
 const FALLBACK_PROPERTY = {
   profile: {
@@ -18,6 +19,13 @@ const esc = (s) => String(s == null ? '' : s)
 export function generateVoucher(b, rt, property, invoice) {
   const prop = property && property.profile ? property : FALLBACK_PROPERTY;
   const p = prop.profile;
+  // Inject the hotelier's brand colour into the printable HTML. The voucher
+  // opens in a new window so it doesn't inherit the app's CSS variables —
+  // values must be computed and template-injected directly. Handles both
+  // preset hues and custom hex colours.
+  const theme = themeColors(prop.theme);
+  const BRAND      = theme.primaryDk;  // strong accent — borders, headings, totals
+  const BRAND_LITE = theme.primary;    // softer accent — gradient end, note border
   const isInvoice = !!invoice && !!invoice.number;
   const invoiceAmount = isInvoice ? (invoice.amount || b.total || 0) : (b.total || 0);
   const docTitle = isInvoice ? 'Tax invoice' : 'Booking voucher';
@@ -64,13 +72,13 @@ export function generateVoucher(b, rt, property, invoice) {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { padding: 24px; max-width: 720px; margin: 0 auto; font-size: 12pt; line-height: 1.45; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid #C8553D; margin-bottom: 24px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid ${BRAND}; margin-bottom: 24px; }
   .brand { display: flex; align-items: center; gap: 12px; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #C8553D, #E07A5F); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; font-family: Georgia, serif; }
+  .logo { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, ${BRAND}, ${BRAND_LITE}); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; font-family: Georgia, serif; }
   .brand-name { font-size: 17pt; font-weight: 800; color: #1a1a1a; letter-spacing: -0.3px; }
   .brand-sub { font-size: 9pt; color: #777; margin-top: 2px; }
   .voucher-meta { text-align: right; font-size: 9pt; color: #777; }
-  .voucher-meta .id { font-size: 13pt; font-weight: 700; color: #C8553D; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .voucher-meta .id { font-size: 13pt; font-weight: 700; color: ${BRAND}; letter-spacing: 0.5px; margin-bottom: 4px; }
   h2 { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 22px; }
   .card { border: 1px solid #E8E0D8; border-radius: 10px; padding: 14px 16px; background: #FBF7F3; }
@@ -79,26 +87,26 @@ export function generateVoucher(b, rt, property, invoice) {
   .stay .date-value { font-size: 16pt; font-weight: 700; margin-top: 2px; }
   .stay .date-sub { font-size: 9pt; color: #888; }
   .stay .nights { text-align: center; }
-  .stay .nights-num { font-size: 22pt; font-weight: 800; color: #C8553D; line-height: 1; }
+  .stay .nights-num { font-size: 22pt; font-weight: 800; color: ${BRAND}; line-height: 1; }
   .stay .nights-lbl { font-size: 8pt; color: #999; letter-spacing: 1px; margin-top: 2px; text-transform: uppercase; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 11pt; }
   th { text-align: left; padding: 8px 6px; border-bottom: 1.5px solid #E8E0D8; font-size: 8pt; font-weight: 700; letter-spacing: 1px; color: #999; text-transform: uppercase; }
   th.r, td.r { text-align: right; }
   td { padding: 8px 6px; border-bottom: 1px solid #F0E8E0; }
   tfoot td { border-bottom: none; font-weight: 700; padding-top: 12px; font-size: 12pt; }
-  tfoot td.total { color: #C8553D; font-size: 14pt; }
-  .note { padding: 12px 14px; background: #FFF8F0; border-left: 3px solid #E07A5F; border-radius: 0 8px 8px 0; font-size: 10pt; color: #555; margin-bottom: 22px; }
-  .note .lbl { font-size: 8pt; font-weight: 700; color: #C8553D; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
+  tfoot td.total { color: ${BRAND}; font-size: 14pt; }
+  .note { padding: 12px 14px; background: #FFF8F0; border-left: 3px solid ${BRAND_LITE}; border-radius: 0 8px 8px 0; font-size: 10pt; color: #555; margin-bottom: 22px; }
+  .note .lbl { font-size: 8pt; font-weight: 700; color: ${BRAND}; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
   .terms { font-size: 8pt; color: #888; line-height: 1.5; padding-top: 18px; border-top: 1px solid #E8E0D8; }
   .terms strong { color: #1a1a1a; }
-  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${isHold ? '#B45309' : balance > 0 ? '#C8553D' : '#0E8A5F'}; color: ${isHold ? '#B45309' : balance > 0 ? '#C8553D' : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
+  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${isHold ? '#B45309' : balance > 0 ? '${BRAND}' : '#0E8A5F'}; color: ${isHold ? '#B45309' : balance > 0 ? '${BRAND}' : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
   .hold { padding: 14px 16px; background: #FFFBEB; border: 1.5px solid #FDE68A; border-left: 4px solid #B45309; border-radius: 8px; margin-bottom: 22px; }
   .hold .lbl { font-size: 9pt; font-weight: 800; color: #B45309; letter-spacing: 1.2px; margin-bottom: 4px; text-transform: uppercase; }
   .hold .msg { font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
   .hold .when { font-weight: 700; color: #B45309; }
   .actions { margin-top: 24px; display: flex; gap: 10px; justify-content: center; }
-  .actions button { padding: 10px 22px; border-radius: 8px; border: 1px solid #C8553D; background: #C8553D; color: #fff; font-size: 11pt; font-weight: 700; cursor: pointer; }
-  .actions button.ghost { background: #fff; color: #C8553D; }
+  .actions button { padding: 10px 22px; border-radius: 8px; border: 1px solid ${BRAND}; background: ${BRAND}; color: #fff; font-size: 11pt; font-weight: 700; cursor: pointer; }
+  .actions button.ghost { background: #fff; color: ${BRAND}; }
   @media print { .actions { display: none; } }
 </style>
 </head>
@@ -110,7 +118,7 @@ export function generateVoucher(b, rt, property, invoice) {
         <div class="brand-name">${esc(p.name)}</div>
         <div class="brand-sub">${esc(addressLine)}${p.phone ? ' · ' + esc(p.phone) : ''}</div>
         ${p.landmark ? `<div class="brand-sub" style="margin-top:1px;">📍 ${esc(p.landmark)}</div>` : ''}
-        ${p.mapUrl ? `<div class="brand-sub" style="margin-top:2px;"><a href="${esc(p.mapUrl)}" style="color:#C8553D; text-decoration:none; font-weight:600;">View on map →</a></div>` : ''}
+        ${p.mapUrl ? `<div class="brand-sub" style="margin-top:2px;"><a href="${esc(p.mapUrl)}" style="color:${BRAND}; text-decoration:none; font-weight:600;">View on map →</a></div>` : ''}
         ${prop.gstin ? `<div class="brand-sub" style="margin-top:2px;"><strong>GSTIN:</strong> ${esc(prop.gstin)}</div>` : ''}
       </div>
     </div>
@@ -182,7 +190,7 @@ export function generateVoucher(b, rt, property, invoice) {
     <tfoot>
       <tr><td colspan="3">${isInvoice ? 'Invoice total' : 'Total'}</td><td class="r total">${fmtINR(baseAmount)}</td></tr>
       ${!isInvoice ? `<tr><td colspan="3" style="font-size: 11pt; color: #666;">Paid</td><td class="r" style="font-size: 11pt; color: #0E8A5F;">${fmtINR(b.paid)}</td></tr>` : ''}
-      ${!isInvoice && balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${esc(releaseLabel)}` : 'Balance due at check-in'}</td><td class="r" style="color: #C8553D;">${fmtINR(balance)}</td></tr>` : ''}
+      ${!isInvoice && balance > 0 ? `<tr><td colspan="3" style="font-size: 11pt;">${isHold ? `Balance due before ${esc(releaseLabel)}` : 'Balance due at check-in'}</td><td class="r" style="color: ${BRAND};">${fmtINR(balance)}</td></tr>` : ''}
     </tfoot>
   </table>
   ${isInvoice ? `

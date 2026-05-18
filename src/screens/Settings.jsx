@@ -1,5 +1,5 @@
-import { useState, useRef, useMemo } from 'react';
-import { T } from '../tokens.js';
+import { useState, useRef, useMemo, useEffect } from 'react';
+import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -225,6 +225,17 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   const [openCatAmenities, setOpenCatAmenities] = useState({});
   const [gstin, setGstin] = useState(property.gstin || '');
   const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
+  // Theme is either a preset hue or a custom hex; only one is "active" at a
+  // time. Mirror the saved shape so live-preview works exactly like save.
+  const [theme, setThemeState] = useState(() => {
+    if (property.theme?.color) return { color: property.theme.color };
+    return { hue: property.theme?.hue ?? 38 };
+  });
+
+  // Live-preview the picked theme colour so the hotelier sees how it'll look,
+  // then revert to the saved theme if the sheet is closed without saving.
+  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => () => applyTheme(property.theme), [property.theme?.hue, property.theme?.color]);
 
   const addCustomAmenity = (a) => setCustomAmenities(arr => arr.some(x => x.id === a.id) ? arr : [...arr, a]);
   const removeCustomAmenity = (id) => {
@@ -234,7 +245,7 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   };
 
   const handleSave = () => {
-    onSave({ profile, categories, rules, amenityIds, customAmenities, gstin: gstin.trim(), accountant });
+    onSave({ profile, categories, rules, amenityIds, customAmenities, gstin: gstin.trim(), accountant, theme });
     onClose();
   };
   const propTypes = [
@@ -262,6 +273,77 @@ function PropertyProfile({ t, onClose, property, onSave }) {
                 <Btn size="sm" variant="ghost" icon="upload">{t('changeLogo')}</Btn>
               </div>
             </div>
+          </div>
+        </Card>
+
+        <SectionHead title="Brand colour" style={{ marginTop: 16 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
+            Sets the accent colour used across the app and on the vouchers / invoices you send guests. Tap a preset or pick any colour you like — preview is live.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {THEME_PRESETS.map(preset => {
+              const active = theme.hue === preset.hue && !theme.color;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => setThemeState({ hue: preset.hue })}
+                  className="atithi-tap"
+                  aria-label={`Brand colour ${preset.label}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    padding: '6px 10px 6px 6px', borderRadius: 999,
+                    border: `1.5px solid ${active ? preset.swatch : T.border}`,
+                    background: active ? `color-mix(in oklch, ${preset.swatch} 10%, white)` : T.card,
+                    color: active ? preset.swatch : T.ink2,
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  <span style={{
+                    width: 20, height: 20, borderRadius: '50%', background: preset.swatch,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1.5px solid white',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,0.08)',
+                  }}>
+                    {active && <Icon name="check" size={11} color="#fff" stroke={3} />}
+                  </span>
+                  {preset.label}
+                </button>
+              );
+            })}
+
+            {/* Custom colour — opens the OS-native colour picker. Live-updates
+                theme.color as the user moves through the picker. */}
+            <label
+              className="atithi-tap"
+              aria-label="Pick any custom colour"
+              style={{
+                position: 'relative',
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                padding: '6px 10px 6px 6px', borderRadius: 999,
+                border: `1.5px solid ${theme.color ? theme.color : T.border}`,
+                background: theme.color ? `color-mix(in oklch, ${theme.color} 10%, white)` : T.card,
+                color: theme.color ? theme.color : T.ink2,
+                fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              <input
+                type="color"
+                value={theme.color || '#c8553d'}
+                onChange={(e) => setThemeState({ color: e.target.value })}
+                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer', border: 'none', padding: 0 }}
+              />
+              <span style={{
+                width: 20, height: 20, borderRadius: '50%',
+                background: theme.color || 'conic-gradient(from 0deg, #ff5e62, #ffd93d, #6bcf7f, #4ecdc4, #5f7adb, #c44edb, #ff5e62)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                border: '1.5px solid white',
+                boxShadow: '0 0 0 1px rgba(0,0,0,0.08)',
+              }}>
+                {theme.color && <Icon name="check" size={11} color="#fff" stroke={3} />}
+              </span>
+              {theme.color ? `Custom ${theme.color.toUpperCase()}` : 'Custom colour'}
+            </label>
           </div>
         </Card>
 
@@ -461,7 +543,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 100 }}>
 
         <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, cursor: 'pointer' }} onClick={() => setShowProfile(true)}>
-          <div style={{ height: 80, background: `linear-gradient(135deg, ${T.primary}, oklch(50% 0.16 28))`, position: 'relative' }}>
+          <div style={{ height: 80, background: `linear-gradient(135deg, ${T.primary}, ${T.primaryDk})`, position: 'relative' }}>
             <svg style={{ position: 'absolute', right: -10, bottom: -20, opacity: 0.18 }} width="180" height="120" viewBox="0 0 180 120">
               <path d="M0 100 L30 60 L60 90 L90 40 L120 80 L150 50 L180 100" stroke="#fff" strokeWidth="2" fill="none"/>
             </svg>

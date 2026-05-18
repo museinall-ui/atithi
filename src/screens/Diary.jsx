@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, DAYS, CHANNELS } from '../data.js';
+import { DAYS, CHANNELS, effectiveRoomTypes } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Btn from '../components/Btn.jsx';
@@ -159,7 +159,7 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
   );
 }
 
-function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go }) {
+function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days }) {
   const tagColor = T[rt.tag];
   return (
     <div>
@@ -172,7 +172,7 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
             <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} units · ₹{rt.base.toLocaleString('en-IN')}</div>
           </div>
         </div>
-        {DAYS.map((d, i) => (
+        {days.map((d, i) => (
           <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
         ))}
       </div>
@@ -194,7 +194,7 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
             <div style={{ width: labelW, flexShrink: 0, padding: '0 10px', borderRight: `1px solid ${T.borderSoft}`, background: T.card, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 10, fontWeight: 600, color: T.ink3, letterSpacing: 0.4 }}>#{ui + 1}</span>
             </div>
-            {DAYS.map((d, i) => (
+            {days.map((d, i) => (
               <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
             ))}
             {bookings.filter(b => b.unitIdx === ui).map(b => {
@@ -230,8 +230,31 @@ const matchesFilter = (b, filter) => {
   return true;
 };
 
-export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
+const HORIZONS = [14, 30, 60, 90];
+
+// Generate a contiguous day-meta array starting from the same anchor as DAYS,
+// extended to `n` days. Reuses the seed window when shorter, generates fresh
+// metadata when longer so the Diary can show 30/60/90-day views.
+function generateDays(n) {
+  if (n <= DAYS.length) return DAYS.slice(0, n);
+  const out = [...DAYS];
+  for (let i = DAYS.length; i < n; i++) {
+    const d = new Date(2026, 4, 4 + i);
+    out.push({
+      iso: d.toISOString().slice(0, 10),
+      dow: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay() + 6) % 7],
+      dom: d.getDate(),
+      month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],
+      isWknd: d.getDay() === 5 || d.getDay() === 6,
+      idx: i,
+    });
+  }
+  return out;
+}
+
+export default function Diary({ go, bookings, setBookings, moveBooking, t, property }) {
   const [zoom, setZoom] = useState(58);
+  const [horizon, setHorizon] = useState(14);
   const [collapsed, setCollapsed] = useState({});
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
@@ -239,6 +262,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
   const colW = zoom;
   const rowH = 36;
   const labelW = 110;
+  const ROOM_TYPES = effectiveRoomTypes(property);
+  const viewDays = useMemo(() => generateDays(horizon), [horizon]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
   const counts = {
@@ -276,7 +301,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
       setDrag(null);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      const newStart = Math.max(0, Math.min(DAYS.length - b.nights, origStart + dx));
+      const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = newStart !== origStart;
       if (slotChanged || dateChanged) {
@@ -292,7 +317,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
     window.addEventListener('pointerup', up);
   };
 
-  const fmtDate = (idx) => { const d = DAYS[idx]; return d ? `${d.dow} ${d.dom} ${d.month}` : ''; };
+  const fmtDate = (idx) => { const d = viewDays[idx] || DAYS[idx]; return d ? `${d.dow} ${d.dom} ${d.month}` : ''; };
 
   const newRt = confirmDrop && confirmDrop.newSlot ? ROOM_TYPES.find(r => r.id === confirmDrop.newSlot.roomTypeId) : null;
   const origRt = confirmDrop ? ROOM_TYPES.find(r => r.id === confirmDrop.b.roomTypeId) : null;
@@ -322,7 +347,28 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
           <button onClick={() => setZoom(z => Math.min(90, z + 10))} style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>
         </div>}
       />
-      <div style={{ padding: '10px 16px', display: 'flex', gap: 8, overflowX: 'auto', borderBottom: `1px solid ${T.borderSoft}`, background: T.card }}>
+      <div style={{ padding: '10px 16px', display: 'flex', gap: 8, overflowX: 'auto', borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center' }}>
+        {/* Horizon picker — how many days the Diary shows ahead. Default 14;
+            owners planning ahead can stretch to 30/60/90. */}
+        {HORIZONS.map(h => {
+          const active = horizon === h;
+          return (
+            <button
+              key={h}
+              onClick={() => setHorizon(h)}
+              className="atithi-tap"
+              style={{
+                padding: '5px 11px', borderRadius: 999,
+                background: active ? T.indigoLt : T.bgSoft,
+                color: active ? T.indigo : T.ink2,
+                border: `1px solid ${active ? T.indigo : T.borderSoft}`,
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.1,
+                whiteSpace: 'nowrap', cursor: 'pointer',
+              }}
+            >{h}d</button>
+          );
+        })}
+        <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
         {FILTERS.map(f => {
           const active = filter === f.id;
           const count = f.id === 'all' ? bookings.length : counts[f.id];
@@ -352,13 +398,13 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-        <div style={{ minWidth: labelW + colW * DAYS.length + 16, position: 'relative' }}>
+        <div style={{ minWidth: labelW + colW * viewDays.length + 16, position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>MAY 2026</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} stays</div>
             </div>
-            {DAYS.map((d, i) => {
+            {viewDays.map((d, i) => {
               const isToday = i === 1;
               return (
                 <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}` }}>
@@ -383,7 +429,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
             <div style={{ width: labelW, flexShrink: 0, padding: '6px 10px', borderRight: `1px solid ${T.borderSoft}` }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>OCCUPANCY</div>
             </div>
-            {DAYS.map((d, i) => {
+            {viewDays.map((d, i) => {
               const activeBookings = bookings.filter(b => b.status !== 'cancelled');
               const occRooms = activeBookings.filter(b => b.startIdx <= i && b.startIdx + b.nights > i).length;
               const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
@@ -406,6 +452,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t }) {
               drag={drag}
               onPointerDown={onPointerDown}
               go={go}
+              days={viewDays}
             />
           ))}
         </div>

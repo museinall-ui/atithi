@@ -94,6 +94,10 @@ export function applyTheme(theme) {
   root.style.setProperty('--atithi-primary', c.primary);
   root.style.setProperty('--atithi-primary-dk', c.primaryDk);
   root.style.setProperty('--atithi-primary-lt', c.primaryLt);
+  // Sync the browser chrome (mobile URL bar / status bar tint) to the brand
+  // colour so the app feels native edge-to-edge on phones.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', c.primary);
 }
 
 export function injectBaseStyles() {

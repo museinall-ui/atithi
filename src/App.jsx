@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useT } from './i18n.js';
 import { applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, effectiveRoomTypes } from './data.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -116,9 +116,11 @@ function parseCheckInIdx(checkInStr) {
 
 // Pick the lowest-numbered unit of the chosen room type that is free for the requested
 // date range. Returns 0 as a last-resort fallback if every unit is taken — the Diary's
-// conflict UI will then surface the clash to the user.
-function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights) {
-  const room = ROOM_TYPES.find(r => r.id === roomTypeId);
+// conflict UI will then surface the clash to the user. Reads unit count from
+// `property.categories` so changing units in Settings flows through immediately.
+function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
+  const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
+  const room = list.find(r => r.id === roomTypeId);
   if (!room) return 0;
   const endIdx = startIdx + nights;
   for (let u = 0; u < room.units; u++) {
@@ -134,7 +136,12 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights) {
 }
 
 export default function App() {
-  const [plan, setPlan] = useState(() => loadLS(LS_KEYS.plan, 'engine'));
+  const [plan, setPlan] = useState(() => {
+    const saved = loadLS(LS_KEYS.plan, 'engine');
+    // 'gst' tier was removed; downgrade to 'engine'. Invoice / CA-export features
+    // are now universal (not plan-gated), so existing 'gst' users keep everything.
+    return saved === 'gst' ? 'engine' : saved;
+  });
   const [lang, setLang] = useState(() => loadLS(LS_KEYS.lang, 'en'));
   const [route, setRoute] = useState({ name: 'home', arg: null });
   const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, BOOKINGS_SEED.map(b => ({ ...b }))));
@@ -321,7 +328,7 @@ export default function App() {
         total, paid, phone: dial + ' ' + (data.phone || b.phone.replace(/^\+\d+\s*/, '')),
         notes: data.notes, extras: data.extras,
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
-        country, formC,
+        country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
         status: isHold ? 'tentative' : b.status,
         releaseTs: isHold ? releaseTs : undefined,
@@ -332,7 +339,7 @@ export default function App() {
       setRoute({ name: 'booking', arg: editing });
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);
-      const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights);
+      const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights, effectiveRoomTypes(property));
       const newBk = {
         id: 'BK-' + (2854 + bookings.length),
         roomTypeId: data.roomTypeId,
@@ -353,6 +360,7 @@ export default function App() {
         customExtras: data.customExtras,
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,
+        state: data.state || '',
         releaseTs: releaseTs || undefined,
         releaseAt: releaseAt || undefined,
         holdHours: isHold ? data.holdHours : undefined,
@@ -368,11 +376,11 @@ export default function App() {
   let screen;
   switch (route.name) {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />; break;
-    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} />; break;
-    case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} />; break;
+    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} property={property} />; break;
+    case 'new':               screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} />; break;
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
-    case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} />; break;
+    case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;

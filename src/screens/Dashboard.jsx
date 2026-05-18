@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, CHANNELS, DAYS } from '../data.js';
+import { CHANNELS, DAYS, effectiveRoomTypes } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Card from '../components/Card.jsx';
 import Chip from '../components/Chip.jsx';
@@ -28,8 +28,8 @@ function StatTile({ label, value, icon, color }) {
   );
 }
 
-function ArrivalRow({ b, go, dayName, t }) {
-  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+function ArrivalRow({ b, go, dayName, t, roomTypes }) {
+  const rt = roomTypes.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
   return (
     <Card padding={12} onClick={() => go('booking', b.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -66,6 +66,7 @@ function ArrivalRow({ b, go, dayName, t }) {
 export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold }) {
   const isHi = lang === 'hi';
   const [toast, setToast] = useState(null);
+  const ROOM_TYPES = effectiveRoomTypes(property);
 
   useEffect(() => {
     const events = [
@@ -404,7 +405,7 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
           </button>
         } />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {today.slice(0, 4).map(b => <ArrivalRow key={b.id} b={b} go={go} dayName={dayName} t={t} />)}
+          {today.slice(0, 4).map(b => <ArrivalRow key={b.id} b={b} go={go} dayName={dayName} t={t} roomTypes={ROOM_TYPES} />)}
         </div>
       </div>
 

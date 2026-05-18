@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES, DAYS, bookingGstApplies, listIssuedInvoices } from '../data.js';
+import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes } from '../data.js';
 import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -38,7 +38,7 @@ function fmtINR(n) {
 }
 
 export default function Reports({ go, t, bookings = [], plan = 'engine', property }) {
-  const gstEnabled = plan === 'gst';
+  const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
   const caEmail = property?.accountant?.email || '';
 
@@ -109,7 +109,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
 
     return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount };
-  }, [bookings]);
+  }, [bookings, ROOM_TYPES]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -118,10 +118,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          <KPI label={t('revenue')} value={fmtINR(stats.revenue)} sub={`of ${fmtINR(stats.billed)}`} icon="inr" color={T.primary} />
-          <KPI label={t('avgOccupancy')} value={`${stats.avgOccPct}%`} sub={`${DAYS.length}-day avg`} icon="bed" color={T.indigo} />
-          <KPI label="ADR" value={fmtINR(stats.adr)} sub="per night" icon="tag" color={T.teal} />
-          <KPI label="RevPAR" value={fmtINR(stats.revpar)} sub="per available" icon="chart" color="oklch(60% 0.14 320)" />
+          <KPI label="Money earned" value={fmtINR(stats.revenue)} sub={`of ${fmtINR(stats.billed)} billed`} icon="inr" color={T.primary} />
+          <KPI label="Rooms full" value={`${stats.avgOccPct}%`} sub={`avg over ${DAYS.length} days`} icon="bed" color={T.indigo} />
+          <KPI label="Per room / night" value={fmtINR(stats.adr)} sub="when room is booked" icon="tag" color={T.teal} />
+          <KPI label="Per room / day" value={fmtINR(stats.revpar)} sub="across all rooms" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
 
         <Card padding={14} style={{ marginBottom: 16, borderColor: stats.gapCount > 0 ? 'oklch(85% 0.10 75)' : 'oklch(85% 0.06 175)', background: stats.gapCount > 0 ? 'oklch(98% 0.018 75)' : 'oklch(98% 0.014 175)' }}>
@@ -198,30 +198,28 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           </button>
         </Card>
 
-        {gstEnabled && (
-          <Card padding={14} style={{ marginBottom: 16, borderColor: T.indigoLt, background: 'oklch(98% 0.012 265)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Icon name="tag" size={14} color={T.indigo} stroke={2} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.indigo, letterSpacing: 0.2 }}>GST APPLICABILITY</span>
+        <Card padding={14} style={{ marginBottom: 16, borderColor: T.indigoLt, background: 'oklch(98% 0.012 265)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Icon name="tag" size={14} color={T.indigo} stroke={2} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.indigo, letterSpacing: 0.2 }}>INVOICING SUMMARY</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>GOES TO CA</div>
+              <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.reportedRevenue)}</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{stats.gstCount} booking{stats.gstCount === 1 ? '' : 's'} · in monthly export</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>REPORTED (GSTR-1)</div>
-                <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.reportedRevenue)}</div>
-                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{stats.gstCount} booking{stats.gstCount === 1 ? '' : 's'} · GST included</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>NOT REPORTED</div>
-                <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.unreported)}</div>
-                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>direct / cash bookings</div>
-              </div>
+            <div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>SKIPPED</div>
+              <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.unreported)}</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>direct / cash · not in export</div>
             </div>
-            <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
-            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
-              Default is channel-based: OTA bookings include GST, direct/cash bookings don't. You can flip the toggle on any individual booking in its detail page.
-            </div>
-          </Card>
-        )}
+          </div>
+          <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
+            Bookings included in your monthly export to the CA. Default is OTA-yes / direct-no — flip per booking via "Include in invoice" on its detail page.
+          </div>
+        </Card>
 
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'baseline' }}>
@@ -273,9 +271,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
         <SectionHead title="Compliance" style={{ marginTop: 18 }} />
         <Card>
-          <Row label="GST collected (reported)" value={fmtINR(stats.gstCollected)} />
+          <Row label="Tax inside invoices" value={fmtINR(stats.gstCollected)} />
           <Row label="Form C filed" value={`${stats.formC} of ${stats.formC}`} />
-          <Row label="GSTR-1 next due" value="11 Jun" />
         </Card>
       </div>
     </div>

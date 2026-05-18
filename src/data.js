@@ -5,6 +5,28 @@ export const ROOM_TYPES = [
   { id: 'pool', name: 'Private Pool Cottage', tag: 'tagPlum',    units: 3, base: 14500 },
 ];
 
+// Single source of truth for the room-type catalog throughout the app. Reads
+// from the editable `property.categories` (Settings) so renaming a category
+// or changing its unit count actually flows through to Diary / Booking / etc.
+// Each entry is merged with a stable colour tag (looked up from ROOM_TYPES by
+// id, or assigned from the palette if it's a user-added category).
+const TAG_PALETTE = ['tagSaffron', 'tagOlive', 'tagSky', 'tagPlum'];
+export function effectiveRoomTypes(property) {
+  const cats = property && Array.isArray(property.categories) ? property.categories : null;
+  if (!cats || cats.length === 0) return ROOM_TYPES;
+  return cats.map((c, i) => {
+    const seed = ROOM_TYPES.find(r => r.id === c.id);
+    return {
+      id: c.id,
+      name: c.name || (seed && seed.name) || 'Room',
+      units: typeof c.units === 'number' && c.units > 0 ? c.units : (seed?.units || 1),
+      base: typeof c.base === 'number' && c.base >= 0 ? c.base : (seed?.base || 0),
+      tag: (seed && seed.tag) || TAG_PALETTE[i % TAG_PALETTE.length],
+      amenityIds: Array.isArray(c.amenityIds) ? c.amenityIds : [],
+    };
+  });
+}
+
 export const DAYS = (() => {
   const out = [];
   const start = new Date(2026, 4, 4);
@@ -57,12 +79,50 @@ export const CHANNELS = {
 // Whether GST should be treated as applicable for this booking.
 // - Explicit per-booking override (`gstApplies` true/false) wins.
 // - Otherwise default by channel: OTA bookings include GST, direct/cash do not.
-// The caller is still responsible for checking the property's plan — if the
-// hotelier isn't on the GST plan, GST never applies regardless.
 export function bookingGstApplies(b) {
   if (b == null) return false;
   if (typeof b.gstApplies === 'boolean') return b.gstApplies;
   return !!b.channel && b.channel !== 'direct';
+}
+
+// Indian states + UTs. Used by the state picker in NewBooking so the tax
+// breakdown can split into CGST + SGST (same state as the property) vs IGST
+// (different state, "inter-state supply" in GST terms).
+export const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  // Union Territories
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
+
+// Compute the GST breakdown for a booking, treating the price as GST-inclusive
+// (12% inside the total). Returns CGST + SGST when the guest is from the same
+// state as the property (intra-state supply), or IGST when from a different
+// state or a foreign country (inter-state supply). When `state` isn't recorded
+// on the booking, falls back to intra-state for safety.
+export function getTaxBreakdown(booking, property) {
+  if (!bookingGstApplies(booking)) {
+    return { applies: false, gst: 0, cgst: 0, sgst: 0, igst: 0, interState: false };
+  }
+  const total = booking?.total || 0;
+  const gst = Math.round(total * 12 / 112);
+  let interState = false;
+  if (booking?.country && booking.country !== 'IN') {
+    interState = true;
+  } else {
+    const propState = (property?.profile?.state || '').trim().toLowerCase();
+    const guestState = (booking?.state || '').trim().toLowerCase();
+    if (propState && guestState && propState !== guestState) interState = true;
+  }
+  if (interState) {
+    return { applies: true, gst, cgst: 0, sgst: 0, igst: gst, interState: true };
+  }
+  const half = Math.round(gst / 2);
+  return { applies: true, gst, cgst: half, sgst: gst - half, igst: 0, interState: false };
 }
 
 // Whether this booking should be included in the monthly invoice export to the

@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ROOM_TYPES } from '../data.js';
+import { effectiveRoomTypes } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
 import Card from '../components/Card.jsx';
-import Field from '../components/Field.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 
@@ -15,37 +14,9 @@ const bulkBtn = (bg) => ({
   display: 'inline-flex', alignItems: 'center', gap: 4,
 });
 
-function DiscountForm({ t, onCancel, onSave }) {
-  const [d, setD] = useState({ name: '', code: '', off: 10, type: '%', minNights: 1, validTill: '31 Dec' });
-  return (
-    <div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.primaryDk, marginBottom: 10 }}>{t('addDiscount')}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <Field label="Name" value={d.name} onChange={e => setD({ ...d, name: e.target.value })} placeholder="e.g. Diwali" />
-        <Field label={t('couponCode')} value={d.code} onChange={e => setD({ ...d, code: e.target.value.toUpperCase() })} placeholder="DIWALI20" />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 8 }}>
-        <Field label="Discount" value={d.off} onChange={e => setD({ ...d, off: +e.target.value || 0 })} type="number" suffix={d.type} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Type</label>
-          <div style={{ display: 'flex', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: 2 }}>
-            <button onClick={() => setD({ ...d, type: '%' })} style={{ flex: 1, padding: 6, borderRadius: 6, border: 'none', background: d.type === '%' ? T.primary : 'transparent', color: d.type === '%' ? '#fff' : T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>%</button>
-            <button onClick={() => setD({ ...d, type: '₹' })} style={{ flex: 1, padding: 6, borderRadius: 6, border: 'none', background: d.type === '₹' ? T.primary : 'transparent', color: d.type === '₹' ? '#fff' : T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>₹</button>
-          </div>
-        </div>
-        <Field label={t('minNights')} value={d.minNights} onChange={e => setD({ ...d, minNights: +e.target.value || 1 })} type="number" />
-      </div>
-      <Field label={t('validTill')} value={d.validTill} onChange={e => setD({ ...d, validTill: e.target.value })} style={{ marginTop: 8 }} />
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <Btn variant="ghost" full onClick={onCancel}>{t('cancel')}</Btn>
-        <Btn full onClick={() => onSave(d)}>{t('save')}</Btn>
-      </div>
-    </div>
-  );
-}
-
-export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp }) {
-  const [selectedType, setSelectedType] = useState('dlx');
+export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp, property }) {
+  const ROOM_TYPES = effectiveRoomTypes(property);
+  const [selectedType, setSelectedType] = useState(() => ROOM_TYPES[0]?.id || 'dlx');
   const [selected, setSelected] = useState(new Set([2, 3]));
   const [dragStart, setDragStart] = useState(null);
   const [dragEnd, setDragEnd] = useState(null);
@@ -54,12 +25,6 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const setOverrides = setOverridesProp || setLocalOverrides;
   const [showBulkSheet, setShowBulkSheet] = useState(null);
   const [bulkVal, setBulkVal] = useState('');
-  const [discountFormOpen, setDiscountFormOpen] = useState(false);
-  const [discounts, setDiscounts] = useState([
-    { id: 1, name: t('earlyBird'), code: 'EARLY30', off: 15, type: '%', minNights: 2, validTill: '30 Sep', active: true },
-    { id: 2, name: t('longStay'),  code: 'STAY3',   off: 10, type: '%', minNights: 3, validTill: 'Always',  active: true },
-    { id: 3, name: 'Monsoon special', code: 'MON25', off: 25, type: '%', minNights: 1, validTill: '15 Aug', active: false },
-  ]);
 
   const rt = ROOM_TYPES.find(r => r.id === selectedType);
 
@@ -222,55 +187,6 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           </div>
         </Card>
 
-        <SectionHead title={t('discounts')} style={{ marginTop: 18 }} action={
-          <button onClick={() => setDiscountFormOpen(true)} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="plus" size={11} stroke={2.2} /> {t('addDiscount')}
-          </button>
-        } />
-        <div style={{ fontSize: 10, color: T.ink3, marginBottom: 8, marginTop: -4, padding: '0 2px' }}>{t('discountsSub')}</div>
-
-        {discountFormOpen && (
-          <Card padding={12} style={{ background: T.primaryLt, borderColor: T.primary, marginBottom: 10 }}>
-            <DiscountForm t={t} onCancel={() => setDiscountFormOpen(false)} onSave={(d) => {
-              setDiscounts(arr => [...arr, { ...d, id: Date.now(), active: true }]);
-              setDiscountFormOpen(false);
-            }} />
-          </Card>
-        )}
-
-        <Card padding={0}>
-          {discounts.map((d, i, arr) => (
-            <div key={d.id} style={{
-              padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
-              borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
-              opacity: d.active ? 1 : 0.55,
-            }}>
-              <div style={{
-                width: 38, height: 38, borderRadius: 9, flexShrink: 0,
-                background: d.active ? T.primaryLt : T.bgSoft, color: d.active ? T.primaryDk : T.ink3,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <span className="tnum" style={{ fontSize: 13, fontWeight: 800, lineHeight: 1 }}>{d.off}{d.type === '%' ? '%' : ''}</span>
-                <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>OFF</span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{d.name}</div>
-                <div style={{ fontSize: 11, color: T.ink3, marginTop: 1, display: 'flex', gap: 6 }}>
-                  <span style={{ fontFamily: T.mono, fontWeight: 700, color: T.indigo }}>{d.code}</span>
-                  <span>·</span>
-                  <span>{d.minNights}+ {t('nights')}</span>
-                  <span>·</span>
-                  <span>{d.validTill}</span>
-                </div>
-              </div>
-              <button onClick={() => setDiscounts(arr => arr.map(x => x.id === d.id ? { ...x, active: !x.active } : x))} style={{
-                background: d.active ? T.ok : T.bgSunk, border: 'none',
-                color: d.active ? '#fff' : T.ink3, padding: '5px 10px', borderRadius: 14,
-                fontSize: 10, fontWeight: 700, cursor: 'pointer',
-              }}>{d.active ? 'ON' : 'OFF'}</button>
-            </div>
-          ))}
-        </Card>
       </div>
 
       {selCount > 0 && (

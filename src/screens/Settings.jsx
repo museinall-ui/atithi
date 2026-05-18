@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES } from '../data.js';
 import Icon from '../components/Icon.jsx';
@@ -107,110 +107,6 @@ function AmenityPicker({ selected = [], onChange, customAmenities = [], onAddCus
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function GstnSheet({ t, onClose }) {
-  const [step, setStep] = useState(1);
-  const [gstin, setGstin] = useState('08AABCY1234M1Z5');
-  const [otp, setOtp] = useState(['','','','','','']);
-  const refs = useRef([]);
-
-  const setOtpDigit = (i, v) => {
-    const cleaned = (v || '').slice(-1);
-    const next = [...otp]; next[i] = cleaned; setOtp(next);
-    if (cleaned && i < 5) refs.current[i+1]?.focus();
-  };
-
-  return (
-    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '18px 18px 0 0', padding: 20, paddingBottom: 30 }}>
-        <div style={{ width: 40, height: 4, background: T.border, borderRadius: 2, margin: '0 auto 16px' }} />
-
-        {step === 1 && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: T.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="check" size={20} stroke={2.2} />
-              </div>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{t('connectGstn')}</div>
-                <div style={{ fontSize: 11, color: T.ink3 }}>{t('gstPortalSub')}</div>
-              </div>
-            </div>
-            <div style={{ background: T.bgSoft, borderRadius: 10, padding: 12, marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.ink3, marginBottom: 8, letterSpacing: 0.3 }}>WHAT YOU GET</div>
-              {[
-                'Auto-prepare GSTR-1 from invoices',
-                'File directly on gst.gov.in · no accountant',
-                'GSTR-3B reconciliation',
-                'TCS by OTAs auto-credited',
-              ].map(x => (
-                <div key={x} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12, color: T.ink2 }}>
-                  <Icon name="check" size={12} color={T.ok} stroke={2.4} /> <span>{x}</span>
-                </div>
-              ))}
-            </div>
-            <Field label={t('gstinLabel')} value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} prefix={<Icon name="tag" size={12} color={T.ink3} />} hint="15-character GSTIN from your registration certificate" />
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <Btn variant="ghost" full onClick={onClose}>{t('cancel')}</Btn>
-              <Btn full onClick={() => setStep(2)}>{t('connect')}</Btn>
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('enterOtp')}</div>
-              <div style={{ fontSize: 11, color: T.ink3 }}>{t('otpSent')} +91 90099 ··· 50</div>
-            </div>
-            <div style={{ display: 'flex', gap: 7, justifyContent: 'space-between', marginBottom: 12 }}>
-              {otp.map((d, i) => (
-                <input
-                  key={i}
-                  ref={el => refs.current[i] = el}
-                  value={d}
-                  onChange={e => setOtpDigit(i, e.target.value)}
-                  inputMode="numeric"
-                  maxLength={1}
-                  className="tnum"
-                  style={{
-                    width: 44, height: 52, borderRadius: 10,
-                    border: `1.5px solid ${d ? T.teal : T.border}`,
-                    background: d ? `color-mix(in oklch, ${T.teal} 6%, white)` : T.card,
-                    outline: 'none', textAlign: 'center', fontSize: 22, fontWeight: 700, color: T.ink,
-                  }}
-                />
-              ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, fontSize: 11 }}>
-              <button style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Resend in 28s</button>
-              <span style={{ color: T.ink3 }} className="tnum">Try secure code</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Btn variant="ghost" full onClick={() => setStep(1)}>Back</Btn>
-              <Btn full onClick={() => setStep(3)} style={{ background: T.teal, borderColor: T.teal }}>{t('verify')}</Btn>
-            </div>
-          </>
-        )}
-
-        {step === 3 && (
-          <div style={{ textAlign: 'center', padding: '10px 0' }}>
-            <div style={{ width: 72, height: 72, borderRadius: '50%', background: T.okLt, color: T.ok, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-              <Icon name="check" size={36} stroke={2.5} />
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: T.ink }}>Connected to GSTN</div>
-            <div style={{ fontSize: 12, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 280, margin: '6px auto 0' }}>
-              Your GSTR-1 will be auto-prepared and filed on the 11th of every month. Acknowledgement (ARN) will arrive in WhatsApp.
-            </div>
-            <div style={{ marginTop: 18 }}>
-              <Btn full onClick={onClose}>Done</Btn>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -533,7 +429,6 @@ function PropertyProfile({ t, onClose, property, onSave }) {
 
 export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, t }) {
   const [showProfile, setShowProfile] = useState(false);
-  const [showGstn, setShowGstn] = useState(false);
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
   const locationLabel = [property.profile.city, property.profile.state].filter(Boolean).join(', ');
 
@@ -590,11 +485,10 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         </Card>
 
         <SectionHead title={t('yourPlan')} style={{ marginTop: 16 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
           {[
-            { id: 'engine',   name: t('planEngine'),   price: '₹499',  tagline: t('planEngineDesc'),   color: T.primary },
-            { id: 'channels', name: t('planChannels'), price: '₹999',  tagline: t('planChannelsDesc'), color: T.indigo },
-            { id: 'gst',      name: t('planGst'),      price: '₹1499', tagline: t('planGstDesc'),      color: T.teal },
+            { id: 'engine',   name: t('planEngine'),   price: '₹499', tagline: t('planEngineDesc'),   color: T.primary },
+            { id: 'channels', name: t('planChannels'), price: '₹999', tagline: t('planChannelsDesc'), color: T.indigo },
           ].map(p => {
             const sel = plan === p.id;
             return (
@@ -613,48 +507,6 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             );
           })}
         </div>
-
-        {plan === 'gst' && (
-          <>
-            <SectionHead title={t('gstPortal')} style={{ marginTop: 4 }} />
-            <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, borderColor: T.teal, borderWidth: 1.5 }}>
-              <div style={{ padding: 14, background: `color-mix(in oklch, ${T.teal} 6%, white)` }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: T.teal, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Icon name="check" size={18} stroke={2.4} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('gstPortal')}</div>
-                    <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 2, lineHeight: 1.35 }}>{t('gstPortalSub')}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, fontSize: 11, marginBottom: 10 }}>
-                  <Chip color="ok" icon="check" style={{ fontSize: 9 }}>Connected</Chip>
-                  <Chip color="indigo" style={{ fontSize: 9 }}>{t('autoFile')}</Chip>
-                </div>
-                <Btn variant="ghost" size="sm" full onClick={() => setShowGstn(true)}>Manage GSTN connection</Btn>
-              </div>
-              <div style={{ borderTop: `1px solid ${T.borderSoft}` }}>
-                <div style={{ padding: '8px 14px', fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, background: T.bgSoft }}>{t('filingHistory')}</div>
-                {[
-                  { period: 'GSTR-1 · Apr 2026', amt: 52140, arn: 'AA040426012345X', status: 'filed',   when: '11 May' },
-                  { period: 'GSTR-1 · Mar 2026', amt: 48200, arn: 'AA030326019876Y', status: 'filed',   when: '11 Apr' },
-                  { period: 'GSTR-1 · May 2026', amt: 24650, arn: null,              status: 'pending', when: '11 Jun' },
-                ].map((f, i) => (
-                  <div key={i} style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderTop: i > 0 ? `1px solid ${T.borderSoft}` : 'none', background: T.card }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{f.period}</div>
-                      <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 1 }}>
-                        ₹{f.amt.toLocaleString('en-IN')} GST · {f.arn ? `${t('ack')} ${f.arn}` : `${t('nextFiling')}: ${f.when}`}
-                      </div>
-                    </div>
-                    <Chip color={f.status === 'filed' ? 'ok' : 'warn'} style={{ fontSize: 9 }}>{f.status === 'filed' ? t('filed') : t('pending')}</Chip>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </>
-        )}
 
         <SectionHead title={t('integrations')} />
         <Card padding={0}>
@@ -679,7 +531,6 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
       </div>
 
       {showProfile && <PropertyProfile t={t} property={property} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}
-      {showGstn && <GstnSheet t={t} onClose={() => setShowGstn(false)} />}
     </div>
   );
 }

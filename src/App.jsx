@@ -3,6 +3,7 @@ import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, effectiveRoomTypes } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
+import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -157,6 +158,12 @@ export default function App() {
   // token in the URL hash, which the Supabase client reads on init).
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  // Cloud property: once signed in, we load (or bootstrap) the user's
+  // property + membership from Supabase. cloudReady gates the app so we
+  // don't render bookings/diary against potentially-stale localStorage data
+  // before the cloud has answered.
+  const [propertyId, setPropertyId] = useState(null);
+  const [cloudReady, setCloudReady] = useState(false);
   const t = useT(lang);
 
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
@@ -190,6 +197,53 @@ export default function App() {
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
+
+  // Cloud property load / bootstrap. Runs whenever the signed-in user
+  // changes. On first sign-in (no membership yet) we seed the cloud property
+  // from the current localStorage data so customisations carry over.
+  useEffect(() => {
+    if (!session) {
+      setPropertyId(null);
+      setCloudReady(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        let result = await loadCurrentProperty(session.user.id);
+        if (!result) {
+          result = await bootstrapProperty(session.user, property);
+        }
+        if (cancelled || !result) return;
+        setPropertyId(result.id);
+        setProperty(result.property);
+        setCloudReady(true);
+      } catch (err) {
+        console.error('[atithi] cloud property load failed:', err);
+        // Don't block the app — fall back to localStorage data so the
+        // hotelier can still work. We retry on next sign-in.
+        if (!cancelled) setCloudReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // session.user.id is the cheapest stable identity check; ignore object
+    // identity churn from token refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  // Push property edits up to Supabase. Debounced so typing in Settings
+  // doesn't fire one round-trip per keystroke. localStorage continues to
+  // mirror the state (via the existing effect above) so the user has a
+  // working app even if the cloud save errors transiently.
+  useEffect(() => {
+    if (!cloudReady || !propertyId) return;
+    const tid = setTimeout(() => {
+      saveCloudProperty(propertyId, property).catch(err => {
+        console.error('[atithi] cloud property save failed:', err);
+      });
+    }, 600);
+    return () => clearTimeout(tid);
+  }, [property, cloudReady, propertyId]);
 
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
   useEffect(() => {
@@ -415,9 +469,11 @@ export default function App() {
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />;
   }
 
-  // Splash while Supabase tells us whether the user is signed in. Brief —
-  // getSession() reads from localStorage so this usually flashes for one tick.
-  if (!authReady) {
+  // Splash while Supabase tells us whether the user is signed in, and again
+  // (after sign-in) while the cloud property is loading/bootstrapping. Both
+  // are normally sub-second; the splash just prevents the app from rendering
+  // against stale localStorage data before the cloud answers.
+  if (!authReady || (session && !cloudReady)) {
     return (
       <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{
         height: '100%', background: T.bg, color: T.ink3,

@@ -70,6 +70,7 @@ go('more')              → MoreMenu
 | `atithi.property.v1` | Full property profile incl. invoice counters + accountant + amenities |
 | `atithi.plan.v1` | Current plan tier |
 | `atithi.lang.v1` | Language preference |
+| `atithi.cashCloses.v1` | Daily cash-close snapshots keyed by ISO date (cash + digital + note + closedAt) |
 
 A `migrateProperty()` helper in App.jsx upgrades older property shapes (e.g. converts old `{amenities: {wifi: true}}` to `{amenityIds: ['wifi']}`) so saved data keeps working without a wipe.
 
@@ -363,34 +364,49 @@ The product positioning is: **Atithi keeps clean books; the CA decides what gets
   - Number formatted with "lakh" written out, not just "L".
   - Stats line replaced jargon (78% avg occ / ₹6,420 ADR / 14 days) with plain English: **N bookings · X% rooms full · ₹Y /room/night** — all computed live.
 
+### Batch A (2026-05-18) — pre-Phase-1 cleanup pass
+
+- **GST portal cleanup.** Removed the GSTN OTP / auto-file-GSTR-1 mock (`GstnSheet`) and the "GSTN portal" section in Settings. Dropped the third "GST Pro" plan tier — plan picker is now 2 tiers (Engine, Channels). Invoice features (per-booking toggle, monthly CA export, Reports invoicing summary) are now universal, not plan-gated. Existing `plan === 'gst'` users auto-migrate to `'engine'` on load. The per-booking GST toggle is reworded to "Include in invoice register" on both NewBooking and BookingDetail. Stale i18n keys + Hindi mirrors removed.
+- **Property ↔ Diary disconnect bug fixed.** New `effectiveRoomTypes(property)` helper in `data.js` reads from `property.categories` (with `ROOM_TYPES` colour tags layered in for known ids). Diary / Dashboard / Reports / NewBooking / BookingDetail / Rates all use this — so renaming a room type in Settings, changing its unit count, or its base rate flows through to the calendar immediately. ROOM_TYPES is now just the seed/default.
+- **Channels = "Coming soon"** state. Replaced the fake event stream + dead "Push now" button with an honest panel explaining what 2-way OTA sync will do once a channel-manager partnership lands.
+- **Discounts UI removed** from Rates — was a coupon/early-bird/last-minute form that wasn't wired to anything. `DiscountForm` deleted; related i18n keys removed.
+- **Multi-state GST** — new `INDIAN_STATES` list and `getTaxBreakdown(booking, property)` helper. Voucher / invoice templates and the BookingDetail folio + NewBooking summary all split tax as **CGST 6% + SGST 6%** (intra-state) or **IGST 12%** (inter-state — guest from different state OR foreign). NewBooking Step 3 gains an optional "State (for tax)" picker for Indian guests.
+- **Diary horizon picker** (14d / 30d / 60d / 90d chips at the top of the filter row). `generateDays()` extends the seed window when the chosen horizon exceeds DAYS.length. `RoomTypeBlock` now takes a `days` prop.
+- **Reports plain-English KPIs.** "Revenue / Avg occupancy / ADR / RevPAR" → "Money earned / Rooms full / Per room/night / Per room/day", with sub-labels explaining each one. "GST Applicability" card → "Invoicing summary" ("Goes to CA" / "Skipped"). "GSTR-1 next due" compliance line removed (CA handles filings).
+- **Desktop frame.** `index.html` already centres the app inside a max-width 430px phone frame on viewports ≥ 500px (rounded corners + shadow). `applyTheme()` now also syncs `<meta name="theme-color">` so mobile browser chrome matches the picked brand colour.
+
+### Batch B (2026-05-18) — onboarding + intelligence
+
+- **Repeat-guest auto-detect.** `normPhone()` + `repeatGuestKeys()` helpers in `data.js`. Guests with 2+ non-cancelled bookings (matched by normalised phone) get a green "Repeat" badge on Dashboard arrivals and a `Nth stay` chip on BookingDetail.
+- **Today's nudges** card on Dashboard. Action-oriented suggestions computed from booking state: WhatsApp directions to guests arriving tomorrow, Form C readiness for foreign guests on-property, "X holds expire in 4h" warning. Card hides when nothing's urgent.
+- **Daily cash close** (the deferred end-of-day feature). End-of-day card on Dashboard with an inline form: cash counted + digital + optional note. Saves a per-day snapshot to `localStorage['atithi.cashCloses.v1']` keyed by ISO date. After closing, shows "Closed at HH:MM" with the gap vs billed total. Reopen button restores the form. Today's date currently hardcoded to `'2026-05-05'` for the demo — Phase 1 will use `new Date()`.
+- **Setup checklist nudge** on Dashboard. Shows while any of five essentials is missing (property name, phone, address, CA email, room categories). Progress bar + tappable items → opens Settings. Auto-hides at 5/5. Default seed has CA email empty, so the card surfaces immediately on first launch and walks the hotelier into Settings to fill it in.
+
 ---
 
 ## What still needs work
 
-### Deferred features (per user, in order)
-1. **End-of-day cash reconciliation section** — owner asked to add after the pending-payments card has been used a bit. Day-end: enter total cash collected, system suggests allocation to bookings. (See `~/.claude/projects/C--atithi/memory/atithi_followups.md`.)
-2. **Reports screen plain-English pass** — same treatment as Dashboard's "Earned this month" card. "ADR / RevPAR / Avg occupancy" → plain words a non-school-educated owner understands.
-
 ### Renames still pending (low priority — cosmetic only)
 - `gstApplies` field could be renamed to `includeInvoice` to match the new CA-handoff framing (UI already says "Include in invoice"-style copy)
-- Reports "GST Applicability" card could be rebranded as "Invoicing summary"
 
 ### Functional gaps (UI-only, waiting on external services — see Production roadmap below)
-- **Channels** — OTA event stream is fake; "Push now" has no effect (needs channel manager partnership)
-- **Settings property profile categories** persist, but they don't influence `ROOM_TYPES` (which is the source of truth for Diary/Booking). Editing categories is currently form-only.
+- **Channels** — UI now an honest "Coming soon" panel. Real two-way sync needs channel manager partnership (Phase 5)
 - **Form C filing** — UI works, no e-FRRO API integration
-- **GSTR-1 filing** — not in scope; we hand to the CA instead
-- **WhatsApp confirmations** — UI works, no real Business API hookup
-- **Razorpay UPI QR** — fake SVG, needs real Razorpay or raw UPI deeplink
-- **OTA channel sync** — bookings from MMT/Goibibo/etc. don't flow in (channel manager partnership)
-- **Email-to-CA "send"** — currently opens `mailto:` and a printable register tab. No actual SMTP — the hotelier saves the PDF themselves and replies-with-attachment.
-- **localStorage-only persistence** — data lives in the browser. Lost on browser wipe; no cross-device sync. Phase 1 of the roadmap below.
+- **WhatsApp confirmations** — UI works, no real Business API hookup (Phase 3)
+- **Razorpay UPI QR** — fake SVG, needs real Razorpay or raw UPI deeplink (Phase 2)
+- **OTA channel sync** — bookings from MMT/Goibibo/etc. don't flow in (Phase 5)
+- **Email-to-CA "send"** — currently opens `mailto:` and a printable register tab. No actual SMTP — the hotelier saves the PDF themselves and replies-with-attachment (Phase 3 — Resend)
+- **localStorage-only persistence** — data lives in the browser. Lost on browser wipe; no cross-device sync (Phase 1 — Supabase)
 
-### Polish opportunities
+### Polish opportunities (frontend, no backend dependency)
 - Hindi translations for older UI strings (invoice section, accountant section, Reports labels still English-only)
 - Editable saved-custom-extra prices (currently can only delete)
 - Undo for cancellations / auto-releases
-- Configurable Diary horizon (currently hardcoded 14 days)
+- Voice notes on bookings (browser MediaRecorder API)
+- Global search bar (across all bookings/guests)
+- Bulk actions (block dates, WhatsApp arrivals, etc.)
+- Guest direct edit (currently only via their booking)
+- Side-by-side panels on tablet+ (currently always a phone-frame on desktop)
 
 ---
 

@@ -16,7 +16,7 @@ function initialsOf(name) {
   return (name || '').trim().split(/\s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
 }
 
-function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
+function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown }) {
   const ch = CHANNELS[b.channel];
   const isHold = b.status === 'tentative';
   const isCheckedin = b.status === 'checkedin';
@@ -93,7 +93,11 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
       title={`${b.guest}${b.vip ? ' · VIP' : ''}`}
       style={{
         position: 'absolute',
-        left: labelW + (b.startIdx + dx) * colW + 3,
+        // viewDaysStart is the idx of viewDays[0] — usually negative now
+        // because the Diary shows past days too. Subtract it so a booking
+        // at startIdx 0 (today) lands in today's column rather than at the
+        // far-left edge.
+        left: labelW + (b.startIdx + dx - viewDaysStart) * colW + 3,
         width: totalW,
         top: 4, bottom: 4,
         background: bg,
@@ -159,8 +163,18 @@ function BookingPill({ b, colW, labelW, dx, onPointerDown }) {
   );
 }
 
-function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days }) {
+function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart }) {
   const tagColor = T[rt.tag];
+  // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
+  // booking. Used to decide whether to make the cell clickable for quick-
+  // create.
+  const isOccupied = (ui, dayIdx) => bookings.some(b =>
+    b.unitIdx === ui && b.status !== 'cancelled' &&
+    b.startIdx <= dayIdx && dayIdx < (b.startIdx + (b.nights || 1))
+  );
+  const openQuickCreate = (date) => {
+    if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
+  };
   return (
     <div>
       <div onClick={onToggle} style={{ display: 'flex', borderBottom: `1px solid ${T.borderSoft}`, background: T.card, cursor: 'pointer' }}>
@@ -172,8 +186,8 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
             <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} units · ₹{rt.base.toLocaleString('en-IN')}</div>
           </div>
         </div>
-        {days.map((d, i) => (
-          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
+        {days.map(d => (
+          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: d.iso === todayIso ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
         ))}
       </div>
       {!collapsed && Array.from({ length: rt.units }).map((_, ui) => {
@@ -194,14 +208,31 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
             <div style={{ width: labelW, flexShrink: 0, padding: '0 10px', borderRight: `1px solid ${T.borderSoft}`, background: T.card, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 10, fontWeight: 600, color: T.ink3, letterSpacing: 0.4 }}>#{ui + 1}</span>
             </div>
-            {days.map((d, i) => (
-              <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
-            ))}
+            {days.map(d => {
+              const occupied = isOccupied(ui, d.idx);
+              const isToday = d.iso === todayIso;
+              return (
+                <div
+                  key={d.iso}
+                  onClick={occupied ? undefined : () => openQuickCreate(d.iso)}
+                  title={occupied ? undefined : `New booking · ${rt.name} #${ui + 1} · ${d.dow} ${d.dom} ${d.month}`}
+                  style={{
+                    width: colW, flexShrink: 0,
+                    borderRight: `1px solid ${T.borderSoft}`,
+                    background: isToday ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent',
+                    cursor: occupied ? 'default' : 'pointer',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={occupied ? undefined : (e) => { e.currentTarget.style.background = `color-mix(in oklch, ${T.primary} 8%, white)`; }}
+                  onMouseLeave={occupied ? undefined : (e) => { e.currentTarget.style.background = isToday ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent'; }}
+                />
+              );
+            })}
             {bookings.filter(b => b.unitIdx === ui).map(b => {
               const dx = drag && drag.id === b.id ? drag.dx : 0;
               return (
                 <BookingPill
-                  key={b.id} b={b} colW={colW} labelW={labelW} dx={dx}
+                  key={b.id} b={b} colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
                   onPointerDown={(e) => onPointerDown(e, b)}
                 />
               );
@@ -232,13 +263,13 @@ const matchesFilter = (b, filter) => {
 
 const HORIZONS = [14, 30, 60, 90];
 
-// Generate a contiguous day-meta array of length `n` starting from ANCHOR
-// (today). Reuses DAYS for the first 14 entries so identity-stable refs
-// flow through downstream memoisation; computes the tail dynamically.
-function generateDays(n) {
-  if (n <= DAYS.length) return DAYS.slice(0, n);
-  const out = [...DAYS];
-  for (let i = DAYS.length; i < n; i++) {
+// Generate a contiguous day-meta array running from `-pastN` to `futureN - 1`
+// relative to ANCHOR (today). Negative idx values represent past dates,
+// 0 is today, positive is the future. This lets the Diary show recent
+// past bookings instead of jumping straight to today.
+function generateDays(pastN, futureN) {
+  const out = [];
+  for (let i = -pastN; i < futureN; i++) {
     const d = new Date(ANCHOR);
     d.setDate(d.getDate() + i);
     out.push({
@@ -268,35 +299,45 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   const [confirmDrop, setConfirmDrop] = useState(null);
   const [filter, setFilter] = useState('all');
   // Jump-to-date: picking a date scrolls the diary to that column and
-  // auto-extends the horizon if the date is past the current window.
+  // auto-extends the horizon (forward) or pastDays (backward) so the
+  // picked date is in view.
   const [jumpDate, setJumpDate] = useState('');
+  // Show 7 days of recent history by default. Bumps automatically when
+  // the hotelier jumps to an older date via the date picker.
+  const [pastDays, setPastDays] = useState(7);
   const scrollRef = useRef(null);
   const colW = zoom;
   const rowH = 36;
   const labelW = 110;
   const ROOM_TYPES = effectiveRoomTypes(property);
-  const viewDays = useMemo(() => generateDays(horizon), [horizon]);
+  const viewDays = useMemo(() => generateDays(pastDays, horizon), [pastDays, horizon]);
+  const viewDaysStart = viewDays.length > 0 ? viewDays[0].idx : 0;
+  const todayIso = ymd(ANCHOR);
 
-  // When the owner picks a date, auto-bump the horizon if needed and scroll
-  // horizontally to that column. Runs after viewDays updates so the column
-  // exists by the time we set scrollLeft.
+  // When the owner picks a date, auto-extend past/horizon if the date is
+  // outside the current window, then scroll horizontally so the column is
+  // visible. Runs after viewDays updates so the column exists by the time
+  // we set scrollLeft.
   useEffect(() => {
     const idx = isoToDayIdx(jumpDate);
-    if (idx == null || idx < 0) return;
-    if (idx >= horizon) {
-      // Pick the next bigger horizon that fits the target date.
+    if (idx == null) return;
+    if (idx < 0 && Math.abs(idx) > pastDays) {
+      // Picked a date further into the past than we currently show.
+      setPastDays(Math.min(60, Math.abs(idx) + 3));
+    } else if (idx >= horizon) {
       const next = HORIZONS.find(h => h > idx) || HORIZONS[HORIZONS.length - 1];
       if (next !== horizon) setHorizon(next);
     }
-    // Scroll on the next frame so the grid has re-rendered with the new horizon.
+    // Scroll on the next frame so the grid has re-rendered.
     const tid = setTimeout(() => {
       if (scrollRef.current) {
-        const target = labelW + idx * colW - 40; // small offset so target column isn't flush left
+        const colFromStart = idx - viewDaysStart;
+        const target = labelW + colFromStart * colW - 40;
         scrollRef.current.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
       }
     }, 80);
     return () => clearTimeout(tid);
-  }, [jumpDate, horizon, colW, labelW]);
+  }, [jumpDate, horizon, pastDays, colW, labelW, viewDaysStart]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
   const counts = {
@@ -344,14 +385,27 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
         go('booking', b.id);
         return;
       }
-      const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
+      // Clamp newStart to within the visible window. viewDaysStart is
+      // typically negative (we show past context), so the lower bound has
+      // to be `viewDaysStart`, not 0.
+      const minIdx = viewDaysStart;
+      const maxIdx = viewDaysStart + viewDays.length - b.nights;
+      const newStart = Math.max(minIdx, Math.min(maxIdx, origStart + dx));
       setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
 
-  const fmtDate = (idx) => { const d = viewDays[idx] || DAYS[idx]; return d ? `${d.dow} ${d.dom} ${d.month}` : ''; };
+  // Find a viewDays entry by its absolute idx (not array position). Falls
+  // back to computing the date fresh when idx is outside the visible range.
+  const fmtDate = (idx) => {
+    const d = viewDays.find(x => x.idx === idx);
+    if (d) return `${d.dow} ${d.dom} ${d.month}`;
+    const dt = new Date(ANCHOR);
+    dt.setDate(dt.getDate() + idx);
+    return dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
 
   const newRt = confirmDrop && confirmDrop.newSlot ? ROOM_TYPES.find(r => r.id === confirmDrop.newSlot.roomTypeId) : null;
   const origRt = confirmDrop ? ROOM_TYPES.find(r => r.id === confirmDrop.b.roomTypeId) : null;
@@ -381,9 +435,51 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
           <button onClick={() => setZoom(z => Math.min(90, z + 10))} style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>
         </div>}
       />
+      {/* Jump-to-date bar — full-width, prominent. The whole row is the click
+          target: the <input type="date"> sits over it at opacity 0 so a
+          tap anywhere opens the native picker. Scrolls the grid horizontally
+          to the picked date and auto-extends pastDays / horizon if needed. */}
+      <div style={{ padding: '10px 16px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>
+        <div style={{
+          position: 'relative',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '11px 14px',
+          background: jumpDate ? T.primaryLt : T.bgSoft,
+          border: `1.5px solid ${jumpDate ? T.primary : T.borderSoft}`,
+          borderRadius: 12,
+        }}>
+          <Icon name="cal" size={16} color={jumpDate ? T.primaryDk : T.ink2} stroke={2} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2 }}>
+            {jumpDate
+              ? new Date(jumpDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+              : 'Jump to date — tap to pick a day'}
+          </span>
+          <div style={{ flex: 1 }} />
+          {jumpDate && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setJumpDate(''); }}
+              style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: T.primaryDk, display: 'flex' }}
+              aria-label="Clear date"
+            >
+              <Icon name="x" size={14} stroke={2.2} />
+            </button>
+          )}
+          <input
+            type="date"
+            value={jumpDate}
+            onChange={(e) => setJumpDate(e.target.value)}
+            aria-label="Jump to date"
+            style={{
+              position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
+              border: 'none', outline: 'none', cursor: 'pointer', padding: 0,
+            }}
+          />
+        </div>
+      </div>
+
       <div style={{ padding: '10px 16px', display: 'flex', gap: 8, overflowX: 'auto', borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center' }}>
-        {/* Horizon picker — how many days the Diary shows ahead. Default 14;
-            owners planning ahead can stretch to 30/60/90. */}
+        {/* Horizon picker — how many days forward the Diary shows. The
+            preceding date bar handles past dates via auto-extension. */}
         {HORIZONS.map(h => {
           const active = horizon === h;
           return (
@@ -402,25 +498,6 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
             >{h}d</button>
           );
         })}
-        <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
-        {/* Jump to date — picks a column and auto-scrolls. If the target
-            date is beyond the current horizon, horizon expands to fit. */}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 9px', borderRadius: 999, background: jumpDate ? T.primaryLt : T.bgSoft, border: `1px solid ${jumpDate ? T.primary : T.borderSoft}`, whiteSpace: 'nowrap' }}>
-          <Icon name="cal" size={11} color={jumpDate ? T.primaryDk : T.ink3} />
-          <input
-            type="date"
-            value={jumpDate}
-            onChange={(e) => setJumpDate(e.target.value)}
-            className="tnum"
-            aria-label="Jump to date"
-            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 11, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2, minWidth: 0, padding: 0 }}
-          />
-          {jumpDate && (
-            <button onClick={() => setJumpDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.primaryDk, display: 'flex' }} aria-label="Clear date">
-              <Icon name="x" size={11} stroke={2.2} />
-            </button>
-          )}
-        </div>
         <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
         {FILTERS.map(f => {
           const active = filter === f.id;
@@ -457,8 +534,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${new Date(ANCHOR).getFullYear()}` : ''}</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} stays</div>
             </div>
-            {viewDays.map((d, i) => {
-              const isToday = i === 0;
+            {viewDays.map((d) => {
+              const isToday = d.iso === todayIso;
               return (
                 <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}` }}>
                   {isToday ? (
@@ -482,13 +559,16 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
             <div style={{ width: labelW, flexShrink: 0, padding: '6px 10px', borderRight: `1px solid ${T.borderSoft}` }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>OCCUPANCY</div>
             </div>
-            {viewDays.map((d, i) => {
+            {viewDays.map((d) => {
               const activeBookings = bookings.filter(b => b.status !== 'cancelled');
-              const occRooms = activeBookings.filter(b => b.startIdx <= i && b.startIdx + b.nights > i).length;
+              // Compare against this day's actual idx (which may be negative
+              // for past-context columns), not its position in the array.
+              const occRooms = activeBookings.filter(b => b.startIdx <= d.idx && b.startIdx + b.nights > d.idx).length;
               const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
-              const occ = Math.round((occRooms / totalRooms) * 100);
+              const occ = totalRooms > 0 ? Math.round((occRooms / totalRooms) * 100) : 0;
+              const isToday = d.iso === todayIso;
               return (
-                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : 'transparent' }}>
+                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: isToday ? T.primaryLt : 'transparent' }}>
                   <div className="tnum" style={{ fontSize: 11, fontWeight: 700, color: occ > 80 ? T.danger : occ > 50 ? 'oklch(48% 0.14 75)' : T.ok }}>{occ}%</div>
                 </div>
               );
@@ -506,6 +586,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               onPointerDown={onPointerDown}
               go={go}
               days={viewDays}
+              todayIso={todayIso}
+              viewDaysStart={viewDaysStart}
             />
           ))}
         </div>

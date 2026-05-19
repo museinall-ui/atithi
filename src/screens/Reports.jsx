@@ -102,8 +102,11 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const reconciliationGaps = invoiceable.filter(b =>
       (b.status === 'checkedin' || b.status === 'checkout') && (b.paid || 0) < (b.total || 0)
     );
+    // idx 0 is today in the new anchor model; an overdue arrival is any
+    // confirmed booking whose start date is on/before today with balance
+    // still due.
     const overdueArrivals = invoiceable.filter(b =>
-      b.status === 'confirmed' && b.startIdx <= 1 && (b.paid || 0) < (b.total || 0)
+      b.status === 'confirmed' && b.startIdx <= 0 && (b.paid || 0) < (b.total || 0)
     );
     const gapCount = reconciliationGaps.length + overdueArrivals.length;
     const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
@@ -113,7 +116,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('reportsTitle')} subtitle={`May 2026 · ${stats.totalUnits} units · live`} onBack={() => go('home')}
+      <ScreenHeader title={t('reportsTitle')} subtitle={`${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · ${stats.totalUnits} units · live`} onBack={() => go('home')}
         right={<Btn size="sm" variant="ghost" icon="download">Export</Btn>}
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>

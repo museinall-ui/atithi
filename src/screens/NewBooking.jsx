@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, INDIAN_STATES, effectiveRoomTypes } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -384,26 +384,6 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
               </div>
             )}
           </div>
-          {!isForeign && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>State (for tax)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44 }}>
-                <Icon name="flag" size={12} color={T.ink3} />
-                <select
-                  value={data.state || ''}
-                  onChange={(e) => set('state', e.target.value)}
-                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, fontWeight: 500, color: data.state ? T.ink : T.ink3, appearance: 'none', cursor: 'pointer' }}
-                >
-                  <option value="">— Optional · for GST split —</option>
-                  {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <Icon name="chevD" size={14} color={T.ink3} />
-              </div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
-                Same state as property → CGST + SGST. Different state → IGST. Leave blank if unsure.
-              </div>
-            </div>
-          )}
           <Field label="Mobile" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder="98100 00000 (required)" />
           <Field label="Email (optional)" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="guest@email.com" />
           {(!data.name.trim() || data.phone.trim().length < 6) && (
@@ -525,7 +505,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, interState, roomsSubtotal, extrasTotal, t }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, t }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Card padding={16}>
@@ -545,9 +525,8 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, interState, roo
         </div>
         <Row label={`Tariff · ${data.nights}N × ${data.roomItems.length} room${data.roomItems.length>1?'s':''}`} value={`₹${roomsSubtotal.toLocaleString('en-IN')}`} />
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
-        {withTax && interState && <Row label="IGST 12%" value={`₹${gst.toLocaleString('en-IN')}`} />}
-        {withTax && !interState && <Row label="CGST 6%" value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
-        {withTax && !interState && <Row label="SGST 6%" value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label="CGST 6%" value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label="SGST 6%" value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
         <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
         <Row label={t('total')} value={`₹${total.toLocaleString('en-IN')}`} bold />
       </Card>
@@ -628,7 +607,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       };
     }
     return {
-      checkIn: '04 May 2026', nights: 2,
+      checkIn: '04 May 2026', nights: 1,
       roomTypeId: null,
       roomItems: [{ adults: 2, children: 0, rate: null }],
       name: '', phone: '', email: '', country: 'IN', state: '', gstin: '',
@@ -646,11 +625,6 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   // GST/invoice inclusion is per-booking now (no plan gating). Defaults
   // channel-based: direct/cash off, OTA on. Hotelier flips via the toggle.
   const withTax = !!data.gstApplies;
-  // Inter-state supply triggers IGST instead of CGST+SGST. True when guest is
-  // foreign OR the guest's recorded state differs from the property's state.
-  const propState = (property?.profile?.state || '').trim().toLowerCase();
-  const guestState = (data.state || '').trim().toLowerCase();
-  const interState = data.country !== 'IN' || (!!propState && !!guestState && propState !== guestState);
   const baseRate = rt ? rt.base : 0;
 
   // Rate per night: respects overrides set in Rates screen + weekend factor.
@@ -713,7 +687,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} baseRate={baseRate} rateForNight={rateForNight} roomTypes={ROOM_TYPES} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} interState={interState} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

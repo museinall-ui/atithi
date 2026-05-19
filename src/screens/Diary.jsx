@@ -288,11 +288,15 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
     const startX = e.clientX;
     const startY = e.clientY;
     const origStart = b.startIdx;
-    let moved = false; // becomes true once the pointer travels far enough to count as a drag
+    // Tap vs drag: any pointer travel above this radius counts as a drag.
+    // Slightly looser than the previous 4px to absorb touch-screen jitter
+    // (which was causing taps to bleed into the move-confirmation dialog).
+    const DRAG_THRESHOLD = 8;
+    let moved = false;
     const move = (ev) => {
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
-      if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) moved = true;
+      if (Math.abs(ev.clientX - startX) > DRAG_THRESHOLD || Math.abs(ev.clientY - startY) > DRAG_THRESHOLD) moved = true;
       setDrag({ id: b.id, dx, target });
     };
     const up = (ev) => {
@@ -301,17 +305,20 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
       setDrag(null);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      // Pure tap (pointer never travelled past the threshold) → always open
+      // the booking, never the move-confirmation dialog. The move dialog is
+      // only reachable through an actual drag.
+      if (!moved) {
+        go('booking', b.id);
+        return;
+      }
       const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = newStart !== origStart;
       if (slotChanged || dateChanged) {
-        // Pointer travelled to a different slot/date → ask for confirmation, do not navigate.
         setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
-      } else if (!moved) {
-        // Treat as a tap → open the booking. Done here so the synthetic click that follows
-        // pointerup can't race ahead and navigate after a real drag was attempted.
-        go('booking', b.id);
       }
+      // else: drag completed in place — no-op.
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);

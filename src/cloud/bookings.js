@@ -311,18 +311,35 @@ export async function issueInvoiceCloud({ bookingId, fy, amount, recipient, item
     p_items: items || null,
     p_note: note || '',
   });
-  if (error) throw error;
-  // The stored proc returns one invoices row.
+  if (error) {
+    // PostgREST errors carry the Postgres details on .details / .hint / .code.
+    // Log them so the developer can diagnose RLS or constraint failures from
+    // the browser console without needing to inspect the network tab.
+    console.error('[atithi] issue_invoice RPC error', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+  // PostgREST returns single-row functions as an object, but historically
+  // some setups deserialise as a single-element array. Handle both.
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || !row.id) {
+    console.error('[atithi] issue_invoice returned no row', data);
+    throw new Error('issue_invoice returned no row');
+  }
   return {
-    id: data.id,
-    number: data.number,
-    fy: data.fy,
-    date: data.issued_at,
-    amount: data.amount || 0,
-    recipient: data.recipient || { name: '', gstin: '', address: '' },
-    items: data.items,
-    note: data.note || '',
-    voided: !!data.voided,
+    id: row.id,
+    number: row.number,
+    fy: row.fy,
+    date: row.issued_at,
+    amount: row.amount || 0,
+    recipient: row.recipient || { name: '', gstin: '', address: '' },
+    items: row.items,
+    note: row.note || '',
+    voided: !!row.voided,
   };
 }
 

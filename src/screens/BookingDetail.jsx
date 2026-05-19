@@ -140,11 +140,19 @@ function fmtIssued(iso) {
 //     hotelier already quoted a tax-inclusive figure to the guest.
 //   * exclusive: the entered amount is pre-tax; CGST 6% + SGST 6% are added
 //     on top to compute the invoice total.
-function IssueInvoiceSheet({ booking, onClose, onIssue }) {
+function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   const [name, setName] = useState(booking.guest || '');
   const [gstin, setGstin] = useState('');
-  const [amount, setAmount] = useState(booking.total || 0);
+  const [amount, setAmount] = useState(defaultAmount != null ? defaultAmount : (booking.total || 0));
   const [amountIncludesTax, setAmountIncludesTax] = useState(true);
+  const kindLabel = kind === 'advance' ? 'Advance invoice'
+    : kind === 'balance' ? 'Balance invoice'
+    : kind === 'full' ? 'Full invoice'
+    : 'Tax invoice';
+  const kindHint = kind === 'advance' ? `Guest has paid an advance of ₹${(defaultAmount || 0).toLocaleString('en-IN')}. Issue an invoice for that amount now; balance invoice goes out at check-out.`
+    : kind === 'balance' ? `An earlier advance invoice exists. This one covers the remaining ₹${(defaultAmount || 0).toLocaleString('en-IN')}.`
+    : kind === 'full' ? `Issue one invoice for the full booking amount.`
+    : null;
 
   const baseAmount = +amount || 0;
   const gst = amountIncludesTax
@@ -175,10 +183,21 @@ function IssueInvoiceSheet({ booking, onClose, onIssue }) {
             <Icon name="download" size={16} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Issue tax invoice</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {kindLabel}
+              {kind && kind !== 'full' && (
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.6, padding: '2px 6px', borderRadius: 4, background: kind === 'advance' ? T.warnLt : T.indigoLt, color: kind === 'advance' ? 'oklch(40% 0.14 75)' : T.indigo, textTransform: 'uppercase' }}>{kind}</span>
+              )}
+            </div>
             <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>Once issued, the invoice number is locked (GST requirement).</div>
           </div>
         </div>
+
+        {kindHint && (
+          <div style={{ padding: '8px 10px', background: kind === 'advance' ? T.warnLt : T.indigoLt, borderRadius: 8, marginBottom: 10, fontSize: 11, color: kind === 'advance' ? 'oklch(35% 0.14 75)' : T.indigo, fontWeight: 600, lineHeight: 1.4 }}>
+            {kindHint}
+          </div>
+        )}
 
         <div style={{ background: T.bgSoft, borderRadius: 10, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>BOOKING TOTAL</span>
@@ -301,6 +320,22 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const invoicedAmount = activeInvoices.reduce((s, inv) => s + (inv.amount || 0), 0);
   const remainingToInvoice = (b.total || 0) - invoicedAmount;
 
+  // Smart "next invoice" default. Atithi splits an advance receipt and a
+  // final balance into two invoices automatically:
+  //   * No invoices yet + booking partially paid -> 'advance' for the paid bit.
+  //   * No invoices yet + fully paid -> 'full' for the whole booking.
+  //   * Some invoices issued + more paid since -> 'balance' for the new bit.
+  // The hotelier can still override the amount manually before issuing.
+  const paidNotInvoiced = Math.max(0, (b.paid || 0) - invoicedAmount);
+  const invoiceKind = activeInvoices.length > 0
+    ? 'balance'
+    : (b.paid || 0) < (b.total || 0) && paidNotInvoiced > 0
+      ? 'advance'
+      : 'full';
+  const invoiceDefaultAmount = invoiceKind === 'full'
+    ? remainingToInvoice
+    : Math.min(paidNotInvoiced || remainingToInvoice, remainingToInvoice);
+
   useEffect(() => {
     setWaStatus('sent');
     const t1 = setTimeout(() => setWaStatus('delivered'), 1400);
@@ -401,7 +436,28 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               </div>
             </div>
             <div style={{ height: 1, background: T.borderSoft, margin: '14px 0' }} />
-            <Row label="Room" value={`${rt.name} · #${b.unitIdx + 1}`} />
+            {/* Multi-room bookings can mix types now. Show one line per
+                room. Falls back to the single-room legacy display when
+                roomItems is missing or has only one entry. */}
+            {(() => {
+              const items = b.roomItems && b.roomItems.length > 0 ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
+              if (items.length === 1) {
+                const item = items[0];
+                const itemRt = ROOM_TYPES.find(r => r.id === (item.roomTypeId || b.roomTypeId));
+                return <Row label="Room" value={`${itemRt ? itemRt.name : '—'} · #${(item.unitIdx ?? b.unitIdx ?? 0) + 1}`} />;
+              }
+              return (
+                <Row label="Rooms" value={
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+                    {items.map((item, i) => {
+                      const itemRt = ROOM_TYPES.find(r => r.id === (item.roomTypeId || b.roomTypeId));
+                      const unit = item.unitIdx != null ? `#${item.unitIdx + 1}` : (i === 0 && b.unitIdx != null ? `#${b.unitIdx + 1}` : '');
+                      return <span key={i}>{itemRt ? itemRt.name : '—'}{unit ? ` · ${unit}` : ''}</span>;
+                    })}
+                  </div>
+                } />
+              );
+            })()}
             <Row label="Channel" value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
             {isInvoicingPlan && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
@@ -580,6 +636,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           {invoiceOpen && (
             <IssueInvoiceSheet
               booking={{ ...b, total: remainingToInvoice }}
+              defaultAmount={invoiceDefaultAmount}
+              kind={invoiceKind}
               onClose={() => setInvoiceOpen(false)}
               onIssue={(parts) => onIssueInvoice && onIssueInvoice(b.id, parts)}
             />

@@ -33,8 +33,12 @@ export function generateVoucher(b, rt, property, invoice) {
   const recipientGstin = isInvoice ? (invoice.recipient?.gstin || '') : '';
   const invoiceDate = isInvoice && invoice.date ? new Date(invoice.date) : new Date();
   const addressLine = [p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ');
-  const checkIn = new Date(2026, 4, 4 + (b.startIdx || 0));
-  const checkOut = new Date(2026, 4, 4 + (b.startIdx || 0) + b.nights);
+  // ANCHOR is local midnight of today; offset by startIdx to get the booking dates.
+  const _anchor = new Date(); _anchor.setHours(0, 0, 0, 0);
+  const checkIn = new Date(_anchor);
+  checkIn.setDate(checkIn.getDate() + (b.startIdx || 0));
+  const checkOut = new Date(_anchor);
+  checkOut.setDate(checkOut.getDate() + (b.startIdx || 0) + b.nights);
   const fmtDate = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   const fmtINR = (n) => '₹' + (n || 0).toLocaleString('en-IN');
   const balance = (b.total || 0) - (b.paid || 0);

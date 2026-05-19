@@ -1,20 +1,18 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { DAYS } from '../data.js';
+import { DAYS, dateToIdx } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Field from '../components/Field.jsx';
 import Avatar from '../components/Avatar.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 
-// Map a YYYY-MM-DD string (from <input type="date">) to a day index relative to
-// DAYS[0] (May 4, 2026). Returns null if unparseable.
+// Map a YYYY-MM-DD string (from <input type="date">) to a day index
+// relative to DAYS[0] (today). Returns null if empty/unparseable.
 function dateToDayIdx(yyyymmdd) {
   if (!yyyymmdd) return null;
-  const parsed = new Date(yyyymmdd + 'T00:00:00');
-  if (isNaN(parsed.getTime())) return null;
-  const baseDay = new Date(2026, 4, 4);
-  return Math.round((parsed - baseDay) / (24 * 3600 * 1000));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return null;
+  return dateToIdx(yyyymmdd);
 }
 
 const iconBtn2 = {

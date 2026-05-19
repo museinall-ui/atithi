@@ -1,28 +1,11 @@
 import { supabase } from '../supabase.js';
+import { idxToDate, dateToIdx } from '../data.js';
 
-// ----------------------------------------------------------------------------
-// Date <-> day-index conversion
-//
-// The UI thinks in day indexes (0 = May 4 2026 — the seed anchor inside
-// DAYS in data.js). The cloud stores real DATE values. Keep the anchor
-// stable so existing screens stay untouched; later phases can switch the
-// anchor to "today" once we're confident.
-// ----------------------------------------------------------------------------
-
-const DEMO_ANCHOR = new Date(2026, 4, 4);
-
-export function idxToDate(idx) {
-  const d = new Date(DEMO_ANCHOR);
-  d.setDate(d.getDate() + (idx || 0));
-  return d.toISOString().slice(0, 10);
-}
-
-export function dateToIdx(dateStr) {
-  if (!dateStr) return 0;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return 0;
-  return Math.round((d - DEMO_ANCHOR) / (24 * 3600 * 1000));
-}
+// Date <-> day-index helpers live in data.js now (anchored at today, local
+// midnight, with proper local-date formatting to avoid the UTC drift that
+// the old toISOString() approach had). Re-export here so existing cloud
+// callers (and any external imports) keep working.
+export { idxToDate, dateToIdx };
 
 // ----------------------------------------------------------------------------
 // Shape converters

@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, effectiveRoomTypes } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
+import {
+  loadBookings, seedBookings,
+  createBookingCloud, updateBookingCloud,
+  addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
+} from './cloud/bookings.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -25,6 +30,7 @@ const LS_KEYS = {
   plan: 'atithi.plan.v1',
   lang: 'atithi.lang.v1',
   property: 'atithi.property.v1',
+  bookingsSeeded: 'atithi.bookings.seeded.v1',  // set once cloud bookings have been seeded for this browser
 };
 
 const DEFAULT_PROPERTY = {
@@ -164,6 +170,15 @@ export default function App() {
   // before the cloud has answered.
   const [propertyId, setPropertyId] = useState(null);
   const [cloudReady, setCloudReady] = useState(false);
+  // Refs mirror state for use inside callbacks that close over older renders
+  // (the 30s auto-release ticker, in particular, is registered once on mount
+  // and can't depend on cloudReady/propertyId/session changing).
+  const propertyIdRef = useRef(null);
+  const cloudReadyRef = useRef(false);
+  const sessionRef = useRef(null);
+  useEffect(() => { propertyIdRef.current = propertyId; }, [propertyId]);
+  useEffect(() => { cloudReadyRef.current = cloudReady; }, [cloudReady]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
   const t = useT(lang);
 
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
@@ -198,9 +213,10 @@ export default function App() {
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
 
-  // Cloud property load / bootstrap. Runs whenever the signed-in user
-  // changes. On first sign-in (no membership yet) we seed the cloud property
-  // from the current localStorage data so customisations carry over.
+  // Cloud load / bootstrap. Runs whenever the signed-in user changes. On
+  // first sign-in we seed the cloud property + bookings from the current
+  // localStorage data so customisations and existing reservations carry
+  // over. Subsequent sign-ins read from the cloud as the source of truth.
   useEffect(() => {
     if (!session) {
       setPropertyId(null);
@@ -211,15 +227,38 @@ export default function App() {
     (async () => {
       try {
         let result = await loadCurrentProperty(session.user.id);
-        if (!result) {
+        const isFirstTime = !result;
+        if (isFirstTime) {
           result = await bootstrapProperty(session.user, property);
         }
         if (cancelled || !result) return;
+
+        // Bookings: load from cloud, seed if empty AND we have local data
+        // AND we haven't seeded already (handles the one-time migration for
+        // existing users whose property was created in Chunk 3 before this
+        // chunk landed).
+        let cloudBookings = await loadBookings(result.id);
+        const seededBefore = !!loadLS(LS_KEYS.bookingsSeeded, false);
+        const shouldSeed = cloudBookings.length === 0
+          && bookings && bookings.length > 0
+          && (isFirstTime || !seededBefore);
+        if (shouldSeed) {
+          await seedBookings(result.id, session.user.id, bookings);
+          saveLS(LS_KEYS.bookingsSeeded, true);
+          cloudBookings = await loadBookings(result.id);
+        } else if (cloudBookings.length > 0 && !seededBefore) {
+          // Cloud already has bookings — mark the flag so we don't ever
+          // re-seed (e.g. after the user intentionally cancels everything).
+          saveLS(LS_KEYS.bookingsSeeded, true);
+        }
+
+        if (cancelled) return;
         setPropertyId(result.id);
         setProperty(result.property);
+        setBookings(cloudBookings);
         setCloudReady(true);
       } catch (err) {
-        console.error('[atithi] cloud property load failed:', err);
+        console.error('[atithi] cloud load failed:', err);
         // Don't block the app — fall back to localStorage data so the
         // hotelier can still work. We retry on next sign-in.
         if (!cancelled) setCloudReady(true);
@@ -246,20 +285,30 @@ export default function App() {
   }, [property, cloudReady, propertyId]);
 
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
+  // Cancellations also sync to the cloud so cross-device state stays consistent.
+  // We use refs (not state values from this closure) because the interval is
+  // set up once on mount and would otherwise hold a stale cloudReady/propertyId.
   useEffect(() => {
     const tick = () => {
       const now = Date.now();
+      const changedIds = [];
       setBookings(arr => {
-        let changed = false;
         const next = arr.map(b => {
           if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && (b.paid || 0) < (b.total || 0)) {
-            changed = true;
+            changedIds.push(b.id);
             return { ...b, status: 'cancelled', autoReleased: true };
           }
           return b;
         });
-        return changed ? next : arr;
+        return changedIds.length ? next : arr;
       });
+      if (cloudReadyRef.current && propertyIdRef.current && changedIds.length) {
+        changedIds.forEach(id => {
+          updateBookingCloud(id, { status: 'cancelled', autoReleased: true }).catch(err => {
+            console.error('[atithi] auto-release cloud sync failed:', err);
+          });
+        });
+      }
     };
     tick();
     const id = setInterval(tick, 30000);
@@ -277,30 +326,56 @@ export default function App() {
   };
 
   const addPayment = (bookingId, entry) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    const existing = booking.payments || (booking.paid > 0
+      ? [{ id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Initial payment', date: '03 May · 18:25' }]
+      : []);
+    const nextPayments = [...existing, entry];
+    const newPaid = nextPayments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
+    // If a hold gets paid in full, auto-confirm.
+    const newStatus = (booking.status === 'tentative' && newPaid >= booking.total) ? 'confirmed' : booking.status;
+    const clearReleaseFields = newStatus === 'confirmed' && booking.status === 'tentative';
+
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
-      const existing = b.payments || (b.paid > 0 ? [{ id: 'p1', kind: 'payment', method: b.channel === 'direct' ? 'upi' : 'card', amount: b.paid, note: 'Initial payment', date: '03 May · 18:25' }] : []);
-      const next = [...existing, entry];
-      const paid = next.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
-      // If a hold gets paid in full, auto-confirm.
-      const status = (b.status === 'tentative' && paid >= b.total) ? 'confirmed' : b.status;
-      const update = { ...b, payments: next, paid, status };
-      if (status === 'confirmed' && b.status === 'tentative') {
+      const update = { ...b, payments: nextPayments, paid: newPaid, status: newStatus };
+      if (clearReleaseFields) {
         delete update.releaseTs; delete update.releaseAt;
       }
       return update;
     }));
+
+    if (cloudReady && propertyId) {
+      addPaymentCloud({
+        bookingId, propertyId,
+        userId: session && session.user && session.user.id,
+        entry, newPaid, newStatus, clearReleaseFields,
+      }).catch(err => console.error('[atithi] add payment cloud failed:', err));
+    }
   };
 
   const setStatus = (bookingId, status) => {
+    const clearRelease = status === 'confirmed' || status === 'cancelled' || status === 'checkedin';
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
       const next = { ...b, status };
-      if (status === 'confirmed' || status === 'cancelled' || status === 'checkedin') {
+      if (clearRelease) {
         delete next.releaseTs; delete next.releaseAt;
       }
       return next;
     }));
+
+    if (cloudReady && propertyId) {
+      const patch = { status };
+      if (clearRelease) {
+        patch.releaseTs = null;
+        patch.releaseAt = null;
+      }
+      updateBookingCloud(bookingId, patch).catch(err =>
+        console.error('[atithi] set status cloud failed:', err)
+      );
+    }
   };
 
   // Push a tentative booking's auto-release deadline further out. Adds `hours`
@@ -308,23 +383,41 @@ export default function App() {
   // and resyncs releaseAt + holdHours so the UI stays in sync.
   const extendHold = (bookingId, hours) => {
     if (!hours || hours <= 0) return;
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking || booking.status !== 'tentative') return;
+    const fromTs = (booking.releaseTs && booking.releaseTs > Date.now()) ? booking.releaseTs : Date.now();
+    const releaseTs = fromTs + hours * 3600 * 1000;
+    const d = new Date(releaseTs);
+    const releaseAt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    const holdHours = (booking.holdHours || 0) + hours;
+
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId || b.status !== 'tentative') return b;
-      const fromTs = (b.releaseTs && b.releaseTs > Date.now()) ? b.releaseTs : Date.now();
-      const releaseTs = fromTs + hours * 3600 * 1000;
-      const d = new Date(releaseTs);
-      const releaseAt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-      const holdHours = (b.holdHours || 0) + hours;
       return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false };
     }));
+
+    if (cloudReady && propertyId) {
+      updateBookingCloud(bookingId, { releaseTs, releaseAt, holdHours, autoReleased: false })
+        .catch(err => console.error('[atithi] extend hold cloud failed:', err));
+    }
   };
 
   const moveBooking = (bookingId, patch) => {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, ...patch } : b));
+    if (cloudReady && propertyId) {
+      updateBookingCloud(bookingId, patch).catch(err =>
+        console.error('[atithi] move booking cloud failed:', err)
+      );
+    }
   };
 
   const setBookingGst = (bookingId, value) => {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, gstApplies: !!value } : b));
+    if (cloudReady && propertyId) {
+      updateBookingCloud(bookingId, { gstApplies: !!value }).catch(err =>
+        console.error('[atithi] set gst cloud failed:', err)
+      );
+    }
   };
 
   // Issue a sequential tax invoice. `parts` is an optional array describing how
@@ -332,9 +425,15 @@ export default function App() {
   // one invoice is issued for the full booking amount with the guest as recipient.
   // Each part: { amount, recipient: { name, gstin?, address? }, items?: [...], note? }
   //
-  // Counter and booking are updated from the same baseSeq snapshot so the invoice
-  // numbers stored on the booking always match the property's counter.
-  const issueInvoice = (bookingId, parts) => {
+  // Online path: each split goes through the issue_invoice() stored procedure,
+  // which atomically bumps the property's per-FY counter and inserts the
+  // invoice row in one transaction. This is the only safe way to guarantee
+  // gap-free numbering under concurrent edits (two staff hitting "Issue" at
+  // the same time can never collide or skip a number).
+  //
+  // Offline path: fall back to the local counter so the hotelier isn't blocked
+  // when the network is down. We'll reconcile in a later chunk.
+  const issueInvoice = async (bookingId, parts) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking || booking.status === 'tentative') return null;
     const splits = (Array.isArray(parts) && parts.length > 0) ? parts : [{
@@ -342,6 +441,43 @@ export default function App() {
       recipient: { name: booking.guest, gstin: '', address: '' },
     }];
     const fy = currentFinancialYear();
+
+    if (cloudReady && propertyId) {
+      try {
+        const issued = [];
+        for (const part of splits) {
+          const inv = await issueInvoiceCloud({
+            bookingId,
+            fy,
+            amount: +part.amount || 0,
+            recipient: part.recipient || { name: booking.guest, gstin: '', address: '' },
+            items: part.items || null,
+            note: part.note || '',
+          });
+          issued.push(inv);
+        }
+        setBookings(arr => arr.map(b => b.id === bookingId
+          ? { ...b, invoices: [...(b.invoices || []), ...issued] }
+          : b));
+        // Mirror the property's per-FY counter from whichever issued invoice
+        // has the highest seq, so local UI (Reports etc.) stays in sync.
+        setProperty(p => {
+          const counters = { ...(p.invoiceCounters || {}) };
+          const highest = issued.reduce((m, inv) => {
+            const seq = parseInt(String(inv.number).split('-').pop(), 10);
+            return isFinite(seq) ? Math.max(m, seq) : m;
+          }, counters[fy] || 0);
+          counters[fy] = highest;
+          return { ...p, invoiceCounters: counters };
+        });
+        return issued;
+      } catch (err) {
+        console.error('[atithi] issue invoice cloud failed:', err);
+        // Fall through to local-only path below.
+      }
+    }
+
+    // Local-only fallback (offline or cloud error).
     const baseSeq = (property.invoiceCounters && property.invoiceCounters[fy]) || 0;
     const nowIso = new Date().toISOString();
     const newInvoices = splits.map((part, i) => ({
@@ -366,6 +502,11 @@ export default function App() {
     setBookings(arr => arr.map(b => b.id === bookingId
       ? { ...b, invoices: (b.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, voided: true } : inv) }
       : b));
+    if (cloudReady && propertyId) {
+      voidInvoiceCloud(invoiceId).catch(err =>
+        console.error('[atithi] void invoice cloud failed:', err)
+      );
+    }
   };
 
   const addSavedCustomExtra = (extra) => {
@@ -378,7 +519,7 @@ export default function App() {
     setSavedCustomExtras(arr => arr.filter(x => x.id !== id));
   };
 
-  const onCreate = (data, total) => {
+  const onCreate = async (data, total) => {
     const paid = data.payAmount === 'full' ? total
       : data.payAmount === 'half' ? Math.round(total / 2)
       : data.payAmount === 'custom' ? Math.min(+data.payCustom || 0, total)
@@ -403,25 +544,38 @@ export default function App() {
     (data.customExtras || []).forEach(addSavedCustomExtra);
 
     if (editing) {
-      setBookings(arr => arr.map(b => b.id === editing ? {
-        ...b, roomTypeId: data.roomTypeId, nights: data.nights, guest: data.name || b.guest,
-        total, paid, phone: dial + ' ' + (data.phone || b.phone.replace(/^\+\d+\s*/, '')),
+      const existing = bookings.find(b => b.id === editing);
+      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
+      const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
+      const patch = {
+        roomTypeId: data.roomTypeId, nights: data.nights,
+        guest: data.name || (existing && existing.guest) || '',
+        total, paid, phone,
         notes: data.notes, extras: data.extras,
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
-        status: isHold ? 'tentative' : b.status,
-        releaseTs: isHold ? releaseTs : undefined,
-        releaseAt: isHold ? releaseAt : undefined,
-        guests: `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`,
-      } : b));
+        guests: guestsStr,
+      };
+      if (isHold) {
+        patch.status = 'tentative';
+        patch.releaseTs = releaseTs;
+        patch.releaseAt = releaseAt;
+      }
+      setBookings(arr => arr.map(b => b.id === editing ? { ...b, ...patch } : b));
       setEditing(null);
       setRoute({ name: 'booking', arg: editing });
+
+      if (cloudReady && propertyId) {
+        updateBookingCloud(editing, patch).catch(err =>
+          console.error('[atithi] update booking cloud failed:', err)
+        );
+      }
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);
       const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights, effectiveRoomTypes(property));
+      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
       const newBk = {
-        id: 'BK-' + (2854 + bookings.length),
         roomTypeId: data.roomTypeId,
         unitIdx,
         startIdx,
@@ -431,7 +585,7 @@ export default function App() {
         channel: 'direct',
         total,
         paid,
-        guests: `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`,
+        guests: guestsStr,
         phone: dial + ' ' + data.phone,
         country, formC,
         notes: data.notes,
@@ -445,6 +599,25 @@ export default function App() {
         releaseAt: releaseAt || undefined,
         holdHours: isHold ? data.holdHours : undefined,
       };
+
+      if (cloudReady && propertyId) {
+        // Cloud-first: the DB trigger assigns the next BK-XXXX so the id we
+        // store matches the one the voucher/invoices will reference. ~500ms
+        // round-trip; the "Confirm booking" tap shows a quick spinner via
+        // the existing UI state in NewBooking before navigation.
+        try {
+          const created = await createBookingCloud(propertyId, session && session.user && session.user.id, newBk);
+          setBookings(arr => [...arr, created]);
+          go('booking-confirmed');
+          return;
+        } catch (err) {
+          console.error('[atithi] create booking cloud failed:', err);
+          // Fall through to local-only path so the user isn't blocked.
+        }
+      }
+
+      // Offline or cloud-error fallback — assign an id locally.
+      newBk.id = 'BK-' + (2854 + bookings.length);
       setBookings(arr => [...arr, newBk]);
       go('booking-confirmed');
     }

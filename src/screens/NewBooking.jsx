@@ -125,34 +125,45 @@ function StepDates({ data, set, t, childAgeBelow }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{t('checkIn')}</label>
-            {/* Date picker overlay (same pattern as Diary's jump-to-date
-                bar — proven to work). The <input type="date"> sits on top
-                of the icon + label at opacity:0, full-size. Tapping
-                anywhere on the bar hits the input → native picker opens. */}
-            <div
-              onClick={openPicker}
-              style={{
-                position: 'relative', display: 'flex', alignItems: 'center', gap: 8,
-                background: data.checkIn ? T.primaryLt : T.bgSunk,
-                border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`,
-                borderRadius: 10, padding: '0 12px', height: 44, cursor: 'pointer',
-              }}
-            >
-              <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: data.checkIn ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {checkInLabel || 'Pick check-in date'}
-              </span>
+            {/* Real, visible <input type="date"> takes the full bar so
+                tapping anywhere hits the real input → native picker opens
+                reliably on every browser. Text + native calendar icon are
+                hidden via global CSS (see tokens.js). Our custom label +
+                icon overlay on top with pointer-events:none so taps pass
+                through to the input below. */}
+            <div style={{
+              position: 'relative',
+              background: data.checkIn ? T.primaryLt : T.bgSunk,
+              border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`,
+              borderRadius: 10, height: 44, overflow: 'hidden',
+            }}>
               <input
                 ref={dateRef}
                 type="date"
                 value={data.checkIn || ''}
                 onChange={(e) => set('checkIn', e.target.value)}
+                onClick={openPicker}
                 aria-label="Check-in date"
                 style={{
-                  position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
-                  border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
+                  width: '100%', height: '100%',
+                  border: 'none', outline: 'none', background: 'transparent',
+                  padding: '0 12px', cursor: 'pointer', font: 'inherit',
                 }}
               />
+              <div style={{
+                position: 'absolute', inset: 0, padding: '0 12px',
+                display: 'flex', alignItems: 'center', gap: 8,
+                pointerEvents: 'none',
+              }}>
+                <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
+                <span style={{
+                  flex: 1, fontSize: 14, fontWeight: 600,
+                  color: data.checkIn ? T.ink : T.ink3,
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {checkInLabel || 'Pick check-in date'}
+                </span>
+              </div>
             </div>
           </div>
           <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />

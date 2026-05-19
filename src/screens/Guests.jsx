@@ -151,35 +151,12 @@ export default function Guests({ go, bookings = [], t }) {
             );
           })}
         </div>
-        <div
-          onClick={() => {
-            const el = stayDateRef.current;
-            if (el && typeof el.showPicker === 'function') { try { el.showPicker(); } catch {} }
-          }}
-          style={{
-            position: 'relative', display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
-            padding: '6px 10px',
-            background: stayDate ? T.primaryLt : T.bgSoft,
-            border: `1px solid ${stayDate ? T.primary : T.borderSoft}`,
-            borderRadius: 8, cursor: 'pointer',
-          }}
-        >
-          <Icon name="cal" size={13} color={stayDate ? T.primaryDk : T.ink3} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: stayDate ? T.primaryDk : T.ink2, letterSpacing: 0.1 }}>Stay date</span>
-          <span className="tnum" style={{ flex: 1, fontSize: 12, fontWeight: 600, color: stayDate ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {stayDate
-              ? new Date(stayDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-              : 'Tap to pick'}
-          </span>
-          {stayDate && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setStayDate(''); }}
-              style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.ink3, display: 'flex' }}
-              aria-label="Clear stay date"
-            >
-              <Icon name="x" size={12} />
-            </button>
-          )}
+        <div style={{
+          position: 'relative', marginTop: 10,
+          background: stayDate ? T.primaryLt : T.bgSoft,
+          border: `1px solid ${stayDate ? T.primary : T.borderSoft}`,
+          borderRadius: 8, overflow: 'hidden',
+        }}>
           <input
             ref={stayDateRef}
             type="date"
@@ -187,12 +164,44 @@ export default function Guests({ go, bookings = [], t }) {
             min={DAYS[0].iso}
             max={DAYS[DAYS.length - 1].iso}
             onChange={(e) => setStayDate(e.target.value)}
+            onClick={() => {
+              const el = stayDateRef.current;
+              if (el && typeof el.showPicker === 'function') { try { el.showPicker(); } catch {} }
+            }}
             aria-label="Filter by stay date"
             style={{
-              position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
-              border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
+              width: '100%', height: '100%',
+              padding: '6px 10px', minHeight: 32,
+              border: 'none', outline: 'none', background: 'transparent',
+              cursor: 'pointer', font: 'inherit',
             }}
           />
+          <div style={{
+            position: 'absolute', inset: 0, padding: '6px 10px',
+            display: 'flex', alignItems: 'center', gap: 8,
+            pointerEvents: 'none',
+          }}>
+            <Icon name="cal" size={13} color={stayDate ? T.primaryDk : T.ink3} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: stayDate ? T.primaryDk : T.ink2, letterSpacing: 0.1 }}>Stay date</span>
+            <span className="tnum" style={{ flex: 1, fontSize: 12, fontWeight: 600, color: stayDate ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {stayDate
+                ? new Date(stayDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                : 'Tap to pick'}
+            </span>
+          </div>
+          {stayDate && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setStayDate(''); }}
+              style={{
+                position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 2, background: 'rgba(255,255,255,0.85)', border: 'none', borderRadius: 4,
+                cursor: 'pointer', padding: 2, color: T.ink3, display: 'flex',
+              }}
+              aria-label="Clear stay date"
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
         </div>
         {dateOutOfRange && (
           <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>

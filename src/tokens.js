@@ -119,6 +119,30 @@ export function injectBaseStyles() {
     @keyframes atithi-spin { to { transform: rotate(360deg) } }
     .spin { animation: atithi-spin 1s linear infinite; }
     .atithi-tap:active { transform: scale(.97); transition: transform .1s; }
+    /* Date pickers — the actual <input type="date"> is what opens the
+       native picker reliably on every browser (transparent / opacity:0
+       inputs don't work on some mobile browsers). We render the input
+       full-size, hide its text + native icon, and overlay a custom
+       label + icon on top via pointer-events:none. */
+    .atithi input[type="date"] {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      color: transparent;
+      caret-color: transparent;
+    }
+    .atithi input[type="date"]::-webkit-calendar-picker-indicator {
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      left: 0; top: 0;
+      padding: 0;
+    }
+    .atithi input[type="date"]::-webkit-inner-spin-button,
+    .atithi input[type="date"]::-webkit-clear-button { display: none; }
+    .atithi input[type="date"]::-webkit-datetime-edit { color: transparent; }
   `;
   document.head.appendChild(s);
 }

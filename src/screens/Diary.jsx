@@ -302,6 +302,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   // auto-extends the horizon (forward) or pastDays (backward) so the
   // picked date is in view.
   const [jumpDate, setJumpDate] = useState('');
+  const jumpDateRef = useRef(null);
   // Show 7 days of recent history by default. Bumps automatically when
   // the hotelier jumps to an older date via the date picker.
   const [pastDays, setPastDays] = useState(7);
@@ -435,45 +436,61 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
           <button onClick={() => setZoom(z => Math.min(90, z + 10))} style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>
         </div>}
       />
-      {/* Jump-to-date bar — full-width, prominent. The whole row is the click
-          target: the <input type="date"> sits over it at opacity 0 so a
-          tap anywhere opens the native picker. Scrolls the grid horizontally
-          to the picked date and auto-extends pastDays / horizon if needed. */}
+      {/* Jump-to-date bar — full-width, prominent. The real <input type="date">
+          takes the whole bar so tapping anywhere opens the native picker.
+          Text + native icon are hidden via global CSS (see tokens.js);
+          our custom icon + formatted label overlay on top. */}
       <div style={{ padding: '10px 16px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>
         <div style={{
           position: 'relative',
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 14px',
           background: jumpDate ? T.primaryLt : T.bgSoft,
           border: `1.5px solid ${jumpDate ? T.primary : T.borderSoft}`,
           borderRadius: 12,
+          overflow: 'hidden',
         }}>
-          <Icon name="cal" size={16} color={jumpDate ? T.primaryDk : T.ink2} stroke={2} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2 }}>
-            {jumpDate
-              ? new Date(jumpDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
-              : 'Jump to date — tap to pick a day'}
-          </span>
-          <div style={{ flex: 1 }} />
+          <input
+            ref={jumpDateRef}
+            type="date"
+            value={jumpDate}
+            onChange={(e) => setJumpDate(e.target.value)}
+            onClick={() => {
+              const el = jumpDateRef.current;
+              if (el && typeof el.showPicker === 'function') { try { el.showPicker(); } catch {} }
+            }}
+            aria-label="Jump to date"
+            style={{
+              width: '100%', height: '100%',
+              padding: '11px 14px', minHeight: 46,
+              border: 'none', outline: 'none', background: 'transparent',
+              cursor: 'pointer', font: 'inherit',
+            }}
+          />
+          <div style={{
+            position: 'absolute', inset: 0, padding: '11px 14px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            pointerEvents: 'none',
+          }}>
+            <Icon name="cal" size={16} color={jumpDate ? T.primaryDk : T.ink2} stroke={2} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2 }}>
+              {jumpDate
+                ? new Date(jumpDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+                : 'Jump to date — tap to pick a day'}
+            </span>
+            <div style={{ flex: 1 }} />
+          </div>
           {jumpDate && (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setJumpDate(''); }}
-              style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: T.primaryDk, display: 'flex' }}
+              style={{
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 2, background: 'rgba(255,255,255,0.85)', border: `1px solid ${T.primary}`,
+                borderRadius: 6, cursor: 'pointer', padding: 4, color: T.primaryDk, display: 'flex',
+              }}
               aria-label="Clear date"
             >
               <Icon name="x" size={14} stroke={2.2} />
             </button>
           )}
-          <input
-            type="date"
-            value={jumpDate}
-            onChange={(e) => setJumpDate(e.target.value)}
-            aria-label="Jump to date"
-            style={{
-              position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
-              border: 'none', outline: 'none', cursor: 'pointer', padding: 0,
-            }}
-          />
         </div>
       </div>
 

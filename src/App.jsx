@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, effectiveRoomTypes } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -111,16 +111,27 @@ const saveLS = (key, val) => {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 };
 
-// Map a "DD MMM YYYY"-ish string to an index in the 14-day DAYS window.
-// Falls back to 0 (today, May 4 2026) if the string can't be parsed or is out of range.
+// Map a check-in date string to a day index relative to May 4 2026 (the
+// demo anchor). Accepts ISO "YYYY-MM-DD" (from the date picker) and falls
+// back to JS Date parsing for any other format. ISO is parsed as a local
+// date — using new Date("YYYY-MM-DD") directly would treat it as UTC and
+// shift the day by one in non-UTC timezones (notably IST).
+// Returns 0 if unparseable; allows arbitrary positive offsets so the
+// owner can pick dates beyond the seed 14-day window (the Diary's horizon
+// picker extends as needed).
 function parseCheckInIdx(checkInStr) {
   if (!checkInStr) return 0;
-  const parsed = new Date(checkInStr);
+  let parsed;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(checkInStr)) {
+    const [y, m, d] = checkInStr.split('-').map(Number);
+    parsed = new Date(y, m - 1, d);
+  } else {
+    parsed = new Date(checkInStr);
+  }
   if (isNaN(parsed.getTime())) return 0;
   const baseDay = new Date(2026, 4, 4);
   const diffDays = Math.round((parsed - baseDay) / (24 * 3600 * 1000));
-  if (diffDays < 0 || diffDays >= DAYS.length) return 0;
-  return diffDays;
+  return Math.max(0, diffDays);
 }
 
 // Pick the lowest-numbered unit of the chosen room type that is free for the requested
@@ -147,9 +158,12 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
 export default function App() {
   const [plan, setPlan] = useState(() => {
     const saved = loadLS(LS_KEYS.plan, 'engine');
-    // 'gst' tier was removed; downgrade to 'engine'. Invoice / CA-export features
-    // are now universal (not plan-gated), so existing 'gst' users keep everything.
-    return saved === 'gst' ? 'engine' : saved;
+    // 'gst' was the old name for what's now called 'invoicing' — keep the
+    // tier semantics by mapping it forward. (Earlier Batch-A code mapped
+    // 'gst' down to 'engine' when we briefly removed the tier; we've put it
+    // back as 'invoicing' since the invoicing features carry real value.)
+    if (saved === 'gst') return 'invoicing';
+    return saved;
   });
   const [lang, setLang] = useState(() => loadLS(LS_KEYS.lang, 'en'));
   const [route, setRoute] = useState({ name: 'home', arg: null });
@@ -448,6 +462,7 @@ export default function App() {
           fy,
           amount: +part.amount || 0,
           recipient: part.recipient || { name: booking.guest, gstin: '', address: '' },
+          prefix: invoicePrefixOf(property),
           items: part.items || null,
           note: part.note || '',
         });
@@ -472,7 +487,7 @@ export default function App() {
     const nowIso = new Date().toISOString();
     const newInvoice = {
       id: 'inv_' + Date.now(),
-      number: formatInvoiceNumber(fy, baseSeq + 1),
+      number: formatInvoiceNumber(fy, baseSeq + 1, invoicePrefixOf(property)),
       fy,
       date: nowIso,
       amount: +part.amount || 0,

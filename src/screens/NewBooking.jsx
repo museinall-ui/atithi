@@ -91,17 +91,40 @@ function StepDates({ data, set, t }) {
   const data_rooms = data.roomItems.length;
   const data_adults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const data_children = data.roomItems.reduce((s, r) => s + r.children, 0);
+  // Format the check-out preview from the picked check-in date so the
+  // hotelier sees the date math. Falls back to a hint when no date picked.
+  let checkOutLabel = '—';
+  if (data.checkIn) {
+    const inDate = new Date(data.checkIn);
+    if (!isNaN(inDate.getTime())) {
+      const outDate = new Date(inDate);
+      outDate.setDate(outDate.getDate() + (data.nights || 1));
+      checkOutLabel = outDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <Card padding={16}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, marginBottom: 12, letterSpacing: 0.2 }}>{t('when')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 10 }}>
-          <Field label={t('checkIn')} value={data.checkIn} onChange={(e) => set('checkIn', e.target.value)} suffix={<Icon name="cal" size={16} color={T.ink3} />} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{t('checkIn')}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44 }}>
+              <input
+                type="date"
+                value={data.checkIn || ''}
+                onChange={(e) => set('checkIn', e.target.value)}
+                className="tnum"
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: data.checkIn ? T.ink : T.ink3, minWidth: 0 }}
+              />
+              <Icon name="cal" size={16} color={T.ink3} />
+            </div>
+          </div>
           <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />
         </div>
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.ink3 }}>
           <Icon name="info" size={13} />
-          {t('checkOut')} · {String(4 + data.nights).padStart(2, '0')} May, 11:00 AM
+          {t('checkOut')} · {checkOutLabel}
         </div>
       </Card>
 
@@ -596,7 +619,12 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const [data, setData] = useState(() => {
     if (editing) {
       return {
-        checkIn: '04 May 2026', nights: editing.nights,
+        // Editing path: seed check-in from the existing booking's startIdx.
+        checkIn: (() => {
+          const d = new Date(2026, 4, 4 + (editing.startIdx || 0));
+          return d.toISOString().slice(0, 10);
+        })(),
+        nights: editing.nights,
         roomTypeId: editing.roomTypeId,
         roomItems: editing.roomItems || [{ adults: 2, children: 0, rate: null }],
         name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: '', country: editing.country || 'IN', state: editing.state || '', gstin: '',
@@ -607,7 +635,9 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       };
     }
     return {
-      checkIn: '04 May 2026', nights: 1,
+      // checkIn left blank — owner must pick a date before continuing.
+      // (Previously hardwired to '04 May 2026' which was a debug default.)
+      checkIn: '', nights: 1,
       roomTypeId: null,
       roomItems: [{ adults: 2, children: 0, rate: null }],
       name: '', phone: '', email: '', country: 'IN', state: '', gstin: '',
@@ -668,6 +698,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const total = subtotal + gst;
 
   const titles = [t('stayDetails'), t('pickRoom'), t('guest'), t('payment')];
+  const datesValid = !!data.checkIn && data.nights > 0;
   const guestValid = data.name.trim().length > 0 && data.phone.trim().length >= 6;
 
   return (
@@ -699,10 +730,11 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         )}
         {step < 4 ? (
           <Btn icon="arrow" onClick={() => {
+            if (step === 1 && !datesValid) return;
             if (step === 2 && !data.roomTypeId) return;
             if (step === 3 && !guestValid) return;
             setStep(step + 1);
-          }} disabled={(step === 2 && !data.roomTypeId) || (step === 3 && !guestValid)} style={{ flex: rt ? 'unset' : 1 }}>{t('continue')}</Btn>
+          }} disabled={(step === 1 && !datesValid) || (step === 2 && !data.roomTypeId) || (step === 3 && !guestValid)} style={{ flex: rt ? 'unset' : 1 }}>{t('continue')}</Btn>
         ) : (
           <Btn icon="check" onClick={() => { if (!guestValid) return; onCreate(data, total); }} disabled={!guestValid} style={{ flex: rt ? 'unset' : 1 }}>
             {isEdit ? t('confirmMove') : t('confirmBooking')}

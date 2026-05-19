@@ -145,10 +145,23 @@ export function currentFinancialYear(now = new Date()) {
   return `${startYear % 100}${(startYear + 1) % 100}`.padStart(4, '0');
 }
 
-// Format a sequential number as a GST-compliant invoice ID, e.g. "INV-2627-001".
-// Max length 16 chars per GST rules; this format is 12 chars, comfortably under.
-export function formatInvoiceNumber(fy, seq) {
-  return `INV-${fy}-${String(seq).padStart(3, '0')}`;
+// Format a sequential number as a GST-compliant invoice ID. The prefix is
+// hotelier-configurable in Property Profile (defaults to "INV") so owners
+// migrating from another system can keep using their existing format.
+// Final shape: {PREFIX}-{FY}-{SEQ} — e.g. "INV-2627-001", "ABC-2627-001".
+// Max length 16 chars per GST rules; with a 3-char prefix this stays under.
+export function formatInvoiceNumber(fy, seq, prefix = 'INV') {
+  const p = String(prefix || 'INV').trim() || 'INV';
+  return `${p}-${fy}-${String(seq).padStart(3, '0')}`;
+}
+
+// Convenience accessor: read the hotelier's chosen invoice prefix off the
+// property, with the safe default. Lives next to the formatter so callers
+// stay in one mental model.
+export function invoicePrefixOf(property) {
+  const a = property && property.accountant;
+  const p = a && typeof a.invoicePrefix === 'string' ? a.invoicePrefix.trim() : '';
+  return p || 'INV';
 }
 
 // All issued (non-voided) invoices across the given bookings, in the order they

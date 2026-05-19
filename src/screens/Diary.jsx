@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
 import { DAYS, CHANNELS, effectiveRoomTypes } from '../data.js';
 import Icon from '../components/Icon.jsx';
@@ -252,6 +252,17 @@ function generateDays(n) {
   return out;
 }
 
+// Convert an ISO YYYY-MM-DD to a day index relative to the demo anchor.
+// Returns null for empty/invalid input. Used by the jump-to-date picker.
+function isoToDayIdx(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  if (isNaN(target.getTime())) return null;
+  const anchor = new Date(2026, 4, 4);
+  return Math.round((target - anchor) / (24 * 3600 * 1000));
+}
+
 export default function Diary({ go, bookings, setBookings, moveBooking, t, property }) {
   const [zoom, setZoom] = useState(58);
   const [horizon, setHorizon] = useState(14);
@@ -259,11 +270,36 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
   const [filter, setFilter] = useState('all');
+  // Jump-to-date: picking a date scrolls the diary to that column and
+  // auto-extends the horizon if the date is past the current window.
+  const [jumpDate, setJumpDate] = useState('');
+  const scrollRef = useRef(null);
   const colW = zoom;
   const rowH = 36;
   const labelW = 110;
   const ROOM_TYPES = effectiveRoomTypes(property);
   const viewDays = useMemo(() => generateDays(horizon), [horizon]);
+
+  // When the owner picks a date, auto-bump the horizon if needed and scroll
+  // horizontally to that column. Runs after viewDays updates so the column
+  // exists by the time we set scrollLeft.
+  useEffect(() => {
+    const idx = isoToDayIdx(jumpDate);
+    if (idx == null || idx < 0) return;
+    if (idx >= horizon) {
+      // Pick the next bigger horizon that fits the target date.
+      const next = HORIZONS.find(h => h > idx) || HORIZONS[HORIZONS.length - 1];
+      if (next !== horizon) setHorizon(next);
+    }
+    // Scroll on the next frame so the grid has re-rendered with the new horizon.
+    const tid = setTimeout(() => {
+      if (scrollRef.current) {
+        const target = labelW + idx * colW - 40; // small offset so target column isn't flush left
+        scrollRef.current.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+      }
+    }, 80);
+    return () => clearTimeout(tid);
+  }, [jumpDate, horizon, colW, labelW]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
   const counts = {
@@ -299,21 +335,19 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
       setDrag(null);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      // Decide tap vs drag purely by end-state: if the pointer ended on the
-      // same column and same slot it started on, nothing changed — treat
-      // every such interaction as a tap and open the booking. The move
-      // dialog is only reachable when the pointer actually lands somewhere
-      // different. This avoids touch-jitter false positives that the older
-      // movement-threshold approach couldn't fully suppress on certain
-      // devices (notably past bookings where the visible portion sits over
-      // pre-scrolled area).
-      const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
+      // Tap vs drag: did the pointer cross a column boundary, or land on a
+      // different slot? We check dx directly (the raw column delta from the
+      // pointer move) rather than comparing a clamped `newStart` against
+      // `origStart`. The previous version's clamp meant past bookings
+      // (negative origStart that gets pinned to 0) were always flagged as
+      // "date changed" even on a perfect stationary tap.
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
-      const dateChanged = newStart !== origStart;
+      const dateChanged = dx !== 0;
       if (!slotChanged && !dateChanged) {
         go('booking', b.id);
         return;
       }
+      const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
       setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
     };
     window.addEventListener('pointermove', move);
@@ -372,6 +406,25 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
           );
         })}
         <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
+        {/* Jump to date — picks a column and auto-scrolls. If the target
+            date is beyond the current horizon, horizon expands to fit. */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 9px', borderRadius: 999, background: jumpDate ? T.primaryLt : T.bgSoft, border: `1px solid ${jumpDate ? T.primary : T.borderSoft}`, whiteSpace: 'nowrap' }}>
+          <Icon name="cal" size={11} color={jumpDate ? T.primaryDk : T.ink3} />
+          <input
+            type="date"
+            value={jumpDate}
+            onChange={(e) => setJumpDate(e.target.value)}
+            className="tnum"
+            aria-label="Jump to date"
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 11, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2, minWidth: 0, padding: 0 }}
+          />
+          {jumpDate && (
+            <button onClick={() => setJumpDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.primaryDk, display: 'flex' }} aria-label="Clear date">
+              <Icon name="x" size={11} stroke={2.2} />
+            </button>
+          )}
+        </div>
+        <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
         {FILTERS.map(f => {
           const active = filter === f.id;
           const count = f.id === 'all' ? bookings.length : counts[f.id];
@@ -400,7 +453,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
         })}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
         <div style={{ minWidth: labelW + colW * viewDays.length + 16, position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>

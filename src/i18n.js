@@ -67,6 +67,10 @@ export const STRINGS = {
     signOut: 'Sign out',
     signingOut: 'Signing out…',
     loading: 'Loading…',
+    syncSaved: 'Saved to cloud',
+    syncSaving: 'Saving…',
+    syncErrorTitle: "Couldn't save your changes",
+    syncErrorHint: "We'll keep trying. Check your internet.",
   },
   hi: {
     home: 'होम', diary: 'डायरी', guests: 'मेहमान', more: 'प्रबंधन', newBk: 'नया',
@@ -136,6 +140,10 @@ export const STRINGS = {
     signOut: 'साइन आउट',
     signingOut: 'साइन आउट हो रहा है…',
     loading: 'लोड हो रहा है…',
+    syncSaved: 'क्लाउड में सहेजा',
+    syncSaving: 'सहेजा जा रहा है…',
+    syncErrorTitle: 'बदलाव सहेजे नहीं गए',
+    syncErrorHint: 'फिर कोशिश करेंगे। इंटरनेट देखें।',
   },
 };
 

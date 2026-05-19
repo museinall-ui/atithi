@@ -9,6 +9,8 @@ import {
   createBookingCloud, updateBookingCloud,
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
+import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
+import SyncOverlay from './components/SyncOverlay.jsx';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -258,7 +260,7 @@ export default function App() {
         setBookings(cloudBookings);
         setCloudReady(true);
       } catch (err) {
-        console.error('[atithi] cloud load failed:', err);
+        notifySyncFailure('Load from cloud', err);
         // Don't block the app — fall back to localStorage data so the
         // hotelier can still work. We retry on next sign-in.
         if (!cancelled) setCloudReady(true);
@@ -277,9 +279,7 @@ export default function App() {
   useEffect(() => {
     if (!cloudReady || !propertyId) return;
     const tid = setTimeout(() => {
-      saveCloudProperty(propertyId, property).catch(err => {
-        console.error('[atithi] cloud property save failed:', err);
-      });
+      syncFire('Save property', saveCloudProperty(propertyId, property));
     }, 600);
     return () => clearTimeout(tid);
   }, [property, cloudReady, propertyId]);
@@ -304,9 +304,7 @@ export default function App() {
       });
       if (cloudReadyRef.current && propertyIdRef.current && changedIds.length) {
         changedIds.forEach(id => {
-          updateBookingCloud(id, { status: 'cancelled', autoReleased: true }).catch(err => {
-            console.error('[atithi] auto-release cloud sync failed:', err);
-          });
+          syncFire('Auto-release booking', updateBookingCloud(id, { status: 'cancelled', autoReleased: true }));
         });
       }
     };
@@ -347,11 +345,11 @@ export default function App() {
     }));
 
     if (cloudReady && propertyId) {
-      addPaymentCloud({
+      syncFire('Save payment', addPaymentCloud({
         bookingId, propertyId,
         userId: session && session.user && session.user.id,
         entry, newPaid, newStatus, clearReleaseFields,
-      }).catch(err => console.error('[atithi] add payment cloud failed:', err));
+      }));
     }
   };
 
@@ -372,9 +370,7 @@ export default function App() {
         patch.releaseTs = null;
         patch.releaseAt = null;
       }
-      updateBookingCloud(bookingId, patch).catch(err =>
-        console.error('[atithi] set status cloud failed:', err)
-      );
+      syncFire('Update booking status', updateBookingCloud(bookingId, patch));
     }
   };
 
@@ -397,26 +393,21 @@ export default function App() {
     }));
 
     if (cloudReady && propertyId) {
-      updateBookingCloud(bookingId, { releaseTs, releaseAt, holdHours, autoReleased: false })
-        .catch(err => console.error('[atithi] extend hold cloud failed:', err));
+      syncFire('Extend hold', updateBookingCloud(bookingId, { releaseTs, releaseAt, holdHours, autoReleased: false }));
     }
   };
 
   const moveBooking = (bookingId, patch) => {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, ...patch } : b));
     if (cloudReady && propertyId) {
-      updateBookingCloud(bookingId, patch).catch(err =>
-        console.error('[atithi] move booking cloud failed:', err)
-      );
+      syncFire('Move booking', updateBookingCloud(bookingId, patch));
     }
   };
 
   const setBookingGst = (bookingId, value) => {
     setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, gstApplies: !!value } : b));
     if (cloudReady && propertyId) {
-      updateBookingCloud(bookingId, { gstApplies: !!value }).catch(err =>
-        console.error('[atithi] set gst cloud failed:', err)
-      );
+      syncFire('Update invoice flag', updateBookingCloud(bookingId, { gstApplies: !!value }));
     }
   };
 
@@ -443,7 +434,7 @@ export default function App() {
 
     if (cloudReady && propertyId) {
       try {
-        const inv = await issueInvoiceCloud({
+        const inv = await syncCloud('Issue invoice', issueInvoiceCloud({
           bookingId,
           fy,
           amount: +part.amount || 0,
@@ -451,7 +442,7 @@ export default function App() {
           prefix: invoicePrefixOf(property),
           items: part.items || null,
           note: part.note || '',
-        });
+        }));
         setBookings(arr => arr.map(b => b.id === bookingId
           ? { ...b, invoices: [...(b.invoices || []), inv] }
           : b));
@@ -462,9 +453,10 @@ export default function App() {
           return { ...p, invoiceCounters: counters };
         });
         return [inv];
-      } catch (err) {
-        console.error('[atithi] issue invoice cloud failed:', err);
-        // Fall through to local-only path below.
+      } catch {
+        // syncCloud already notified the user via the error toast; fall
+        // through to the local-only path below so the hotelier still gets
+        // a usable invoice number on screen.
       }
     }
 
@@ -494,9 +486,7 @@ export default function App() {
       ? { ...b, invoices: (b.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, voided: true } : inv) }
       : b));
     if (cloudReady && propertyId) {
-      voidInvoiceCloud(invoiceId).catch(err =>
-        console.error('[atithi] void invoice cloud failed:', err)
-      );
+      syncFire('Void invoice', voidInvoiceCloud(invoiceId));
     }
   };
 
@@ -558,9 +548,7 @@ export default function App() {
       setRoute({ name: 'booking', arg: editing });
 
       if (cloudReady && propertyId) {
-        updateBookingCloud(editing, patch).catch(err =>
-          console.error('[atithi] update booking cloud failed:', err)
-        );
+        syncFire('Update booking', updateBookingCloud(editing, patch));
       }
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);
@@ -597,13 +585,14 @@ export default function App() {
         // round-trip; the "Confirm booking" tap shows a quick spinner via
         // the existing UI state in NewBooking before navigation.
         try {
-          const created = await createBookingCloud(propertyId, session && session.user && session.user.id, newBk);
+          const created = await syncCloud('Create booking',
+            createBookingCloud(propertyId, session && session.user && session.user.id, newBk));
           setBookings(arr => [...arr, created]);
           go('booking-confirmed');
           return;
-        } catch (err) {
-          console.error('[atithi] create booking cloud failed:', err);
-          // Fall through to local-only path so the user isn't blocked.
+        } catch {
+          // syncCloud already toasted the failure; fall through to the
+          // local-only path below so the booking still lands on screen.
         }
       }
 
@@ -671,6 +660,7 @@ export default function App() {
           else go(id);
         }} t={t} />
       )}
+      <SyncOverlay t={t} />
     </div>
   );
 }

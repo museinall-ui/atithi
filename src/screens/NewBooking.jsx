@@ -94,9 +94,11 @@ function StepDates({ data, set, t, childAgeBelow }) {
   // Format the check-out preview from the picked check-in date so the
   // hotelier sees the date math. Falls back to a hint when no date picked.
   let checkOutLabel = '—';
+  let checkInLabel = '';
   if (data.checkIn) {
-    const inDate = new Date(data.checkIn);
+    const inDate = new Date(data.checkIn + 'T00:00:00');
     if (!isNaN(inDate.getTime())) {
+      checkInLabel = inDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
       const outDate = new Date(inDate);
       outDate.setDate(outDate.getDate() + (data.nights || 1));
       checkOutLabel = outDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -109,15 +111,26 @@ function StepDates({ data, set, t, childAgeBelow }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{t('checkIn')}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44 }}>
+            {/* Date picker uses the Diary overlay pattern: visible icon +
+                formatted label sit on top of an invisible <input type="date">
+                that covers the whole bar. Tap anywhere on the bar → native
+                picker opens. The native browser icon is hidden via the
+                opacity:0 input so only ONE cal icon shows. */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, background: data.checkIn ? T.primaryLt : T.bgSunk, border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, cursor: 'pointer' }}>
+              <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: data.checkIn ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {checkInLabel || 'Pick check-in date'}
+              </span>
               <input
                 type="date"
                 value={data.checkIn || ''}
                 onChange={(e) => set('checkIn', e.target.value)}
-                className="tnum"
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: data.checkIn ? T.ink : T.ink3, minWidth: 0 }}
+                aria-label="Check-in date"
+                style={{
+                  position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
+                  border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
+                }}
               />
-              <Icon name="cal" size={16} color={T.ink3} />
             </div>
           </div>
           <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />

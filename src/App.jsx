@@ -25,6 +25,13 @@ import Settings from './screens/Settings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
 
+// DEMO_MODE: skip the Supabase magic-link sign-in gate and run entirely off
+// localStorage so the app is immediately usable (no email round-trip, no
+// cloud dependency). The cloud-sync code paths stay intact; they're just
+// not exercised while DEMO_MODE is true. Flip this back to false once
+// auth is being added back into the productionised flow.
+const DEMO_MODE = true;
+
 const LS_KEYS = {
   bookings: 'atithi.bookings.v1',
   customExtras: 'atithi.customExtras.v1',
@@ -145,11 +152,13 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
 
 export default function App() {
   const [plan, setPlan] = useState(() => {
-    const saved = loadLS(LS_KEYS.plan, 'engine');
-    // 'gst' was the old name for what's now called 'invoicing' — keep the
-    // tier semantics by mapping it forward. (Earlier Batch-A code mapped
-    // 'gst' down to 'engine' when we briefly removed the tier; we've put it
-    // back as 'invoicing' since the invoicing features carry real value.)
+    // Default tier is 'invoicing' so every feature (GST toggle on bookings,
+    // Issue Invoice on the folio, monthly CA export) is visible the moment
+    // a hotelier opens the app. Plan tiers still exist in Settings as a
+    // marketing/upgrade story but no longer gate core functionality —
+    // hoteliers were hitting dead-ends because a fresh install defaulted
+    // to the cheapest tier with no obvious way to issue invoices.
+    const saved = loadLS(LS_KEYS.plan, 'invoicing');
     if (saved === 'gst') return 'invoicing';
     return saved;
   });
@@ -633,7 +642,9 @@ export default function App() {
   // (after sign-in) while the cloud property is loading/bootstrapping. Both
   // are normally sub-second; the splash just prevents the app from rendering
   // against stale localStorage data before the cloud answers.
-  if (!authReady || (session && !cloudReady)) {
+  // DEMO_MODE bypasses both gates so the app boots straight into the home
+  // screen using whatever's in localStorage.
+  if (!DEMO_MODE && (!authReady || (session && !cloudReady))) {
     return (
       <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{
         height: '100%', background: T.bg, color: T.ink3,
@@ -644,8 +655,9 @@ export default function App() {
   }
 
   // No session → sign-in screen. localStorage data is preserved underneath
-  // and will be picked up on the same browser after sign-in.
-  if (!session) {
+  // and will be picked up on the same browser after sign-in. Bypassed in
+  // DEMO_MODE — the app trusts localStorage and never asks for credentials.
+  if (!DEMO_MODE && !session) {
     return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
   }
 

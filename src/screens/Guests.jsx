@@ -150,23 +150,35 @@ export default function Guests({ go, bookings = [], t }) {
             );
           })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '6px 10px', background: stayDate ? T.primaryLt : T.bgSoft, border: `1px solid ${stayDate ? T.primary : T.borderSoft}`, borderRadius: 8 }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '6px 10px', background: stayDate ? T.primaryLt : T.bgSoft, border: `1px solid ${stayDate ? T.primary : T.borderSoft}`, borderRadius: 8, cursor: 'pointer' }}>
           <Icon name="cal" size={13} color={stayDate ? T.primaryDk : T.ink3} />
           <label style={{ fontSize: 11, fontWeight: 700, color: stayDate ? T.primaryDk : T.ink2, letterSpacing: 0.1 }}>Stay date</label>
+          <span className="tnum" style={{ flex: 1, fontSize: 12, fontWeight: 600, color: stayDate ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {stayDate
+              ? new Date(stayDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+              : 'Tap to pick'}
+          </span>
+          {stayDate && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setStayDate(''); }}
+              style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.ink3, display: 'flex' }}
+              aria-label="Clear stay date"
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
           <input
             type="date"
             value={stayDate}
             min={DAYS[0].iso}
             max={DAYS[DAYS.length - 1].iso}
             onChange={(e) => setStayDate(e.target.value)}
-            className="tnum"
-            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 600, color: T.ink, minWidth: 0 }}
+            aria-label="Filter by stay date"
+            style={{
+              position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
+              border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
+            }}
           />
-          {stayDate && (
-            <button onClick={() => setStayDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.ink3, display: 'flex' }}>
-              <Icon name="x" size={12} />
-            </button>
-          )}
         </div>
         {dateOutOfRange && (
           <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { T } from '../tokens.js';
 import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
 
@@ -241,28 +241,48 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
             />
           </div>
 
-          {/* Tax-inclusive toggle. Most owners quote tax-inclusive prices,
-              so this is the default. Untick for pre-tax amounts (CGST + SGST
-              get added on top). */}
-          <label style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
-            background: T.card, border: `1px solid ${T.border}`, borderRadius: 7, cursor: 'pointer',
-          }}>
-            <input
-              type="checkbox"
-              checked={amountIncludesTax}
-              onChange={e => setAmountIncludesTax(e.target.checked)}
-              style={{ marginTop: 2, accentColor: T.teal, width: 16, height: 16, flexShrink: 0 }}
-            />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Amount includes GST</div>
-              <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.35 }}>
-                {amountIncludesTax
-                  ? 'GST is treated as already inside the amount above.'
-                  : 'GST (12%) will be added on top of the amount above.'}
-              </div>
+          {/* Tax inclusive/exclusive picker as a 2-button segmented control.
+              Most owners quote tax-inclusive prices, so "Inclusive" is the
+              default. Was previously a subtle checkbox the hotelier missed. */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>HOW IS GST HANDLED?</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setAmountIncludesTax(true)}
+                className="atithi-tap"
+                style={{
+                  padding: '8px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                  border: `1.5px solid ${amountIncludesTax ? T.teal : T.border}`,
+                  background: amountIncludesTax ? `color-mix(in oklch, ${T.teal} 10%, white)` : T.card,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700, color: amountIncludesTax ? T.teal : T.ink }}>
+                  Tax inclusive
+                </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.3 }}>
+                  GST is inside the amount
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAmountIncludesTax(false)}
+                className="atithi-tap"
+                style={{
+                  padding: '8px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                  border: `1.5px solid ${!amountIncludesTax ? T.teal : T.border}`,
+                  background: !amountIncludesTax ? `color-mix(in oklch, ${T.teal} 10%, white)` : T.card,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700, color: !amountIncludesTax ? T.teal : T.ink }}>
+                  Tax exclusive
+                </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.3 }}>
+                  Add 12% GST on top
+                </div>
+              </button>
             </div>
-          </label>
+          </div>
         </div>
 
         {/* Live breakdown. Shows the hotelier exactly what numbers go onto
@@ -311,11 +331,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
   const statusInfo = STATUS[b.status];
-  // GST/invoicing UI is gated to the Invoicing plan. On lower tiers we
-  // still keep b.gstApplies in the data (so an upgrade re-surfaces it) but
-  // hide the breakdown, toggle, and invoices section.
-  const isInvoicingPlan = plan === 'invoicing';
-  const withTax = isInvoicingPlan && bookingGstApplies(b);
+  // Invoicing is now a core feature, not plan-gated. (Previously a fresh
+  // install defaulted to the 'engine' tier with no obvious way to issue
+  // invoices, which trapped hoteliers who needed CA-ready paperwork.)
+  // The plan picker in Settings remains as a marketing label.
+  const withTax = bookingGstApplies(b);
   const tx = withTax ? getTaxBreakdown({ ...b, gstApplies: true }, property) : null;
   const repeats = repeatGuestKeys(bookings);
   const isRepeat = repeats.has(normPhone(b.phone));
@@ -326,7 +346,6 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   ).length;
   const [payOpen, setPayOpen] = useState(false);
   const [payKind, setPayKind] = useState('payment');
-  const [waStatus, setWaStatus] = useState('sent');
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const invoices = b.invoices || [];
   const activeInvoices = invoices.filter(inv => !inv.voided);
@@ -348,13 +367,6 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const invoiceDefaultAmount = invoiceKind === 'full'
     ? remainingToInvoice
     : Math.min(paidNotInvoiced || remainingToInvoice, remainingToInvoice);
-
-  useEffect(() => {
-    setWaStatus('sent');
-    const t1 = setTimeout(() => setWaStatus('delivered'), 1400);
-    const t2 = setTimeout(() => setWaStatus('read'), 3200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [bookingId]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -417,7 +429,10 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   )}
                 </div>
                 <div className="tnum" style={{ fontSize: 13, color: T.ink2, marginTop: 4 }}>{b.phone}</div>
-                <div style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>{b.guests} · {b.formC ? 'Foreign · Form C filed' : 'Indian · Aadhaar verified'}</div>
+                <div style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
+                  {b.guests}
+                  {b.formC ? ' · Foreign · Form C pending' : b.country === 'IN' ? ' · Indian guest' : ''}
+                </div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
@@ -472,20 +487,18 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               );
             })()}
             <Row label="Channel" value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
-            {isInvoicingPlan && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
-                <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
-                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
-                    {withTax
-                      ? `Yes — appears in the monthly CA export. ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
-                      : `No — direct/cash booking, kept out of the CA export.`}
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
+              <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
+                <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
+                  {withTax
+                    ? `Yes — appears in the monthly CA export. ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
+                    : `No — direct/cash booking, kept out of the CA export.`}
                 </div>
-                {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
               </div>
-            )}
+              {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
+            </div>
             {b.notes && (
               <>
                 <div style={{ height: 1, background: T.borderSoft, margin: '10px 0' }} />
@@ -508,7 +521,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             </span>
           } />
           <Card>
-            <Row label={`Tariff · ${b.nights} nights`} value={`₹${(withTax ? b.total - tx.gst : b.total).toLocaleString('en-IN')}`} />
+            <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${(withTax ? b.total - tx.gst : b.total).toLocaleString('en-IN')}`} />
             {withTax && <Row label="CGST 6%" value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
             {withTax && <Row label="SGST 6%" value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
@@ -578,7 +591,6 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           />
         )}
 
-        {isInvoicingPlan && (
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title="Invoices" action={
             activeInvoices.length > 0 && remainingToInvoice <= 0
@@ -656,29 +668,50 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             />
           )}
         </div>
-        )}
 
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('activity')} />
           <Card padding={0}>
-            {[
-              { icon: 'wa', tone: '#25D366', text: waStatus === 'sent' ? 'WhatsApp confirmation · sending…' : waStatus === 'delivered' ? 'WhatsApp · delivered ✓✓' : 'WhatsApp · read ✓✓ by guest', time: 'just now', live: true },
-              { icon: 'tag', tone: T.primary, text: `Booking received via ${ch.label}`, time: '03 May · 18:24' },
-              { icon: 'inr', tone: T.indigo, text: `Razorpay · ₹${b.paid.toLocaleString('en-IN')} captured`, time: '03 May · 18:25' },
-            ].map((a, i, arr) => (
-              <div key={i} style={{ padding: '12px 14px', display: 'flex', gap: 10, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklch, ${a.tone} 14%, white)`, color: a.tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon name={a.icon} size={14} stroke={2} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: T.ink, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {a.text}
-                    {a.live && <span style={{ width: 6, height: 6, borderRadius: 3, background: '#25D366' }} className="pulse" />}
+            {(() => {
+              // Build the activity feed from real booking data only —
+              // payments ledger, issued invoices, and status transitions
+              // we can infer. The earlier "Razorpay · ₹0 captured /
+              // WhatsApp read ✓✓ / 03 May 18:24" entries were hardcoded
+              // mocks that fired for every booking, including newly-
+              // created ones where none of it had happened.
+              const items = [];
+              items.push({ icon: 'tag', tone: T.primary, text: `Booking via ${ch.label}` });
+              payments.forEach(p => {
+                const tone = p.kind === 'refund' ? T.danger : p.kind === 'credit' ? T.indigo : T.ok;
+                const label = p.kind === 'refund' ? `Refund · ₹${p.amount.toLocaleString('en-IN')}`
+                  : p.kind === 'credit' ? `Credit note · ₹${p.amount.toLocaleString('en-IN')}`
+                  : `Payment received · ₹${p.amount.toLocaleString('en-IN')}${p.method ? ` · ${METHOD_LABELS[p.method] || p.method}` : ''}`;
+                items.push({ icon: p.kind === 'refund' ? 'arrow' : 'inr', tone, text: label, time: p.date });
+              });
+              (b.invoices || []).filter(inv => !inv.voided).forEach(inv => {
+                items.push({ icon: 'download', tone: T.teal, text: `Invoice ${inv.number} issued · ₹${(inv.amount || 0).toLocaleString('en-IN')}`, time: fmtIssued(inv.date) });
+              });
+              if (b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: 'Checked in' });
+              if (b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: 'Checked out · stay complete' });
+              if (b.status === 'cancelled') items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? 'Auto-released (hold expired)' : 'Booking cancelled' });
+              return items.length === 0
+                ? (
+                  <div style={{ padding: '14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
+                    No activity yet.
                   </div>
-                  <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{a.time}</div>
-                </div>
-              </div>
-            ))}
+                )
+                : items.map((a, i, arr) => (
+                  <div key={i} style={{ padding: '12px 14px', display: 'flex', gap: 10, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklch, ${a.tone} 14%, white)`, color: a.tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon name={a.icon} size={14} stroke={2} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: T.ink, fontWeight: 500 }}>{a.text}</div>
+                      {a.time && <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{a.time}</div>}
+                    </div>
+                  </div>
+                ));
+            })()}
           </Card>
         </div>
       </div>

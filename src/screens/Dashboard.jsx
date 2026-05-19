@@ -251,21 +251,12 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
 
 export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold }) {
   const isHi = lang === 'hi';
-  const [toast, setToast] = useState(null);
   const ROOM_TYPES = effectiveRoomTypes(property);
   const repeats = repeatGuestKeys(bookings);
-
-  useEffect(() => {
-    const events = [
-      { ch: 'MakeMyTrip', color: '#EB2026', who: 'Neha Agarwal', room: 'Deluxe Tent', total: 9000 },
-      { ch: 'Booking.com', color: '#003580', who: 'Daniel Brunner', room: 'Luxury Tent', total: 14400 },
-    ];
-    let i = 0;
-    const showOne = () => { setToast(events[i % events.length]); i++; setTimeout(() => setToast(null), 4500); };
-    const t1 = setTimeout(showOne, 1800);
-    const t2 = setInterval(showOne, 12000);
-    return () => { clearTimeout(t1); clearInterval(t2); };
-  }, []);
+  // Fake "New booking · MakeMyTrip" toast was removed: it claimed bookings
+  // that never happened (channel sync isn't wired) and visually overlapped
+  // the greeting on every Dashboard mount. When real OTA sync lands the
+  // toast can come back, driven by the actual event stream.
 
   // ANCHOR is local midnight of today, so idx 0 is today in the new model.
   // Everything that used to compare against `1` (the demo's hardcoded
@@ -379,27 +370,6 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
 
   return (
     <div style={{ flex: 1, overflow: 'auto', paddingBottom: 100, position: 'relative' }}>
-      {toast && (
-        <div style={{
-          position: 'fixed', top: 14, left: 12, right: 12, zIndex: 100,
-          background: T.card, borderRadius: 14, padding: '10px 12px',
-          boxShadow: '0 12px 32px rgba(20,15,10,.18), 0 0 0 1px rgba(20,15,10,.06)',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: toast.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>{toast.ch[0]}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink, display: 'flex', alignItems: 'center', gap: 4 }}>
-              {isHi ? 'नई बुकिंग · ' : 'New booking · '}{toast.ch}
-              <span style={{ width: 5, height: 5, borderRadius: 3, background: T.ok }} className="pulse" />
-            </div>
-            <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} className="tnum">{toast.who} · {toast.room} · ₹{toast.total.toLocaleString('en-IN')}</div>
-          </div>
-          <button style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 4 }} onClick={() => setToast(null)}>
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      )}
-
       <div style={{
         background: `linear-gradient(160deg, ${T.primary} 0%, ${T.primaryDk} 100%)`,
         padding: '56px 20px 18px', color: '#fff', position: 'relative', overflow: 'hidden',

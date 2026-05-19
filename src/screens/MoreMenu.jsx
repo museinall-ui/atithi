@@ -5,10 +5,10 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 
 export default function MoreMenu({ go, t }) {
   const items = [
-    { id: 'rates',    icon: 'tag',   color: T.primary, title: t('ratesTitle'),    sub: 'Pricing · close-outs · discounts' },
-    { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'MMT · Goibibo · Booking.com' },
-    { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: t('revenue') + ' · ADR · ' + t('avgOccupancy') },
-    { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: t('property') + ' · ' + t('language') + ' · ' + t('integrations') + ' · ' + t('yourPlan') },
+    { id: 'rates',    icon: 'tag',   color: T.primary, title: t('ratesTitle'),    sub: 'Daily rates · close-outs' },
+    { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'OTAs · coming soon' },
+    { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: 'Money earned · rooms full · invoicing' },
+    { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: 'Property · plan · accountant · language' },
   ];
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>

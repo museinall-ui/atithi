@@ -89,18 +89,18 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
 
 function StepDates({ data, set, t, childAgeBelow }) {
   const dateRef = useRef(null);
-  // Cross-browser opener for the native date picker. showPicker() is the
-  // modern API (Chrome 99+, Edge 99+, Firefox 101+, Safari 16+) and is the
-  // only reliable way to programmatically open the picker. Older browsers
-  // fall back to .focus() + .click(), which works in some.
+  // The native date picker needs to anchor to the input's rendered box, so
+  // we keep the input full-size inside the bar with opacity:0 (same pattern
+  // the Diary's jump-to-date bar uses). Tapping anywhere on the bar hits
+  // the input directly, which triggers the picker. The explicit onClick is
+  // a belt-and-suspenders fallback for browsers that don't auto-open the
+  // picker on click (some Safari builds).
   const openPicker = () => {
     const el = dateRef.current;
     if (!el) return;
     if (typeof el.showPicker === 'function') {
-      try { el.showPicker(); return; } catch {}
+      try { el.showPicker(); } catch {}
     }
-    el.focus();
-    el.click();
   };
   const data_rooms = data.roomItems.length;
   const data_adults = data.roomItems.reduce((s, r) => s + r.adults, 0);
@@ -125,40 +125,35 @@ function StepDates({ data, set, t, childAgeBelow }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{t('checkIn')}</label>
-            {/* Date picker: clicking anywhere on the bar opens the native
-                date picker via showPicker(). The <input type="date"> is
-                still in the tree (real value source + form participation)
-                but moved off-screen so the browser's own icon doesn't show
-                next to ours. Tested on Chrome / Edge / Safari / Firefox. */}
-            <button
-              type="button"
+            {/* Date picker overlay (same pattern as Diary's jump-to-date
+                bar — proven to work). The <input type="date"> sits on top
+                of the icon + label at opacity:0, full-size. Tapping
+                anywhere on the bar hits the input → native picker opens. */}
+            <div
               onClick={openPicker}
-              className="atithi-tap"
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                position: 'relative', display: 'flex', alignItems: 'center', gap: 8,
                 background: data.checkIn ? T.primaryLt : T.bgSunk,
                 border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`,
                 borderRadius: 10, padding: '0 12px', height: 44, cursor: 'pointer',
-                width: '100%', textAlign: 'left', font: 'inherit',
               }}
             >
               <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
               <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: data.checkIn ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {checkInLabel || 'Pick check-in date'}
               </span>
-            </button>
-            <input
-              ref={dateRef}
-              type="date"
-              value={data.checkIn || ''}
-              onChange={(e) => set('checkIn', e.target.value)}
-              aria-hidden="true"
-              tabIndex={-1}
-              style={{
-                position: 'absolute', left: -9999, top: 'auto',
-                width: 1, height: 1, opacity: 0, padding: 0, border: 0,
-              }}
-            />
+              <input
+                ref={dateRef}
+                type="date"
+                value={data.checkIn || ''}
+                onChange={(e) => set('checkIn', e.target.value)}
+                aria-label="Check-in date"
+                style={{
+                  position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
+                  border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
+                }}
+              />
+            </div>
           </div>
           <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />
         </div>

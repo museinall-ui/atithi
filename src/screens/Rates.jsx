@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { effectiveRoomTypes } from '../data.js';
+import { effectiveRoomTypes, ANCHOR } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -30,9 +30,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   const days = useMemo(() => {
     const out = [];
-    const start = new Date(2026, 4, 4);
     for (let i = 0; i < 30; i++) {
-      const d = new Date(start); d.setDate(d.getDate() + i);
+      const d = new Date(ANCHOR);
+      d.setDate(d.getDate() + i);
       out.push({
         idx: i, dom: d.getDate(),
         dow: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()],

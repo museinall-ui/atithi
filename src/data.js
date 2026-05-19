@@ -27,16 +27,59 @@ export function effectiveRoomTypes(property) {
   });
 }
 
+// Anchor date for day-index math throughout the app. Pinned to local
+// midnight of "today" so the diary always centres on the current date
+// rather than the demo seed (May 4 2026). Recomputed once at module load
+// (= page load) — refresh after midnight to advance the anchor.
+export const ANCHOR = (() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+})();
+
+// Local YYYY-MM-DD formatter. Avoids toISOString() which converts to UTC
+// and shifts the day in non-UTC timezones (IST etc.).
+export function ymd(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Day-index <-> date helpers, anchored to ANCHOR. idx 0 == today.
+export function idxToDate(idx) {
+  const d = new Date(ANCHOR);
+  d.setDate(d.getDate() + (idx || 0));
+  return ymd(d);
+}
+
+export function dateToIdx(dateStr) {
+  if (!dateStr) return 0;
+  let target;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    target = new Date(y, m - 1, d);
+  } else {
+    target = new Date(dateStr);
+  }
+  if (isNaN(target.getTime())) return 0;
+  return Math.round((target - ANCHOR) / (24 * 3600 * 1000));
+}
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOWS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+// Build a 14-day starting window for the Diary, anchored at today.
 export const DAYS = (() => {
   const out = [];
-  const start = new Date(2026, 4, 4);
   for (let i = 0; i < 14; i++) {
-    const d = new Date(start); d.setDate(d.getDate() + i);
+    const d = new Date(ANCHOR);
+    d.setDate(d.getDate() + i);
     out.push({
-      iso: d.toISOString().slice(0, 10),
-      dow: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay() + 6) % 7],
+      iso: ymd(d),
+      dow: DOWS[(d.getDay() + 6) % 7],
       dom: d.getDate(),
-      month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],
+      month: MONTHS[d.getMonth()],
       isWknd: d.getDay() === 5 || d.getDay() === 6,
       idx: i,
     });

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, CHANNELS, effectiveRoomTypes } from '../data.js';
+import { DAYS, CHANNELS, effectiveRoomTypes, ANCHOR, ymd, dateToIdx } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Btn from '../components/Btn.jsx';
@@ -173,7 +173,7 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
           </div>
         </div>
         {days.map((d, i) => (
-          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
+          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
         ))}
       </div>
       {!collapsed && Array.from({ length: rt.units }).map((_, ui) => {
@@ -195,7 +195,7 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
               <span style={{ fontSize: 10, fontWeight: 600, color: T.ink3, letterSpacing: 0.4 }}>#{ui + 1}</span>
             </div>
             {days.map((d, i) => (
-              <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
+              <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
             ))}
             {bookings.filter(b => b.unitIdx === ui).map(b => {
               const dx = drag && drag.id === b.id ? drag.dx : 0;
@@ -232,16 +232,17 @@ const matchesFilter = (b, filter) => {
 
 const HORIZONS = [14, 30, 60, 90];
 
-// Generate a contiguous day-meta array starting from the same anchor as DAYS,
-// extended to `n` days. Reuses the seed window when shorter, generates fresh
-// metadata when longer so the Diary can show 30/60/90-day views.
+// Generate a contiguous day-meta array of length `n` starting from ANCHOR
+// (today). Reuses DAYS for the first 14 entries so identity-stable refs
+// flow through downstream memoisation; computes the tail dynamically.
 function generateDays(n) {
   if (n <= DAYS.length) return DAYS.slice(0, n);
   const out = [...DAYS];
   for (let i = DAYS.length; i < n; i++) {
-    const d = new Date(2026, 4, 4 + i);
+    const d = new Date(ANCHOR);
+    d.setDate(d.getDate() + i);
     out.push({
-      iso: d.toISOString().slice(0, 10),
+      iso: ymd(d),
       dow: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay() + 6) % 7],
       dom: d.getDate(),
       month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],
@@ -252,15 +253,11 @@ function generateDays(n) {
   return out;
 }
 
-// Convert an ISO YYYY-MM-DD to a day index relative to the demo anchor.
+// Convert an ISO YYYY-MM-DD to a day index relative to today (ANCHOR).
 // Returns null for empty/invalid input. Used by the jump-to-date picker.
 function isoToDayIdx(iso) {
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const [y, m, d] = iso.split('-').map(Number);
-  const target = new Date(y, m - 1, d);
-  if (isNaN(target.getTime())) return null;
-  const anchor = new Date(2026, 4, 4);
-  return Math.round((target - anchor) / (24 * 3600 * 1000));
+  return dateToIdx(iso);
 }
 
 export default function Diary({ go, bookings, setBookings, moveBooking, t, property }) {
@@ -457,11 +454,11 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
         <div style={{ minWidth: labelW + colW * viewDays.length + 16, position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>MAY 2026</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${new Date(ANCHOR).getFullYear()}` : ''}</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} stays</div>
             </div>
             {viewDays.map((d, i) => {
-              const isToday = i === 1;
+              const isToday = i === 0;
               return (
                 <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}` }}>
                   {isToday ? (
@@ -491,7 +488,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
               const occ = Math.round((occRooms / totalRooms) * 100);
               return (
-                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: i === 1 ? T.primaryLt : 'transparent' }}>
+                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: i === 0 ? T.primaryLt : 'transparent' }}>
                   <div className="tnum" style={{ fontSize: 11, fontWeight: 700, color: occ > 80 ? T.danger : occ > 50 ? 'oklch(48% 0.14 75)' : T.ok }}>{occ}%</div>
                 </div>
               );

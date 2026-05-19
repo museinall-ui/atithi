@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -111,27 +111,13 @@ const saveLS = (key, val) => {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 };
 
-// Map a check-in date string to a day index relative to May 4 2026 (the
-// demo anchor). Accepts ISO "YYYY-MM-DD" (from the date picker) and falls
-// back to JS Date parsing for any other format. ISO is parsed as a local
-// date — using new Date("YYYY-MM-DD") directly would treat it as UTC and
-// shift the day by one in non-UTC timezones (notably IST).
-// Returns 0 if unparseable; allows arbitrary positive offsets so the
-// owner can pick dates beyond the seed 14-day window (the Diary's horizon
-// picker extends as needed).
+// Map a check-in date string to a day index relative to today (data.js
+// ANCHOR). Accepts ISO "YYYY-MM-DD" or any string JS Date can parse.
+// idx 0 = today, positive = future days. Negative results are clamped to
+// 0 — the owner shouldn't be creating new bookings in the past.
 function parseCheckInIdx(checkInStr) {
   if (!checkInStr) return 0;
-  let parsed;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(checkInStr)) {
-    const [y, m, d] = checkInStr.split('-').map(Number);
-    parsed = new Date(y, m - 1, d);
-  } else {
-    parsed = new Date(checkInStr);
-  }
-  if (isNaN(parsed.getTime())) return 0;
-  const baseDay = new Date(2026, 4, 4);
-  const diffDays = Math.round((parsed - baseDay) / (24 * 3600 * 1000));
-  return Math.max(0, diffDays);
+  return Math.max(0, dateToIdx(checkInStr));
 }
 
 // Pick the lowest-numbered unit of the chosen room type that is free for the requested

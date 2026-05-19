@@ -87,7 +87,7 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
   );
 }
 
-function StepDates({ data, set, t }) {
+function StepDates({ data, set, t, childAgeBelow }) {
   const data_rooms = data.roomItems.length;
   const data_adults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const data_children = data.roomItems.reduce((s, r) => s + r.children, 0);
@@ -150,7 +150,7 @@ function StepDates({ data, set, t }) {
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <MiniStep label={t('adults')} value={r.adults} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, adults: Math.max(1, v) } : x))} />
-                <MiniStep label={t('children')} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
+                <MiniStep label={`${t('children')}${childAgeBelow ? ` <${childAgeBelow}y` : ''}`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
               </div>
             </div>
           ))}
@@ -626,7 +626,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
   );
 }
 
-export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property }) {
+export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const isEdit = !!editing;
   const [step, setStep] = useState(1);
@@ -651,12 +651,15 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
       };
     }
+    // New booking. If a Diary cell prefilled the date + room type, seed
+    // those onto the booking. Otherwise everything stays blank and the
+    // owner picks via the wizard.
+    const seedDate = prefill && prefill.date ? prefill.date : '';
+    const seedRoomType = prefill && prefill.roomTypeId ? prefill.roomTypeId : null;
     return {
-      // checkIn left blank — owner must pick a date before continuing.
-      // (Previously hardwired to '04 May 2026' which was a debug default.)
-      checkIn: '', nights: 1,
-      roomTypeId: null,
-      roomItems: [{ adults: 2, children: 0, rate: null }],
+      checkIn: seedDate, nights: 1,
+      roomTypeId: seedRoomType,
+      roomItems: [{ roomTypeId: seedRoomType, adults: 2, children: 0, rate: null }],
       name: '', phone: '', email: '', country: 'IN', state: '', gstin: '',
       notes: '', source: 'walk-in', hold: false, holdHours: 4,
       payMethod: null, payAmount: 0, payCustom: 0,
@@ -740,7 +743,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
-        {step === 1 && <StepDates data={data} set={set} t={t} />}
+        {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
         {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}

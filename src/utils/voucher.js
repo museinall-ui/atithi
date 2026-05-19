@@ -1,4 +1,4 @@
-import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown } from '../data.js';
+import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 const FALLBACK_PROPERTY = {
@@ -33,11 +33,12 @@ export function generateVoucher(b, rt, property, invoice) {
   const recipientGstin = isInvoice ? (invoice.recipient?.gstin || '') : '';
   const invoiceDate = isInvoice && invoice.date ? new Date(invoice.date) : new Date();
   const addressLine = [p.address, p.city, p.state, p.pincode].filter(Boolean).join(', ');
-  // ANCHOR is local midnight of today; offset by startIdx to get the booking dates.
-  const _anchor = new Date(); _anchor.setHours(0, 0, 0, 0);
-  const checkIn = new Date(_anchor);
+  // Shared ANCHOR from data.js (local midnight of today) — same source the
+  // rest of the app uses, so a booking that's 11 days out renders here as
+  // the same date the Diary and BookingDetail show.
+  const checkIn = new Date(ANCHOR);
   checkIn.setDate(checkIn.getDate() + (b.startIdx || 0));
-  const checkOut = new Date(_anchor);
+  const checkOut = new Date(ANCHOR);
   checkOut.setDate(checkOut.getDate() + (b.startIdx || 0) + b.nights);
   const fmtDate = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   const fmtINR = (n) => '₹' + (n || 0).toLocaleString('en-IN');

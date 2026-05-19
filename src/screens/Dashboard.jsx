@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, DAYS, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
+import { CHANNELS, DAYS, ANCHOR, ymd, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Card from '../components/Card.jsx';
 import Chip from '../components/Chip.jsx';
@@ -34,10 +34,11 @@ function StatTile({ label, value, icon, color }) {
 // these into a real ledger table for cross-device sync.
 const CASH_CLOSES_KEY = 'atithi.cashCloses.v1';
 function todayKey() {
-  // The demo's "today" is 5 May 2026 (DAYS[1]). For the real app this will be
-  // `new Date().toISOString().slice(0, 10)`. Hardcoded for the prototype so
-  // the close lines up with the seed-data dashboard.
-  return '2026-05-05';
+  // Local YYYY-MM-DD for today. Was previously hardwired to '2026-05-05'
+  // (the demo's fake "today"), which meant every close the hotelier
+  // recorded actually saved against May 5 and disappeared from the
+  // dashboard on next reload. Now keyed by the real calendar date.
+  return ymd(ANCHOR);
 }
 function loadCloses() {
   try { return JSON.parse(localStorage.getItem(CASH_CLOSES_KEY) || '{}'); } catch { return {}; }
@@ -266,24 +267,28 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
     return () => { clearTimeout(t1); clearInterval(t2); };
   }, []);
 
-  const today = bookings.filter(b => b.startIdx === 1);
+  // ANCHOR is local midnight of today, so idx 0 is today in the new model.
+  // Everything that used to compare against `1` (the demo's hardcoded
+  // "today = idx 1") needs to use 0 instead.
+  const TODAY_IDX = 0;
+  const today = bookings.filter(b => b.startIdx === TODAY_IDX);
   const arriving = today.length;
-  const departing = bookings.filter(b => b.startIdx + b.nights === 1).length;
-  const inhouse = bookings.filter(b => b.startIdx <= 1 && b.startIdx + b.nights > 1).length;
+  const departing = bookings.filter(b => b.startIdx + b.nights === TODAY_IDX).length;
+  const inhouse = bookings.filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
   const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
 
   const catOcc = ROOM_TYPES.map(rt => {
-    const occ = bookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= 1 && b.startIdx + b.nights > 1).length;
+    const occ = bookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
     return { rt, occ, total: rt.units };
   });
   const occRooms = catOcc.reduce((a, c) => a + c.occ, 0);
 
   const dailyIncome = bookings
-    .filter(b => b.startIdx <= 1 && b.startIdx + b.nights > 1)
+    .filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX)
     .reduce((a, b) => a + Math.round(b.total / b.nights), 0);
   const collectedToday = bookings
-    .filter(b => b.startIdx === 1)
-    .reduce((a, b) => a + b.paid, 0) || 18500;
+    .filter(b => b.startIdx === TODAY_IDX)
+    .reduce((a, b) => a + b.paid, 0);
 
   const monthlySales = [62, 70, 75, 68, 78, 88, 95, 90, 72, 80, 85, 92];
   const totalMonth = monthlySales.reduce((a, v) => a + v * 1100, 0);
@@ -302,7 +307,6 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
 
   // Pending payments: guest has arrived (or should have) but balance is still due.
   // These are the bookings most likely to be missing payment data needed for invoicing.
-  const TODAY_IDX = 1;
   const pendingPayments = bookings.filter(b => {
     if (b.status === 'cancelled' || b.status === 'tentative') return false;
     const balance = (b.total || 0) - (b.paid || 0);
@@ -360,11 +364,17 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
     });
   };
 
+  // Format a day index as a short date label, e.g. "23 May" or "बुध · 23 मई".
+  // Computes the actual date from ANCHOR + idx so the month and day-of-week
+  // are correct regardless of how far ahead/behind the booking is.
   const dayName = (idx, withDow = false) => {
-    const d = DAYS[idx]; if (!d) return '';
-    const mon = isHi ? D_MONTH_HI[4] : d.month;
-    const dow = isHi ? D_DOW_HI[(idx + 0) % 7] : d.dow;
-    return withDow ? `${dow} · ${d.dom} ${mon}` : `${d.dom} ${mon}`;
+    const d = new Date(ANCHOR);
+    d.setDate(d.getDate() + idx);
+    const monIdx = d.getMonth();
+    const mon = isHi ? D_MONTH_HI[monIdx] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][monIdx];
+    const dowIdx = (d.getDay() + 6) % 7;
+    const dow = isHi ? D_DOW_HI[dowIdx] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dowIdx];
+    return withDow ? `${dow} · ${d.getDate()} ${mon}` : `${d.getDate()} ${mon}`;
   };
 
   return (
@@ -401,7 +411,11 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
         </svg>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
-            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }} className={isHi ? 'hi' : ''}>{isHi ? 'मंगल · 5 मई 2026' : 'Tue, 5 May 2026'}</div>
+            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }} className={isHi ? 'hi' : ''}>{(() => {
+              const opts = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
+              const locale = isHi ? 'hi-IN' : 'en-IN';
+              return new Date().toLocaleDateString(locale, opts);
+            })()}</div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, marginTop: 2 }} className="hi">
               {t('namaste')}, Vikram
             </div>

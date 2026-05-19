@@ -458,6 +458,21 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
         <Card padding={12}>
+          {/* Children age cap. Stored on the accountant jsonb to avoid a
+              schema migration for what's effectively a small metadata flag.
+              Used by New Booking to label the children stepper (e.g.
+              "Children · below 12 years"). */}
+          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${T.borderSoft}` }}>
+            <Field
+              label="Children counted as below this age"
+              type="number"
+              value={accountant.childAgeBelow ?? 12}
+              onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+              placeholder="12"
+              hint="Used on the New Booking screen so the children stepper shows your age cap. Doesn't enforce pricing — that's a future feature."
+              prefix={<Icon name="users" size={12} color={T.ink3} />}
+            />
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bgSoft, borderRadius: 8 }}>

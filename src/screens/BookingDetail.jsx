@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
+import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
+
+// Format a startIdx-relative day as a real calendar date — e.g. "23 May"
+// or "23 May 2026". Was previously hardcoded as `{4 + b.startIdx} May`
+// which always rendered the month as "May" regardless of when the
+// booking actually fell.
+function fmtStayDay(startIdx, withYear) {
+  const d = new Date(ANCHOR);
+  d.setDate(d.getDate() + (startIdx || 0));
+  const opts = withYear
+    ? { day: 'numeric', month: 'short', year: 'numeric' }
+    : { day: 'numeric', month: 'short' };
+  return d.toLocaleDateString('en-IN', opts);
+}
 import { generateVoucher } from '../utils/voucher.js';
 import Toggle from '../components/Toggle.jsx';
 import Icon from '../components/Icon.jsx';
@@ -421,7 +434,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>{t('checkIn').toUpperCase()}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{4 + b.startIdx} May</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{fmtStayDay(b.startIdx)}</div>
                 <div style={{ fontSize: 11, color: T.ink3 }}>14:00</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -431,7 +444,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>{t('checkOut').toUpperCase()}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{4 + b.startIdx + b.nights} May</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{fmtStayDay(b.startIdx + b.nights)}</div>
                 <div style={{ fontSize: 11, color: T.ink3 }}>11:00</div>
               </div>
             </div>

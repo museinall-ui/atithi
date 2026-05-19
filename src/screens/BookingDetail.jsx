@@ -130,27 +130,40 @@ function fmtIssued(iso) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Sheet for issuing one or more tax invoices against a booking. Defaults to a
-// single-recipient invoice for the full booking amount; the hotelier can split
-// into multiple parts before issuing.
+// Sheet for issuing one tax invoice against a booking. Single recipient and
+// single amount — split-across-recipients was retired (added complexity
+// most hoteliers didn't need; can be reintroduced later if needed).
+//
+// `amountIncludesTax` toggles the tax math:
+//   * inclusive (default): the entered amount IS the invoice total, GST is
+//     extracted from it (12 / 112). Matches the common case where the
+//     hotelier already quoted a tax-inclusive figure to the guest.
+//   * exclusive: the entered amount is pre-tax; CGST 6% + SGST 6% are added
+//     on top to compute the invoice total.
 function IssueInvoiceSheet({ booking, onClose, onIssue }) {
-  const [parts, setParts] = useState([
-    { name: booking.guest || '', gstin: '', amount: booking.total || 0 },
-  ]);
-  const totalAllocated = parts.reduce((s, p) => s + (+p.amount || 0), 0);
-  const remaining = (booking.total || 0) - totalAllocated;
-  const valid = parts.length > 0 && Math.abs(remaining) < 0.5 && parts.every(p => p.name.trim() && +p.amount > 0);
+  const [name, setName] = useState(booking.guest || '');
+  const [gstin, setGstin] = useState('');
+  const [amount, setAmount] = useState(booking.total || 0);
+  const [amountIncludesTax, setAmountIncludesTax] = useState(true);
 
-  const updatePart = (i, patch) => setParts(arr => arr.map((p, idx) => idx === i ? { ...p, ...patch } : p));
-  const addPart = () => setParts(arr => [...arr, { name: booking.guest || '', gstin: '', amount: remaining > 0 ? remaining : 0 }]);
-  const removePart = (i) => setParts(arr => arr.filter((_, idx) => idx !== i));
+  const baseAmount = +amount || 0;
+  const gst = amountIncludesTax
+    ? Math.round(baseAmount * 12 / 112)
+    : Math.round(baseAmount * 0.12);
+  const preTax = amountIncludesTax ? baseAmount - gst : baseAmount;
+  const invoiceTotal = amountIncludesTax ? baseAmount : baseAmount + gst;
+  const half = Math.round(gst / 2);
+  const cgst = half;
+  const sgst = gst - half;
+
+  const valid = name.trim().length > 0 && baseAmount > 0;
 
   const submit = () => {
     if (!valid) return;
-    onIssue(parts.map(p => ({
-      amount: +p.amount,
-      recipient: { name: p.name.trim(), gstin: p.gstin.trim(), address: '' },
-    })));
+    onIssue({
+      amount: invoiceTotal,
+      recipient: { name: name.trim(), gstin: gstin.trim(), address: '' },
+    });
     onClose();
   };
 
@@ -162,7 +175,7 @@ function IssueInvoiceSheet({ booking, onClose, onIssue }) {
             <Icon name="download" size={16} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Issue tax invoice{parts.length > 1 ? 's' : ''}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Issue tax invoice</div>
             <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>Once issued, the invoice number is locked (GST requirement).</div>
           </div>
         </div>
@@ -172,67 +185,84 @@ function IssueInvoiceSheet({ booking, onClose, onIssue }) {
           <span className="tnum" style={{ fontSize: 18, fontWeight: 700, color: T.ink }}>₹{(booking.total || 0).toLocaleString('en-IN')}</span>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {parts.map((p, i) => (
-            <div key={i} style={{ padding: 12, background: T.bgSoft, borderRadius: 10, border: `1px solid ${T.borderSoft}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>INVOICE {i + 1}</span>
-                {parts.length > 1 && (
-                  <button onClick={() => removePart(i)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2 }}>
-                    <Icon name="x" size={11} />
-                  </button>
-                )}
-              </div>
-              <input
-                value={p.name}
-                onChange={e => updatePart(i, { name: e.target.value })}
-                placeholder="Recipient name"
-                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 600, color: T.ink, outline: 'none', marginBottom: 6 }}
-              />
-              <input
-                value={p.gstin}
-                onChange={e => updatePart(i, { gstin: e.target.value.toUpperCase() })}
-                placeholder="GSTIN (optional · for B2B)"
-                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 12, fontWeight: 600, color: T.ink, outline: 'none', marginBottom: 6, fontFamily: T.mono || 'monospace' }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 7 }}>
-                <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>₹</span>
-                <input
-                  type="number"
-                  value={p.amount}
-                  onChange={e => updatePart(i, { amount: e.target.value })}
-                  className="tnum"
-                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, fontWeight: 700, color: T.ink, minWidth: 0 }}
-                />
+        <div style={{ padding: 12, background: T.bgSoft, borderRadius: 10, border: `1px solid ${T.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Recipient name"
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 600, color: T.ink, outline: 'none' }}
+          />
+          <input
+            value={gstin}
+            onChange={e => setGstin(e.target.value.toUpperCase())}
+            placeholder="GSTIN (optional · for B2B)"
+            style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 12, fontWeight: 600, color: T.ink, outline: 'none', fontFamily: T.mono || 'monospace' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 7 }}>
+            <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>₹</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="tnum"
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, fontWeight: 700, color: T.ink, minWidth: 0 }}
+            />
+          </div>
+
+          {/* Tax-inclusive toggle. Most owners quote tax-inclusive prices,
+              so this is the default. Untick for pre-tax amounts (CGST + SGST
+              get added on top). */}
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
+            background: T.card, border: `1px solid ${T.border}`, borderRadius: 7, cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={amountIncludesTax}
+              onChange={e => setAmountIncludesTax(e.target.checked)}
+              style={{ marginTop: 2, accentColor: T.teal, width: 16, height: 16, flexShrink: 0 }}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Amount includes GST</div>
+              <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.35 }}>
+                {amountIncludesTax
+                  ? 'GST is treated as already inside the amount above.'
+                  : 'GST (12%) will be added on top of the amount above.'}
               </div>
             </div>
-          ))}
+          </label>
         </div>
 
-        <button
-          onClick={addPart}
-          style={{ marginTop: 10, width: '100%', padding: '10px', borderRadius: 8, border: `1.5px dashed ${T.border}`, background: 'transparent', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
-        >
-          <Icon name="plus" size={11} stroke={2.4} /> Split into another invoice
-        </button>
-
-        <div style={{
-          marginTop: 12, padding: '10px 12px', borderRadius: 8,
-          background: valid ? 'oklch(95% 0.04 155)' : 'oklch(95% 0.05 75)',
-          color: valid ? T.ok : 'oklch(40% 0.14 75)',
-          fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <Icon name={valid ? 'check' : 'info'} size={11} stroke={2.2} />
-          <span className="tnum">
-            ₹{totalAllocated.toLocaleString('en-IN')} of ₹{(booking.total || 0).toLocaleString('en-IN')}
-            {remaining > 0 ? ` · ₹${remaining.toLocaleString('en-IN')} unallocated` : remaining < 0 ? ` · ₹${Math.abs(remaining).toLocaleString('en-IN')} over` : ' · matches'}
-          </span>
-        </div>
+        {/* Live breakdown. Shows the hotelier exactly what numbers go onto
+            the invoice before they tap Issue, in either tax mode. */}
+        {baseAmount > 0 && (
+          <div style={{ marginTop: 12, padding: 12, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 8 }}>INVOICE BREAKDOWN</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} className="tnum">
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
+                <span>Pre-tax</span>
+                <span style={{ fontWeight: 600 }}>₹{preTax.toLocaleString('en-IN')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
+                <span>CGST 6%</span>
+                <span style={{ fontWeight: 600 }}>₹{cgst.toLocaleString('en-IN')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
+                <span>SGST 6%</span>
+                <span style={{ fontWeight: 600 }}>₹{sgst.toLocaleString('en-IN')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: T.ink, paddingTop: 6, borderTop: `1px solid ${T.borderSoft}` }}>
+                <span>Invoice total</span>
+                <span>₹{invoiceTotal.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
           <Btn variant="ghost" full onClick={onClose}>Cancel</Btn>
           <Btn full disabled={!valid} onClick={submit} style={{ background: T.teal, borderColor: T.teal }}>
-            Issue {parts.length} invoice{parts.length > 1 ? 's' : ''}
+            Issue invoice
           </Btn>
         </div>
       </div>
@@ -483,7 +513,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           <Card padding={0}>
             {invoices.length === 0 ? (
               <div style={{ padding: '16px 14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
-                No tax invoice issued yet. Issue one for the full booking total or split into multiple invoices (e.g. company + personal share).
+                No tax invoice issued yet. Issue one for the full booking total when the guest checks out.
               </div>
             ) : (
               invoices.map((inv, i, arr) => (

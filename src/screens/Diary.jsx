@@ -288,11 +288,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
     const startX = e.clientX;
     const startY = e.clientY;
     const origStart = b.startIdx;
-    let moved = false; // becomes true once the pointer travels far enough to count as a drag
     const move = (ev) => {
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
-      if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) moved = true;
       setDrag({ id: b.id, dx, target });
     };
     const up = (ev) => {
@@ -301,17 +299,22 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
       setDrag(null);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      // Decide tap vs drag purely by end-state: if the pointer ended on the
+      // same column and same slot it started on, nothing changed — treat
+      // every such interaction as a tap and open the booking. The move
+      // dialog is only reachable when the pointer actually lands somewhere
+      // different. This avoids touch-jitter false positives that the older
+      // movement-threshold approach couldn't fully suppress on certain
+      // devices (notably past bookings where the visible portion sits over
+      // pre-scrolled area).
       const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = newStart !== origStart;
-      if (slotChanged || dateChanged) {
-        // Pointer travelled to a different slot/date → ask for confirmation, do not navigate.
-        setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
-      } else if (!moved) {
-        // Treat as a tap → open the booking. Done here so the synthetic click that follows
-        // pointerup can't race ahead and navigate after a real drag was attempted.
+      if (!slotChanged && !dateChanged) {
         go('booking', b.id);
+        return;
       }
+      setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);

@@ -112,42 +112,18 @@ export function isRepeatGuest(booking, repeats) {
   return repeats.has(normPhone(booking.phone));
 }
 
-// Indian states + UTs. Used by the state picker in NewBooking so the tax
-// breakdown can split into CGST + SGST (same state as the property) vs IGST
-// (different state, "inter-state supply" in GST terms).
-export const INDIAN_STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
-  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
-  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-  // Union Territories
-  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
-  'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
-];
-
-// Compute the GST breakdown for a booking, treating the price as GST-inclusive
-// (12% inside the total). Returns CGST + SGST when the guest is from the same
-// state as the property (intra-state supply), or IGST when from a different
-// state or a foreign country (inter-state supply). When `state` isn't recorded
-// on the booking, falls back to intra-state for safety.
-export function getTaxBreakdown(booking, property) {
+// GST breakdown for a booking, treating the price as GST-inclusive (12%
+// inside the total). Always splits as CGST 6% + SGST 6% — the IGST
+// inter-state branch was retired because owners found tracking guest-state
+// noise; the CA handles inter-state reporting from the invoice register if
+// it's ever relevant. The `interState` field is kept on the return for
+// backward compatibility with older callers; it's always false now.
+export function getTaxBreakdown(booking, _property) {
   if (!bookingGstApplies(booking)) {
     return { applies: false, gst: 0, cgst: 0, sgst: 0, igst: 0, interState: false };
   }
   const total = booking?.total || 0;
   const gst = Math.round(total * 12 / 112);
-  let interState = false;
-  if (booking?.country && booking.country !== 'IN') {
-    interState = true;
-  } else {
-    const propState = (property?.profile?.state || '').trim().toLowerCase();
-    const guestState = (booking?.state || '').trim().toLowerCase();
-    if (propState && guestState && propState !== guestState) interState = true;
-  }
-  if (interState) {
-    return { applies: true, gst, cgst: 0, sgst: 0, igst: gst, interState: true };
-  }
   const half = Math.round(gst / 2);
   return { applies: true, gst, cgst: half, sgst: gst - half, igst: 0, interState: false };
 }

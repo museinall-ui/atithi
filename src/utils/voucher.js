@@ -51,9 +51,9 @@ export function generateVoucher(b, rt, property, invoice) {
   }).filter(Boolean);
   const logoLetter = (p.name || 'A').trim().charAt(0).toUpperCase();
   // Tax invoices always show the GST breakdown; vouchers show it only when the
-  // booking is GST-applicable per its channel/override flag. Split into CGST +
-  // SGST when intra-state (guest in same state as property), or IGST when
-  // inter-state / foreign — per Indian GST rules.
+  // booking is GST-applicable per its channel/override flag. Always CGST 6% +
+  // SGST 6% — the IGST inter-state branch was retired (owners didn't want to
+  // track guest-state on every booking; CA handles any inter-state nuances).
   const withTax = isInvoice || bookingGstApplies(b);
   const baseAmount = isInvoice ? invoiceAmount : (b.total || 0);
   const tx = withTax
@@ -186,10 +186,9 @@ export function generateVoucher(b, rt, property, invoice) {
         <td class="r">${fmtINR(tariffLine)}</td>
       </tr>
       ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
-      ${withTax ? (tx.interState ? `
-      <tr><td style="color:#666;">IGST @ 12%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.igst)}</td></tr>` : `
+      ${withTax ? `
       <tr><td style="color:#666;">CGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.cgst)}</td></tr>
-      <tr><td style="color:#666;">SGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.sgst)}</td></tr>`) : ''}
+      <tr><td style="color:#666;">SGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.sgst)}</td></tr>` : ''}
     </tbody>
     <tfoot>
       <tr><td colspan="3">${isInvoice ? 'Invoice total' : 'Total'}</td><td class="r total">${fmtINR(baseAmount)}</td></tr>

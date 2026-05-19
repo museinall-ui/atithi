@@ -420,57 +420,47 @@ export default function App() {
     }
   };
 
-  // Issue a sequential tax invoice. `parts` is an optional array describing how
-  // to split the booking total across multiple recipients/invoices. When omitted,
-  // one invoice is issued for the full booking amount with the guest as recipient.
-  // Each part: { amount, recipient: { name, gstin?, address? }, items?: [...], note? }
+  // Issue one sequential tax invoice against a booking. The argument is a
+  // single { amount, recipient, items?, note? } object; legacy callers that
+  // passed an array of "parts" (split invoicing, removed) get the first
+  // entry honoured for back-compat.
   //
-  // Online path: each split goes through the issue_invoice() stored procedure,
-  // which atomically bumps the property's per-FY counter and inserts the
-  // invoice row in one transaction. This is the only safe way to guarantee
-  // gap-free numbering under concurrent edits (two staff hitting "Issue" at
-  // the same time can never collide or skip a number).
+  // Online path: the issue_invoice() stored procedure atomically bumps the
+  // property's per-FY counter and inserts the invoice row in one
+  // transaction. This is the only safe way to guarantee gap-free numbering
+  // under concurrent edits.
   //
-  // Offline path: fall back to the local counter so the hotelier isn't blocked
-  // when the network is down. We'll reconcile in a later chunk.
-  const issueInvoice = async (bookingId, parts) => {
+  // Offline path: fall back to the local counter so the hotelier isn't
+  // blocked when the network is down. We reconcile on the next sync.
+  const issueInvoice = async (bookingId, partOrParts) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking || booking.status === 'tentative') return null;
-    const splits = (Array.isArray(parts) && parts.length > 0) ? parts : [{
+    const part = (Array.isArray(partOrParts) ? partOrParts[0] : partOrParts) || {
       amount: booking.total || 0,
       recipient: { name: booking.guest, gstin: '', address: '' },
-    }];
+    };
     const fy = currentFinancialYear();
 
     if (cloudReady && propertyId) {
       try {
-        const issued = [];
-        for (const part of splits) {
-          const inv = await issueInvoiceCloud({
-            bookingId,
-            fy,
-            amount: +part.amount || 0,
-            recipient: part.recipient || { name: booking.guest, gstin: '', address: '' },
-            items: part.items || null,
-            note: part.note || '',
-          });
-          issued.push(inv);
-        }
+        const inv = await issueInvoiceCloud({
+          bookingId,
+          fy,
+          amount: +part.amount || 0,
+          recipient: part.recipient || { name: booking.guest, gstin: '', address: '' },
+          items: part.items || null,
+          note: part.note || '',
+        });
         setBookings(arr => arr.map(b => b.id === bookingId
-          ? { ...b, invoices: [...(b.invoices || []), ...issued] }
+          ? { ...b, invoices: [...(b.invoices || []), inv] }
           : b));
-        // Mirror the property's per-FY counter from whichever issued invoice
-        // has the highest seq, so local UI (Reports etc.) stays in sync.
         setProperty(p => {
           const counters = { ...(p.invoiceCounters || {}) };
-          const highest = issued.reduce((m, inv) => {
-            const seq = parseInt(String(inv.number).split('-').pop(), 10);
-            return isFinite(seq) ? Math.max(m, seq) : m;
-          }, counters[fy] || 0);
-          counters[fy] = highest;
+          const seq = parseInt(String(inv.number).split('-').pop(), 10);
+          if (isFinite(seq)) counters[fy] = Math.max(counters[fy] || 0, seq);
           return { ...p, invoiceCounters: counters };
         });
-        return issued;
+        return [inv];
       } catch (err) {
         console.error('[atithi] issue invoice cloud failed:', err);
         // Fall through to local-only path below.
@@ -480,9 +470,9 @@ export default function App() {
     // Local-only fallback (offline or cloud error).
     const baseSeq = (property.invoiceCounters && property.invoiceCounters[fy]) || 0;
     const nowIso = new Date().toISOString();
-    const newInvoices = splits.map((part, i) => ({
-      id: 'inv_' + Date.now() + '_' + i,
-      number: formatInvoiceNumber(fy, baseSeq + i + 1),
+    const newInvoice = {
+      id: 'inv_' + Date.now(),
+      number: formatInvoiceNumber(fy, baseSeq + 1),
       fy,
       date: nowIso,
       amount: +part.amount || 0,
@@ -490,12 +480,12 @@ export default function App() {
       items: part.items || null,
       note: part.note || '',
       voided: false,
-    }));
-    setProperty(p => ({ ...p, invoiceCounters: { ...(p.invoiceCounters || {}), [fy]: baseSeq + splits.length } }));
+    };
+    setProperty(p => ({ ...p, invoiceCounters: { ...(p.invoiceCounters || {}), [fy]: baseSeq + 1 } }));
     setBookings(arr => arr.map(b => b.id === bookingId
-      ? { ...b, invoices: [...(b.invoices || []), ...newInvoices] }
+      ? { ...b, invoices: [...(b.invoices || []), newInvoice] }
       : b));
-    return newInvoices;
+    return [newInvoice];
   };
 
   const voidInvoice = (bookingId, invoiceId) => {

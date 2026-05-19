@@ -1,6 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
-import { AMENITIES } from '../data.js';
+import { AMENITIES, currentFinancialYear } from '../data.js';
+
+// Format the FY code stored in invoiceCounters ('2627') as a human-readable
+// label ('2026-27') for use on labels and hints.
+function fmtFy(fy) {
+  if (!fy || fy.length !== 4) return fy || '';
+  return `20${fy.slice(0, 2)}-${fy.slice(2)}`;
+}
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -121,6 +128,12 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   const [openCatAmenities, setOpenCatAmenities] = useState({});
   const [gstin, setGstin] = useState(property.gstin || '');
   const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
+  // Per-FY invoice counter. We surface the current FY's counter as
+  // "last invoice number issued" so a hotelier migrating from another
+  // system can seed Atithi to continue from their existing sequence.
+  const fy = currentFinancialYear();
+  const [invoiceCounters, setInvoiceCounters] = useState(property.invoiceCounters || {});
+  const currentSeq = invoiceCounters[fy] || 0;
   // Theme is either a preset hue or a custom hex; only one is "active" at a
   // time. Mirror the saved shape so live-preview works exactly like save.
   const [theme, setThemeState] = useState(() => {
@@ -141,7 +154,13 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   };
 
   const handleSave = () => {
-    onSave({ profile, categories, rules, amenityIds, customAmenities, gstin: gstin.trim(), accountant, theme });
+    // Functional update so we don't accidentally clobber any property fields
+    // we don't know about (the partial here only enumerates the editable ones).
+    onSave(prev => ({
+      ...prev,
+      profile, categories, rules, amenityIds, customAmenities,
+      gstin: gstin.trim(), accountant, theme, invoiceCounters,
+    }));
     onClose();
   };
   const propTypes = [
@@ -337,6 +356,20 @@ function PropertyProfile({ t, onClose, property, onSave }) {
               onChange={e => setGstin(e.target.value.toUpperCase())}
               placeholder="08AABCY1234M1Z5"
               hint="If you're GST-registered, this appears on every tax invoice."
+              prefix={<Icon name="tag" size={12} color={T.ink3} />}
+            />
+            <Field
+              label={`Last invoice number issued (FY ${fmtFy(fy)})`}
+              type="number"
+              value={currentSeq}
+              onChange={e => {
+                const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                setInvoiceCounters({ ...invoiceCounters, [fy]: v });
+              }}
+              placeholder="0"
+              hint={currentSeq > 0
+                ? `Next invoice will be INV-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
+                : `Leave at 0 to start fresh from INV-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
               prefix={<Icon name="tag" size={12} color={T.ink3} />}
             />
           </div>

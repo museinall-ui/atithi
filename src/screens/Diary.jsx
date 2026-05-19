@@ -288,15 +288,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
     const startX = e.clientX;
     const startY = e.clientY;
     const origStart = b.startIdx;
-    // Tap vs drag: any pointer travel above this radius counts as a drag.
-    // Slightly looser than the previous 4px to absorb touch-screen jitter
-    // (which was causing taps to bleed into the move-confirmation dialog).
-    const DRAG_THRESHOLD = 8;
-    let moved = false;
     const move = (ev) => {
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
-      if (Math.abs(ev.clientX - startX) > DRAG_THRESHOLD || Math.abs(ev.clientY - startY) > DRAG_THRESHOLD) moved = true;
       setDrag({ id: b.id, dx, target });
     };
     const up = (ev) => {
@@ -305,20 +299,22 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
       setDrag(null);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      // Pure tap (pointer never travelled past the threshold) → always open
-      // the booking, never the move-confirmation dialog. The move dialog is
-      // only reachable through an actual drag.
-      if (!moved) {
-        go('booking', b.id);
-        return;
-      }
+      // Decide tap vs drag purely by end-state: if the pointer ended on the
+      // same column and same slot it started on, nothing changed — treat
+      // every such interaction as a tap and open the booking. The move
+      // dialog is only reachable when the pointer actually lands somewhere
+      // different. This avoids touch-jitter false positives that the older
+      // movement-threshold approach couldn't fully suppress on certain
+      // devices (notably past bookings where the visible portion sits over
+      // pre-scrolled area).
       const newStart = Math.max(0, Math.min(viewDays.length - b.nights, origStart + dx));
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = newStart !== origStart;
-      if (slotChanged || dateChanged) {
-        setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
+      if (!slotChanged && !dateChanged) {
+        go('booking', b.id);
+        return;
       }
-      // else: drag completed in place — no-op.
+      setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);

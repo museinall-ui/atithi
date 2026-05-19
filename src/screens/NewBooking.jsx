@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
 import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate } from '../data.js';
 import Icon from '../components/Icon.jsx';
@@ -88,6 +88,20 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
 }
 
 function StepDates({ data, set, t, childAgeBelow }) {
+  const dateRef = useRef(null);
+  // Cross-browser opener for the native date picker. showPicker() is the
+  // modern API (Chrome 99+, Edge 99+, Firefox 101+, Safari 16+) and is the
+  // only reliable way to programmatically open the picker. Older browsers
+  // fall back to .focus() + .click(), which works in some.
+  const openPicker = () => {
+    const el = dateRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      try { el.showPicker(); return; } catch {}
+    }
+    el.focus();
+    el.click();
+  };
   const data_rooms = data.roomItems.length;
   const data_adults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const data_children = data.roomItems.reduce((s, r) => s + r.children, 0);
@@ -111,27 +125,40 @@ function StepDates({ data, set, t, childAgeBelow }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{t('checkIn')}</label>
-            {/* Date picker uses the Diary overlay pattern: visible icon +
-                formatted label sit on top of an invisible <input type="date">
-                that covers the whole bar. Tap anywhere on the bar → native
-                picker opens. The native browser icon is hidden via the
-                opacity:0 input so only ONE cal icon shows. */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, background: data.checkIn ? T.primaryLt : T.bgSunk, border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, cursor: 'pointer' }}>
+            {/* Date picker: clicking anywhere on the bar opens the native
+                date picker via showPicker(). The <input type="date"> is
+                still in the tree (real value source + form participation)
+                but moved off-screen so the browser's own icon doesn't show
+                next to ours. Tested on Chrome / Edge / Safari / Firefox. */}
+            <button
+              type="button"
+              onClick={openPicker}
+              className="atithi-tap"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: data.checkIn ? T.primaryLt : T.bgSunk,
+                border: `1px solid ${data.checkIn ? T.primary : T.borderSoft}`,
+                borderRadius: 10, padding: '0 12px', height: 44, cursor: 'pointer',
+                width: '100%', textAlign: 'left', font: 'inherit',
+              }}
+            >
               <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
               <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: data.checkIn ? T.ink : T.ink3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {checkInLabel || 'Pick check-in date'}
               </span>
-              <input
-                type="date"
-                value={data.checkIn || ''}
-                onChange={(e) => set('checkIn', e.target.value)}
-                aria-label="Check-in date"
-                style={{
-                  position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
-                  border: 'none', outline: 'none', cursor: 'pointer', padding: 0, background: 'transparent',
-                }}
-              />
-            </div>
+            </button>
+            <input
+              ref={dateRef}
+              type="date"
+              value={data.checkIn || ''}
+              onChange={(e) => set('checkIn', e.target.value)}
+              aria-hidden="true"
+              tabIndex={-1}
+              style={{
+                position: 'absolute', left: -9999, top: 'auto',
+                width: 1, height: 1, opacity: 0, padding: 0, border: 0,
+              }}
+            />
           </div>
           <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />
         </div>
@@ -555,24 +582,29 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, t }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, t, plan }) {
+  const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Card padding={16}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>SUMMARY</div>
-          <Chip color={withTax ? 'indigo' : 'soft'} style={{ fontSize: 9 }}>{withTax ? 'In CA export' : 'Skip CA export'}</Chip>
+          {isInvoicingPlan && (
+            <Chip color={withTax ? 'indigo' : 'soft'} style={{ fontSize: 9 }}>{withTax ? 'In CA export' : 'Skip CA export'}</Chip>
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 10, marginBottom: 12 }}>
-          <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
-            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 2 }}>
-              {withTax ? 'Yes — CGST 6% + SGST 6% shown inside the price; included in monthly CA export.' : 'No — direct/cash booking, kept out of the CA export.'}
+        {isInvoicingPlan && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 10, marginBottom: 12 }}>
+            <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
+              <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 2 }}>
+                {withTax ? 'Yes — CGST 6% + SGST 6% shown inside the price; included in monthly CA export.' : 'No — direct/cash booking, kept out of the CA export.'}
+              </div>
             </div>
+            <Toggle on={withTax} onChange={(v) => set('gstApplies', v)} />
           </div>
-          <Toggle on={withTax} onChange={(v) => set('gstApplies', v)} />
-        </div>
+        )}
         <Row label={`Tariff · ${data.nights}N × ${data.roomItems.length} room${data.roomItems.length>1?'s':''}`} value={`₹${roomsSubtotal.toLocaleString('en-IN')}`} />
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
         {withTax && <Row label="CGST 6%" value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
@@ -675,7 +707,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       roomItems: [{ roomTypeId: seedRoomType, adults: 2, children: 0, rate: null }],
       name: '', phone: '', email: '', country: 'IN', state: '', gstin: '',
       notes: '', source: 'walk-in', hold: false, holdHours: 4,
-      payMethod: null, payAmount: 0, payCustom: 0,
+      payMethod: null, payAmount: 'none', payCustom: 0,
       extras: {}, customExtras: [], extraPrices: {},
       // New bookings created here are channel='direct', so GST defaults to off.
       // Hotelier toggles it on via the GST switch on Step 4 if needed.
@@ -684,9 +716,11 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   });
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
-  // GST/invoice inclusion is per-booking now (no plan gating). Defaults
-  // channel-based: direct/cash off, OTA on. Hotelier flips via the toggle.
-  const withTax = !!data.gstApplies;
+  // Tax applies only when the hotelier is on the Invoicing add-on AND has
+  // toggled "include in invoice register" on for this booking. Engine and
+  // Channels tiers always treat the price as a flat tariff (no CGST/SGST
+  // rows in the folio).
+  const withTax = plan === 'invoicing' && !!data.gstApplies;
 
   // Rate per night: respects overrides set in Rates screen + weekend factor.
   const rateForNight = useMemo(() => (roomTypeId, nightIdx) => {
@@ -759,7 +793,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} plan={plan} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

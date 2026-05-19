@@ -331,11 +331,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
   const statusInfo = STATUS[b.status];
-  // Invoicing is now a core feature, not plan-gated. (Previously a fresh
-  // install defaulted to the 'engine' tier with no obvious way to issue
-  // invoices, which trapped hoteliers who needed CA-ready paperwork.)
-  // The plan picker in Settings remains as a marketing label.
-  const withTax = bookingGstApplies(b);
+  // Invoicing is a paid add-on tier. Engine (core) and Channels do
+  // bookings + vouchers but not tax invoices. The voucher PDF (download
+  // icon in the header) stays core and works on every plan; only the
+  // Invoice section + GST toggle + CGST/SGST folio rows are gated.
+  const isInvoicingPlan = plan === 'invoicing';
+  const withTax = isInvoicingPlan && bookingGstApplies(b);
   const tx = withTax ? getTaxBreakdown({ ...b, gstApplies: true }, property) : null;
   const repeats = repeatGuestKeys(bookings);
   const isRepeat = repeats.has(normPhone(b.phone));
@@ -487,18 +488,20 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               );
             })()}
             <Row label="Channel" value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
-              <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
-                <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
-                  {withTax
-                    ? `Yes — appears in the monthly CA export. ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
-                    : `No — direct/cash booking, kept out of the CA export.`}
+            {isInvoicingPlan && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
+                <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
+                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
+                    {withTax
+                      ? `Yes — appears in the monthly CA export. ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
+                      : `No — direct/cash booking, kept out of the CA export.`}
+                  </div>
                 </div>
+                {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
               </div>
-              {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
-            </div>
+            )}
             {b.notes && (
               <>
                 <div style={{ height: 1, background: T.borderSoft, margin: '10px 0' }} />
@@ -591,6 +594,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           />
         )}
 
+        {isInvoicingPlan && (
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title="Invoices" action={
             activeInvoices.length > 0 && remainingToInvoice <= 0
@@ -668,6 +672,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             />
           )}
         </div>
+        )}
 
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('activity')} />

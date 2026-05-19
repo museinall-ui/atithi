@@ -152,13 +152,12 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
 
 export default function App() {
   const [plan, setPlan] = useState(() => {
-    // Default tier is 'invoicing' so every feature (GST toggle on bookings,
-    // Issue Invoice on the folio, monthly CA export) is visible the moment
-    // a hotelier opens the app. Plan tiers still exist in Settings as a
-    // marketing/upgrade story but no longer gate core functionality —
-    // hoteliers were hitting dead-ends because a fresh install defaulted
-    // to the cheapest tier with no obvious way to issue invoices.
-    const saved = loadLS(LS_KEYS.plan, 'invoicing');
+    // Default tier is 'engine' — the core booking package: create / store /
+    // manage bookings + reservation voucher PDF. Invoicing and channel
+    // manager are paid add-ons (revenue path). 'gst' is the legacy name
+    // for what we now call 'invoicing'; map forward so existing saved
+    // state keeps working.
+    const saved = loadLS(LS_KEYS.plan, 'engine');
     if (saved === 'gst') return 'invoicing';
     return saved;
   });

@@ -184,11 +184,28 @@ export default function Guests({ go, bookings = [], t }) {
             <div style={{ fontSize: 11, marginTop: 4 }}>Try clearing the search or pick a different chip.</div>
           </div>
         )}
-        {filtered.map((g, i) => (
-          <div key={`${g.name}-${i}`} style={{
-            padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
-            borderBottom: `1px solid ${T.borderSoft}`, background: T.card, cursor: 'pointer',
-          }}>
+        {filtered.map((g, i) => {
+          // Pick the guest's most-recent non-cancelled booking; fall back
+          // to any booking for them; null if seed-only with no real
+          // booking. Clicking the row opens that booking's detail page.
+          const guestBookings = (bookings || []).filter(b => b.guest === g.name);
+          const openable = guestBookings.find(b => b.status !== 'cancelled')
+            || guestBookings.sort((a, b) => (b.startIdx || 0) - (a.startIdx || 0))[0]
+            || null;
+          const onOpen = () => {
+            if (openable && go) go('booking', openable.id);
+          };
+          return (
+          <div
+            key={`${g.name}-${i}`}
+            onClick={onOpen}
+            className="atithi-tap"
+            style={{
+              padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
+              borderBottom: `1px solid ${T.borderSoft}`, background: T.card,
+              cursor: openable ? 'pointer' : 'default',
+            }}
+          >
             <Avatar name={g.name} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -205,8 +222,10 @@ export default function Guests({ go, bookings = [], t }) {
               <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>₹{(g.spent/1000).toFixed(0)}k</div>
               <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>lifetime</div>
             </div>
+            {openable && <Icon name="chev" size={14} color={T.ink3} />}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

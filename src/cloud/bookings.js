@@ -302,12 +302,13 @@ export async function addPaymentCloud({ bookingId, propertyId, userId, entry, ne
 // Issue one tax invoice atomically via the stored procedure. Returns the
 // new invoice row in local shape (the caller appends it to the booking's
 // local invoices array).
-export async function issueInvoiceCloud({ bookingId, fy, amount, recipient, items, note }) {
+export async function issueInvoiceCloud({ bookingId, fy, amount, recipient, prefix, items, note }) {
   const { data, error } = await supabase.rpc('issue_invoice', {
     p_booking_id: bookingId,
     p_fy: fy,
     p_amount: amount,
     p_recipient: recipient,
+    p_prefix: prefix || 'INV',
     p_items: items || null,
     p_note: note || '',
   });

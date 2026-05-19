@@ -118,7 +118,7 @@ function AmenityPicker({ selected = [], onChange, customAmenities = [], onAddCus
   );
 }
 
-function PropertyProfile({ t, onClose, property, onSave }) {
+function PropertyProfile({ t, onClose, property, plan, onSave }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
@@ -134,6 +134,9 @@ function PropertyProfile({ t, onClose, property, onSave }) {
   const fy = currentFinancialYear();
   const [invoiceCounters, setInvoiceCounters] = useState(property.invoiceCounters || {});
   const currentSeq = invoiceCounters[fy] || 0;
+  // Effective invoice prefix — recomputed from live accountant state so the
+  // hint text updates as the hotelier types in the prefix field.
+  const effectivePrefix = (accountant.invoicePrefix || '').trim().toUpperCase() || 'INV';
   // Theme is either a preset hue or a custom hex; only one is "active" at a
   // time. Mirror the saved shape so live-preview works exactly like save.
   const [theme, setThemeState] = useState(() => {
@@ -358,20 +361,34 @@ function PropertyProfile({ t, onClose, property, onSave }) {
               hint="If you're GST-registered, this appears on every tax invoice."
               prefix={<Icon name="tag" size={12} color={T.ink3} />}
             />
-            <Field
-              label={`Last invoice number issued (FY ${fmtFy(fy)})`}
-              type="number"
-              value={currentSeq}
-              onChange={e => {
-                const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                setInvoiceCounters({ ...invoiceCounters, [fy]: v });
-              }}
-              placeholder="0"
-              hint={currentSeq > 0
-                ? `Next invoice will be INV-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
-                : `Leave at 0 to start fresh from INV-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
-              prefix={<Icon name="tag" size={12} color={T.ink3} />}
-            />
+            {/* Invoice-specific settings: prefix + per-FY counter. Both
+                only relevant on the Invoicing plan, so we gate them. */}
+            {plan === 'invoicing' && (
+              <>
+                <Field
+                  label="Invoice number prefix"
+                  value={accountant.invoicePrefix || ''}
+                  onChange={e => setAccountant({ ...accountant, invoicePrefix: e.target.value.toUpperCase() })}
+                  placeholder="INV"
+                  hint={`Default is INV. The prefix combines with the FY and a running number — e.g. ${effectivePrefix}-${fy}-001.`}
+                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
+                />
+                <Field
+                  label={`Last invoice number issued (FY ${fmtFy(fy)})`}
+                  type="number"
+                  value={currentSeq}
+                  onChange={e => {
+                    const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    setInvoiceCounters({ ...invoiceCounters, [fy]: v });
+                  }}
+                  placeholder="0"
+                  hint={currentSeq > 0
+                    ? `Next invoice will be ${effectivePrefix}-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
+                    : `Leave at 0 to start fresh from ${effectivePrefix}-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
+                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
+                />
+              </>
+            )}
           </div>
         </Card>
 
@@ -527,28 +544,44 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         </Card>
 
         <SectionHead title={t('yourPlan')} style={{ marginTop: 16 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
+        <Card padding={0} style={{ marginBottom: 14 }}>
           {[
-            { id: 'engine',   name: t('planEngine'),   price: '₹499', tagline: t('planEngineDesc'),   color: T.primary },
-            { id: 'channels', name: t('planChannels'), price: '₹999', tagline: t('planChannelsDesc'), color: T.indigo },
-          ].map(p => {
+            { id: 'engine',    name: t('planEngine'),    price: '₹499',  tagline: t('planEngineDesc'),    color: T.primary },
+            { id: 'channels',  name: t('planChannels'),  price: '₹999',  tagline: t('planChannelsDesc'),  color: T.indigo },
+            { id: 'invoicing', name: t('planInvoicing'), price: '₹1499', tagline: t('planInvoicingDesc'), color: T.teal },
+          ].map((p, i, arr) => {
             const sel = plan === p.id;
             return (
-              <Card key={p.id} onClick={() => onChangePlan && onChangePlan(p.id)} padding={11} style={{
-                cursor: 'pointer',
-                borderColor: sel ? p.color : T.borderSoft, borderWidth: sel ? 2 : 1,
-                background: sel ? `color-mix(in oklch, ${p.color} 6%, white)` : T.card,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: sel ? p.color : T.ink }}>{p.name}</span>
-                  {sel && <Icon name="check" size={12} color={p.color} stroke={2.5} />}
+              <div
+                key={p.id}
+                onClick={() => onChangePlan && onChangePlan(p.id)}
+                className="atithi-tap"
+                style={{
+                  padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
+                  borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
+                  cursor: 'pointer',
+                  background: sel ? `color-mix(in oklch, ${p.color} 6%, white)` : 'transparent',
+                }}
+              >
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  border: `2px solid ${sel ? p.color : T.border}`,
+                  background: sel ? p.color : 'transparent',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  {sel && <Icon name="check" size={12} color="#fff" stroke={3} />}
                 </div>
-                <div className="tnum" style={{ fontSize: 14, fontWeight: 700, color: T.ink, letterSpacing: -0.3, marginTop: 3 }}>{p.price}<span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/mo</span></div>
-                <div style={{ fontSize: 9, color: T.ink3, marginTop: 2, fontWeight: 600, lineHeight: 1.3 }}>{p.tagline}</div>
-              </Card>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: sel ? p.color : T.ink }}>{p.name}</div>
+                  <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 1, fontWeight: 600 }}>{p.tagline}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{p.price}<span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/mo</span></div>
+                </div>
+              </div>
             );
           })}
-        </div>
+        </Card>
 
         <SectionHead title={t('integrations')} />
         <Card padding={0}>
@@ -596,7 +629,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         )}
       </div>
 
-      {showProfile && <PropertyProfile t={t} property={property} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}
     </div>
   );
 }

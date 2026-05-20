@@ -218,6 +218,19 @@ export function generateVoucher(b, rt, property, invoice) {
 
   ${b.notes ? `<div class="note"><div class="lbl">Special request</div>${b.notes}</div>` : ''}
 
+  ${!isInvoice && p.paymentQrDataUrl ? `
+  <div style="margin: 20px 0 22px; padding: 16px 18px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 12px; display: flex; gap: 18px; align-items: center;">
+    <img src="${esc(p.paymentQrDataUrl)}" alt="Payment QR" style="width: 130px; height: 130px; border-radius: 8px; background: #fff; padding: 6px; object-fit: contain; flex-shrink: 0;" />
+    <div style="flex: 1; min-width: 0;">
+      <div style="font-size: 9pt; font-weight: 700; color: ${BRAND}; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">Scan to pay</div>
+      <div style="font-size: 13pt; font-weight: 700; color: #1a1a1a; margin-bottom: 4px;">${fmtINR(balance > 0 ? balance : baseAmount)}</div>
+      <div style="font-size: 10pt; color: #555; line-height: 1.5;">
+        ${balance > 0 ? `Balance due — scan this QR with any UPI app to pay.` : `Pay using any UPI app — scan with PhonePe, GPay, Paytm, or your bank's app.`}
+        ${p.paymentQrLabel ? `<br/><strong style="color: ${BRAND};">${esc(p.paymentQrLabel)}</strong>` : ''}
+      </div>
+    </div>
+  </div>` : ''}
+
   <div class="terms">
     <strong>Terms:</strong> Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance. GST will be charged as applicable. For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(b.id)}</strong>.
     <br/><br/>

@@ -47,6 +47,13 @@ const DEFAULT_PROPERTY = {
     name: 'Yatra Desert Camp',
     type: 'resort',
     address: 'Sam Sand Dunes Road, near Khuri',
+    // Hotelier-uploaded payment QR (data URL, base64-encoded). Shown on
+    // the reservation voucher under "Scan to pay" so guests can pay
+    // directly without us having to integrate a payment gateway. Most
+    // small Indian hoteliers already have a printed UPI QR they use at
+    // reception — this just digitises it onto the voucher.
+    paymentQrDataUrl: '',
+    paymentQrLabel: '',  // optional helper text (e.g. "Scan via any UPI app")
     city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
     landmark: 'Near Sam Sand Dunes, 45km west of Jaisalmer Fort',
     mapUrl: 'https://maps.google.com/?q=Sam+Sand+Dunes,+Jaisalmer',

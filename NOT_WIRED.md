@@ -37,11 +37,11 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **Needs:** WhatsApp/Call/Email should open `wa.me/${phone}`, `tel:${phone}`, `mailto:${email}` respectively. Free fix, just a wire-up — no external service required. **Do this in the basics pass.**
 - **Phase:** Engine (basics)
 
-### Razorpay UPI QR code (FAKE)
+### Razorpay UPI QR code on the NEW BOOKING payment step (FAKE)
 - **At:** `src/screens/NewBooking.jsx` Step 4 → "UPI / QR" payment method → renders `<FakeQR />` SVG.
-- **State:** Visible, decorative only. Says "yatradesert@razorpay" but no real UPI deep link or transaction.
-- **Needs:** Razorpay payment link or raw `upi://pay?pa=...&pn=...&am=...&tn=...` deep link encoded as a real QR (use `qrcode` npm package locally — no service needed for the raw UPI link path).
-- **Phase:** 2
+- **State:** Visible, decorative only. Says "yatradesert@razorpay" but no real UPI handshake.
+- **Replacement option:** the property's uploaded payment QR (Settings → Property Profile → Payment QR, shipped May 2026) is what the voucher uses. The fake QR on Step 4 can be replaced with the same `property.profile.paymentQrDataUrl` so the hotelier can show their own real QR to walk-in guests at the desk too.
+- **Phase:** quick fix (no external service needed — just swap the source to `property.profile.paymentQrDataUrl`).
 
 ### Razorpay activity feed entry (HIDDEN)
 - **Was at:** `src/screens/BookingDetail.jsx` Activity — hardcoded "Razorpay · ₹X captured" line with a fake "03 May · 18:25" timestamp.
@@ -109,11 +109,12 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 
 ## Payments
 
-### Razorpay payment link generation (FAKE)
+### Razorpay payment link generation (DEFERRED, may not be needed)
 - **At:** `src/screens/NewBooking.jsx` Step 4 — "WhatsApp link" / "Pay later" options.
 - **State:** Records the booking but no real payment link is minted.
-- **Needs:** Razorpay Payment Links API (`POST /v1/payment_links`) with the booking total, guest name, expiry, and a notify-url that fires the WhatsApp send.
-- **Phase:** 2
+- **Owner direction (May 2026):** the hotelier-uploaded payment QR (rendered on every voucher) is the chosen UPI flow. Razorpay payment links would only be needed if the owner wants auto-reconciled payments + tracked delivery — both deferred.
+- **If revisited:** would be a BYOK setup (each hotelier pastes Key ID + Secret in Settings → Integrations), with secret key stored encrypted and used only from a Supabase Edge Function. Never via the browser. Funds settle direct to the hotelier's bank (not Atithi's).
+- **Phase:** TBD — only when owner asks.
 
 ### "Find existing" guest search button (REMOVED from header)
 - **Was at:** `src/screens/NewBooking.jsx` Step 3 — small "Find existing" button next to "LEAD GUEST" header.

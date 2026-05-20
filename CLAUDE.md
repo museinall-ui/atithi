@@ -416,11 +416,17 @@ All fixed in the audit-pass commit.
 
 **See [NOT_WIRED.md](./NOT_WIRED.md) for the full inventory of mock/placeholder/removed features and what each needs to be wired.** Keep that file in sync when you stub or remove a feature.
 
-### Immediate next: Phase 2 — Payments
-**Architectural decision (May 2026):** start with **raw UPI deep links** (zero cost, zero KYC), then graduate to **BYOK Razorpay** (each hotelier pastes their own Key ID + Key Secret in Settings). Reasons documented in the previous chat:
-- Raw UPI: no account needed, no server needed, no fees. Hotelier adds their UPI VPA (e.g. `yatra@paytm`) → we generate `upi://pay?pa=...&pn=...&am=...&tn=...` → QR code rendered client-side via the `qrcode` npm package. Guest pays through any UPI app. Hotelier marks paid manually via the existing Cash/UPI buttons.
-- BYOK Razorpay (next): two text inputs in Settings → Integrations. Secret key MUST stay server-side (Supabase Edge Function); browser only ever sees the publishable Key ID. We never become the merchant of record — money settles direct to the hotelier's bank.
-- DO NOT pursue Razorpay Route / Marketplace — that turns Atithi into a Money Service Business under RBI rules.
+### Payments — hotelier-uploaded QR (shipped May 2026)
+Owner picked the simplest possible model: each hotelier uploads their own UPI / payment QR image once in **Settings → Property profile → Payment QR**. The image is stored as a base64 data URL on `property.profile.paymentQrDataUrl` (with an optional `paymentQrLabel` caption like a VPA). The reservation voucher renders a "Scan to pay" block showing the QR + the booking's outstanding balance / total.
+
+- Zero external dependencies. No Razorpay account, no server, no API keys.
+- Hotelier's existing printed QR (the one at their reception) becomes the booking-confirmation QR.
+- Guest scans with any UPI app and pays. Hotelier records the payment manually via the existing Cash / UPI buttons.
+- 700 KB file size cap to keep the property row small. Most QR PNGs are 5–30 KB.
+
+**Future upgrade path (NOT yet decided):** BYOK Razorpay — paste your own Razorpay Key ID + Secret to unlock auto-reconciled payment links via WhatsApp. Would require a Supabase Edge Function (secret key must never reach the browser). Hold until owner asks; the QR-on-voucher flow may be enough.
+
+**Do NOT pursue Razorpay Route / Marketplace** — turns Atithi into a Money Service Business under RBI rules.
 
 ### Phase 1 remaining (small)
 - **Migrate remaining localStorage keys to cloud:** `customExtras`, `rateOverrides`, `cashCloses`. Schema tables exist; mirror what Chunk 4 did for bookings.
@@ -435,9 +441,8 @@ All fixed in the audit-pass commit.
 - **Channels** — UI is a "Coming soon" panel. Real two-way sync needs a channel-manager partnership (Phase 5).
 - **Form C filing** — UI shows "Form C filing required" pill for foreign guests; no e-FRRO API integration (no public API exists).
 - **WhatsApp confirmations** — Send-balance-reminder button opens WhatsApp with templated text but doesn't auto-send; needs Meta WhatsApp Business Cloud API.
-- **Razorpay payment links** — see Phase 2 above.
 - **Email-to-CA "send"** — opens `mailto:` and a printable register tab. No SMTP yet (Phase 3 — Resend).
-- **Logo upload** — Settings → Property Profile → Logo "Change" button is dead. Needs Supabase Storage.
+- **Logo upload** — Settings → Property Profile → Logo "Change" button is dead. Needs Supabase Storage (the Payment QR upload uses inline base64; logo could too if we want to ship without Storage).
 - **"GSTIN verified" / "FRRO registered" badges** — cosmetic chips that don't reflect real verification status.
 
 ### Polish opportunities (frontend, no backend dependency)

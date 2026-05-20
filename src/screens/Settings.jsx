@@ -329,6 +329,85 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
           </div>
         </Card>
 
+        <SectionHead title="Payment QR" style={{ marginTop: 16 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Upload your UPI / payment QR. It'll appear on the reservation voucher under "Scan to pay" so guests can pay directly. PNG or JPEG, square works best.
+          </div>
+          {profile.paymentQrDataUrl ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <img
+                src={profile.paymentQrDataUrl}
+                alt="Payment QR"
+                style={{ width: 96, height: 96, borderRadius: 10, border: `1px solid ${T.borderSoft}`, objectFit: 'contain', background: '#fff' }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Icon name="check" size={12} color={T.ok} /> QR uploaded
+                </div>
+                <input
+                  value={profile.paymentQrLabel || ''}
+                  onChange={e => setProfile({ ...profile, paymentQrLabel: e.target.value })}
+                  placeholder="Caption (optional) — e.g. yatra@upi"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 12, color: T.ink, background: T.card }}
+                />
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <label
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <Icon name="edit" size={11} stroke={2.2} /> Replace
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files && e.target.files[0];
+                        if (!file) return;
+                        if (file.size > 700 * 1024) {
+                          alert('Image is too large. Please use a QR under 700 KB.');
+                          return;
+                        }
+                        const r = new FileReader();
+                        r.onload = () => setProfile({ ...profile, paymentQrDataUrl: String(r.result || '') });
+                        r.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                  <button
+                    onClick={() => setProfile({ ...profile, paymentQrDataUrl: '', paymentQrLabel: '' })}
+                    style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <label
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 14px', border: `1.5px dashed ${T.border}`, borderRadius: 10, background: T.bgSoft, color: T.ink3, cursor: 'pointer' }}
+            >
+              <Icon name="plus" size={14} color={T.primary} stroke={2.2} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.primary }}>Upload payment QR</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files && e.target.files[0];
+                  if (!file) return;
+                  if (file.size > 700 * 1024) {
+                    alert('Image is too large. Please use a QR under 700 KB.');
+                    return;
+                  }
+                  const r = new FileReader();
+                  r.onload = () => setProfile({ ...profile, paymentQrDataUrl: String(r.result || '') });
+                  r.readAsDataURL(file);
+                }}
+              />
+            </label>
+          )}
+        </Card>
+
         <SectionHead title="Accountant (CA)" style={{ marginTop: 16 }} />
         <Card padding={14}>
           <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>

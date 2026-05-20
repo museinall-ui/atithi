@@ -209,7 +209,7 @@ export default function Guests({ go, bookings = [], t }) {
         </div>
         {dateOutOfRange && (
           <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>
-            Outside the 14-day diary window — pick a date between {DAYS[0].dom} {DAYS[0].month} and {DAYS[DAYS.length-1].dom} {DAYS[DAYS.length-1].month}.
+            Outside the visible window — pick a date between {DAYS[0].dom} {DAYS[0].month} and {DAYS[DAYS.length-1].dom} {DAYS[DAYS.length-1].month}.
           </div>
         )}
       </div>

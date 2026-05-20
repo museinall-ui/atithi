@@ -49,27 +49,6 @@ function IDOption({ icon, label, sub, selected }) {
   );
 }
 
-function FakeQR() {
-  const cells = [];
-  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
-    if ((x < 3 && y < 3) || (x > 9 && y < 3) || (x < 3 && y > 9)) continue;
-    const cell = ((x * 7 + y * 13) ^ 73) % 3 < 2 ? <rect key={`${x}-${y}`} x={x*8} y={y*8} width="7" height="7" fill="#1a1a1a"/> : null;
-    cells.push(cell);
-  }
-  return (
-    <svg width="110" height="110" viewBox="0 0 104 104">
-      {[[0,0],[80,0],[0,80]].map(([x,y]) => (
-        <g key={`${x}-${y}`}>
-          <rect x={x} y={y} width="22" height="22" fill="#1a1a1a"/>
-          <rect x={x+3} y={y+3} width="16" height="16" fill="#fff"/>
-          <rect x={x+6} y={y+6} width="10" height="10" fill="#1a1a1a"/>
-        </g>
-      ))}
-      {cells}
-    </svg>
-  );
-}
-
 function PayMethod({ icon, label, sub, selected, onClick }) {
   return (
     <button onClick={onClick} className="atithi-tap" style={{
@@ -686,7 +665,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 12, t, plan }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 12, t, plan, property }) {
   const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -754,7 +733,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           <>
             <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 8 }}>METHOD</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <PayMethod icon="qr" label="UPI / QR" sub="Razorpay" selected={data.payMethod === 'upi'} onClick={() => set('payMethod', 'upi')} />
+              <PayMethod icon="qr" label="UPI / QR" sub="Your saved QR" selected={data.payMethod === 'upi'} onClick={() => set('payMethod', 'upi')} />
               <PayMethod icon="wa" label="WhatsApp link" sub="Send to guest" selected={data.payMethod === 'wa'} onClick={() => set('payMethod', 'wa')} />
               <PayMethod icon="inr" label="Cash" sub="At reception" selected={data.payMethod === 'cash'} onClick={() => set('payMethod', 'cash')} />
               <PayMethod icon="tag" label="Card" sub="Razorpay POS" selected={data.payMethod === 'card'} onClick={() => set('payMethod', 'card')} />
@@ -763,17 +742,35 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
         )}
       </Card>
 
-      {data.payMethod === 'upi' && (
-        <Card padding={20} style={{ background: T.indigoLt, borderColor: T.indigo, alignItems: 'center', textAlign: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 140, height: 140, background: '#fff', borderRadius: 14, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FakeQR />
+      {data.payMethod === 'upi' && (() => {
+        const qrUrl = property?.profile?.paymentQrDataUrl || '';
+        const qrLabel = property?.profile?.paymentQrLabel || '';
+        return (
+          <Card padding={20} style={{ background: T.indigoLt, borderColor: T.indigo, alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              {qrUrl ? (
+                <>
+                  <div style={{ width: 160, height: 160, background: '#fff', borderRadius: 14, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img src={qrUrl} alt="Payment QR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  </div>
+                  {qrLabel && <div style={{ fontSize: 11, color: T.ink2, fontWeight: 600 }}>{qrLabel}</div>}
+                  <div style={{ fontSize: 11, color: T.ink3 }}>Show QR to guest · record the payment below once it lands</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 160, height: 160, background: '#fff', borderRadius: 14, padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${T.border}` }}>
+                    <Icon name="qr" size={48} color={T.ink3} />
+                  </div>
+                  <div style={{ fontSize: 12, color: T.ink2, fontWeight: 700 }}>No payment QR uploaded yet</div>
+                  <div style={{ fontSize: 11, color: T.ink3, lineHeight: 1.5, maxWidth: 240 }}>
+                    Upload your UPI QR once in <strong>Settings → Property profile → Payment QR</strong>. It then shows here and on every voucher.
+                  </div>
+                </>
+              )}
             </div>
-            <div className="tnum" style={{ fontSize: 11, color: T.ink2, fontWeight: 600 }}>yatradesert@razorpay</div>
-            <div style={{ fontSize: 11, color: T.ink3 }}>Show QR to guest · auto-detects payment</div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
     </div>
   );
 }
@@ -923,7 +920,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

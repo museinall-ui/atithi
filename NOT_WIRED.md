@@ -37,11 +37,9 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **Needs:** WhatsApp/Call/Email should open `wa.me/${phone}`, `tel:${phone}`, `mailto:${email}` respectively. Free fix, just a wire-up — no external service required. **Do this in the basics pass.**
 - **Phase:** Engine (basics)
 
-### Razorpay UPI QR code on the NEW BOOKING payment step (FAKE)
-- **At:** `src/screens/NewBooking.jsx` Step 4 → "UPI / QR" payment method → renders `<FakeQR />` SVG.
-- **State:** Visible, decorative only. Says "yatradesert@razorpay" but no real UPI handshake.
-- **Replacement option:** the property's uploaded payment QR (Settings → Property Profile → Payment QR, shipped May 2026) is what the voucher uses. The fake QR on Step 4 can be replaced with the same `property.profile.paymentQrDataUrl` so the hotelier can show their own real QR to walk-in guests at the desk too.
-- **Phase:** quick fix (no external service needed — just swap the source to `property.profile.paymentQrDataUrl`).
+### Razorpay UPI QR code on the NEW BOOKING payment step (DONE)
+- **Was at:** `src/screens/NewBooking.jsx` Step 4 → "UPI / QR" payment method → rendered a `<FakeQR />` SVG with "yatradesert@razorpay".
+- **State:** Swapped to render `property.profile.paymentQrDataUrl` (the hotelier's uploaded UPI QR). Falls back to an empty-state placeholder pointing to Settings → Property profile → Payment QR when no QR is uploaded. `FakeQR` component deleted.
 
 ### Razorpay activity feed entry (HIDDEN)
 - **Was at:** `src/screens/BookingDetail.jsx` Activity — hardcoded "Razorpay · ₹X captured" line with a fake "03 May · 18:25" timestamp.

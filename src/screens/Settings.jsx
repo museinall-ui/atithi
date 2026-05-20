@@ -595,12 +595,13 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
         <SectionHead title="Meal plans" style={{ marginTop: 16 }} />
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-            Enable the meal plans you offer and set the per-guest per-night price.
-            EP (Room only) is always available as the no-meals default.
+            Tap any name or price to edit. The per-guest per-night price is added on top of the room rate.
+            EP (Room only) is always on as the no-meals default. Add your own plan at the bottom for anything outside EP/CP/MAP/AP.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {mealPlans.map((mp, i) => {
               const isEP = mp.id === 'ep';
+              const isStandard = ['ep', 'cp', 'map', 'ap'].includes(mp.id);
               return (
                 <div key={mp.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: 10,
@@ -608,18 +609,45 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                   border: `1px solid ${mp.enabled ? T.borderSoft : T.border}`,
                   borderRadius: 8,
                 }}>
-                  <span style={{
-                    width: 42, fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
-                    color: mp.enabled ? T.primaryDk : T.ink3,
-                    flexShrink: 0,
-                  }}>{mp.code}</span>
+                  {isStandard ? (
+                    <span style={{
+                      width: 42, fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                      color: mp.enabled ? T.primaryDk : T.ink3,
+                      flexShrink: 0,
+                    }}>{mp.code}</span>
+                  ) : (
+                    <input
+                      value={mp.code}
+                      onChange={e => {
+                        const code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, code } : p));
+                      }}
+                      maxLength={4}
+                      title="Short code (max 4 letters)"
+                      style={{
+                        width: 50, flexShrink: 0,
+                        fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                        color: mp.enabled ? T.primaryDk : T.ink3,
+                        textAlign: 'center',
+                        border: `1px solid ${T.border}`, borderRadius: 5,
+                        background: T.card, outline: 'none', padding: '3px 4px',
+                      }}
+                    />
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <input
                       value={mp.label}
+                      placeholder="Plan name (e.g. Festive thali)"
                       onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, label: e.target.value } : p))}
-                      style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, padding: 0 }}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        border: 'none', borderBottom: `1px dashed ${T.border}`,
+                        outline: 'none', background: 'transparent',
+                        fontSize: 12, fontWeight: 700, color: T.ink,
+                        padding: '2px 0',
+                      }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                       <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
                       <input
                         type="number"
@@ -632,17 +660,45 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                       <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>/ guest / night</span>
                     </div>
                   </div>
-                  <Toggle
-                    on={mp.enabled || isEP}
-                    onChange={(v) => {
-                      if (isEP) return;
-                      setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
-                    }}
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <Toggle
+                      on={mp.enabled || isEP}
+                      onChange={(v) => {
+                        if (isEP) return;
+                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
+                      }}
+                    />
+                    {!isStandard && (
+                      <button
+                        onClick={() => setMealPlans(arr => arr.filter((_, j) => j !== i))}
+                        title="Remove this plan"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: T.ink3, padding: 0, fontSize: 10,
+                        }}
+                      ><Icon name="x" size={11} /></button>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
+          <button
+            onClick={() => {
+              const id = 'mp_' + Date.now().toString(36);
+              setMealPlans(arr => [...arr, { id, code: 'NEW', label: '', price: 0, enabled: true }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            Add custom meal plan
+          </button>
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />

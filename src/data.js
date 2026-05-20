@@ -156,16 +156,19 @@ export function isRepeatGuest(booking, repeats) {
 }
 
 // Indian hotel-industry GST slabs, keyed on declared room tariff per night.
-// Source: CBIC notifications on hotel accommodation services (HSN 996311).
-//   ≤ ₹1,000        — exempt (0%)
-//   ₹1,001 – 7,500  — 12% (CGST 6% + SGST 6%)
-//   > ₹7,500        — 18% (CGST 9% + SGST 9%)
+// Source: CBIC notifications on hotel accommodation services (HSN 996311),
+// as revised effective 22 September 2025 (56th GST Council). The earlier
+// 12% slab for mid-tier rooms was retired — that band now sits at 5%
+// without ITC.
+//   ≤ ₹1,000          — exempt (0%)
+//   ₹1,001 – ₹7,499   — 5% (no ITC, CGST 2.5% + SGST 2.5%)
+//   ≥ ₹7,500          — 18% (with ITC, CGST 9% + SGST 9%)
 // The slab is determined by the published per-night tariff for the room
 // category, NOT the discounted price the guest actually paid.
 export const GST_SLABS = [
-  { upTo: 1000,     rate: 0,  label: '≤ ₹1,000 / night',       note: 'Exempt' },
-  { upTo: 7500,     rate: 12, label: '₹1,001 – 7,500 / night', note: '12% (6+6)' },
-  { upTo: Infinity, rate: 18, label: '> ₹7,500 / night',       note: '18% (9+9)' },
+  { upTo: 1000,     rate: 0,  label: '≤ ₹1,000 / night',          note: 'Exempt' },
+  { upTo: 7499,     rate: 5,  label: '₹1,001 – ₹7,499 / night',   note: '5% (no ITC)' },
+  { upTo: Infinity, rate: 18, label: '≥ ₹7,500 / night',          note: '18% (with ITC)' },
 ];
 
 // Pick the GST slab that applies to a per-night tariff. Always returns a

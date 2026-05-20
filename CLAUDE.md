@@ -401,6 +401,8 @@ All fixed in the audit-pass commit.
 
 ## What still needs work
 
+**See [NOT_WIRED.md](./NOT_WIRED.md) for the full inventory of mock/placeholder/removed features and what each needs to be wired.** Keep that file in sync when you stub or remove a feature.
+
 ### Phase 1 remaining (small)
 - **Migrate remaining localStorage keys to cloud:** `customExtras`, `rateOverrides`, `cashCloses`. Schema tables already exist (`saved_custom_extras`, `rate_overrides`, `cash_closes`); just need the load + seed + per-action helpers (mirror of what Chunk 4 did for bookings) and the one-time migration on first sign-in.
 - Better error toasts for cloud sync failures — currently silent console.error only.

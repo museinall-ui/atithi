@@ -45,7 +45,10 @@ Requires Node.js (use the official installer from nodejs.org — LTS or Current 
 ### Phase 1 status: cloud migration largely done
 Bookings, payments, invoices, properties, room categories and memberships all flow through Supabase end-to-end. Three localStorage keys still need cutover (see below). The app reads from cloud on sign-in and writes through per-action with optimistic local updates; localStorage stays as a mirror so the app keeps working if a sync errors transiently.
 
-### Auth
+### DEMO_MODE — sign-in is currently bypassed
+`const DEMO_MODE = true` at the top of `src/App.jsx` skips the magic-link auth gate and renders the main app directly off localStorage. This was the owner's call so they could iterate on basics without the email round-trip. **Flip it back to `false` to re-enable Supabase auth** — no other code changes needed; the SignIn screen, auth listeners, and cloud-load effects are all still wired.
+
+### Auth (gated by DEMO_MODE)
 - Email magic-link only (Supabase Auth → email provider). No password.
 - Google OAuth: configured to add later — not wired yet.
 - Sign-in screen at `src/screens/SignIn.jsx`; app gated behind it in `src/App.jsx`. Sign-out lives in Settings → Account.
@@ -153,7 +156,7 @@ Tables: `properties`, `memberships`, `room_categories`, `bookings`, `payments`, 
 Plan stored in localStorage only (per-user, not synced to cloud). Old 'gst' values auto-migrate to 'invoicing'. Plan-gated UI: BookingDetail's Invoice section, the GST toggle, the folio CGST/SGST rows, the Property Profile invoice prefix + last-invoice-number fields.
 
 ### Action functions in App.jsx
-All passed down as props. Local state updates synchronously (optimistic); cloud sync is fire-and-forget per action with `console.error` on failure.
+All passed down as props. Local state updates synchronously (optimistic); cloud sync is wrapped in `syncCloud()` from `src/cloud/sync.js` so failures surface via the SyncOverlay toast (instead of the previous silent `console.error`).
 
 - `addPayment(bookingId, entry)` — append to payments[], compute new paid + status, sync via `addPaymentCloud`
 - `setStatus(bookingId, status)` — sync via `updateBookingCloud`; auto-clears releaseTs/releaseAt when leaving tentative
@@ -225,11 +228,19 @@ Unchanged: writes `--atithi-primary*` CSS vars onto `:root` and syncs `<meta nam
     checkIn, checkOut, phone, email, website,
   },
   categories: [
-    { id, name, units, base, amenityIds: ['ac', 'heater', ...] }
+    { id, name, units, base, amenityIds: ['ac', 'heater', ...],
+      gstRate: 5 | 18 | null,            // null = auto-pick from slab based on base; explicit number = override
+    }
   ],
   rules: ['…'],
   amenityIds: ['wifi', 'parking', ...],
   customAmenities: [{ id, label }],
+  mealPlans: [                            // standard hotel-industry meal plans
+    { id: 'ep',  code: 'EP',  label: 'Room only',               price: 0,    enabled: true  },
+    { id: 'cp',  code: 'CP',  label: 'Breakfast included',      price: 500,  enabled: true  },
+    { id: 'map', code: 'MAP', label: 'Breakfast + 1 main meal', price: 1200, enabled: true  },
+    { id: 'ap',  code: 'AP',  label: 'All meals',               price: 2000, enabled: false },
+  ],
   invoiceCounters: { '2627': 12 },        // last-used seq per Indian FY
   accountant: {                            // CA contact + a few misc property flags piggybacking on this jsonb to avoid schema migrations
     name, email, firm,
@@ -241,6 +252,8 @@ Unchanged: writes `--atithi-primary*` CSS vars onto `:root` and syncs `<meta nam
 }
 ```
 
+Booking objects carry `mealPlanId` (default `'ep'`) and `email`. Both are persisted through `onCreate()` in App.jsx and surfaced on BookingDetail.
+
 Legacy shapes migrated forward via `migrateProperty()` in App.jsx (covers old `{amenities: {wifi: true}}` → `{amenityIds: [...]}` and ensures all newer fields default sanely).
 
 ### Room types — `src/data.js` → `ROOM_TYPES`
@@ -248,7 +261,8 @@ Same 4 categories (Deluxe Tent, Luxury Tent, Bathtub Tent, Private Pool Cottage)
 
 ### Helpers in `src/data.js`
 - **Date math:** `ANCHOR`, `ymd(date)`, `idxToDate(idx)`, `dateToIdx(dateStr)`, `DAYS`
-- **GST / tax:** `bookingGstApplies(b)`, `bookingInvoiceInclude(b)`, `getTaxBreakdown(booking)` (always CGST 6% + SGST 6% now; IGST inter-state branch retired)
+- **GST / tax:** `bookingGstApplies(b)`, `bookingInvoiceInclude(b)`, `GST_SLABS`, `gstSlabFor(rate)`, `gstRateForCategory(cat)`, `blendedGstRate(booking, property)`, `getTaxBreakdown(booking, property)`. Slabs are the **post-22-Sep-2025 CBIC rates** for hotel accommodation: ≤₹1,000 exempt / ₹1,001–₹7,499 = 5% (no ITC) / ≥₹7,500 = 18% (with ITC). Per-category override on `category.gstRate` wins; otherwise auto-pick from slab based on `category.base`.
+- **Meal plans:** `effectiveMealPlans(property)`, `mealPlanById(property, id)`, `mealCostFor(booking, property)`. Per-guest per-night × total guests × nights. Default plan `'ep'` is zero-cost.
 - **Invoices:** `currentFinancialYear(now?)` (e.g. '2627'), `formatInvoiceNumber(fy, seq, prefix='INV')`, `invoicePrefixOf(property)`, `listIssuedInvoices(bookings)`
 - **Guests:** `normPhone(s)`, `repeatGuestKeys(bookings)`, `isRepeatGuest(b, repeats)`
 - **`INDIAN_STATES`** export retained (used by old data) but the state picker UI was removed when IGST was retired
@@ -265,51 +279,50 @@ checkedin / checkout are optional ("Log check-in / Log check-out" buttons in Boo
 
 ### Screens (`src/screens/`)
 - **SignIn.jsx** — Email magic-link entry. Bilingual (EN/HI toggle). Brand-themed.
-- **Dashboard.jsx** — Greeting (real current date), hero carousel (Occupancy / Daily income / Earned this month — all live values), Setup nudge, Today's nudges (smart suggestions), Pending payments (Cash + UPI one-tap), Auto-release timers with inline Extend Hold, Arrivals list, Channel donut chart, Daily cash-close card (keyed by real today's ISO date).
+- **Dashboard.jsx** — Greeting ("Namaste", current date), hero carousel (Occupancy / Daily income / Earned this month — all live values), Setup nudge, Today's nudges (smart suggestions), Pending payments (Cash + UPI one-tap), Auto-release timers with inline Extend Hold, Arrivals list, Channel donut chart, Daily cash-close card. The Daily Income card's % change indicator computes today-vs-yesterday from the real ledger; the trailing mini-chart shows the last 12 days of collected revenue (replacing a hardcoded sample array).
 - **Diary.jsx** —
-  - **Prominent jump-to-date bar at top** of the screen. Whole bar is the click target (`<input type="date">` sits invisible across it). Picking a past/future date auto-extends `pastDays` / `horizon` and scrolls to that column.
-  - **Past dates visible** — default view shows 7 days of past context + 14 days future. `generateDays(pastN, futureN)` returns days with idx ranging negative to positive; `viewDaysStart` is the leftmost idx.
-  - **isToday** compares `d.iso === ymd(ANCHOR)` (no more `i === 1` hardcode).
-  - **Click empty cell → New Booking with prefill** — calls `go('new', { prefill: { date, roomTypeId } })`. Occupied cells stay non-clickable (booking pill handles those).
-  - Drag-drop with tap-vs-drag detection via end-state check (slotChanged || dx !== 0). Touch-jitter no longer triggers the move dialog.
-  - Status-coloured pills (saturated tint + bold border + filled badge), responsive name rendering (full → first → initials), horizon picker (14/30/60/90), filters (All / Confirmed / On-hold / Form C / OTA).
+  - **Prominent jump-to-date bar at top** of the screen. Real `<input type="date">` styled to fill the bar with transparent text + native icon hidden via global CSS in `tokens.js`; a custom Icon + formatted label overlay on top with `pointer-events: none`. Tap anywhere → native picker opens reliably on all browsers.
+  - **Past dates visible** — default view shows 7 days of past context + 30 days future (was 14, bumped because hoteliers were hitting the right edge too quickly).
+  - **Auto-extends horizon on scroll** — when the user scrolls within ~1 column of the rightmost edge, the horizon bumps to the next step (30 → 60 → 90 → 180). Was previously a hard wall.
+  - **Click empty cell → New Booking with prefill** — calls `go('new', { prefill: { date, roomTypeId } })`.
+  - Drag-drop with tap-vs-drag detection via end-state check (slotChanged || dx !== 0).
+  - Status-coloured pills (saturated tint + bold border + filled badge), responsive name rendering, horizon picker (14/30/60/90/180), filters (All / Confirmed / On-hold / Form C / OTA).
 - **NewBooking.jsx** — 4-step flow.
-  - **Step 1 (dates):** HTML5 `<input type="date">` for check-in (no default). Nights default 1. Children stepper label suffixed with the property's `childAgeBelow` (e.g. "Children <12y").
-  - **Step 2 (rooms):** **Per-room type picker.** Each `roomItem` has its own type-chip selector (Deluxe / Luxury / Bathtub / Pool). Booking-level `roomTypeId` mirrors `roomItems[0].roomTypeId` for legacy callers. Per-room rate editor with optional per-night rates.
-  - **Step 3 (guest):** name, country, mobile (with dial-code prefix), email, extras, special note. No state picker (retired with IGST).
-  - **Step 4 (payment):** payment method, advance/full/custom, GST toggle (only on Invoicing plan), hold/release with auto-cancel timer.
-  - Accepts `prefill` prop: `{ date, roomTypeId }` from Diary cell clicks. Edit mode loads existing booking via `editing` prop.
+  - **Step 1 (dates):** Same overlay-input date picker pattern as Diary. Nights default 1. Children stepper label suffixed with the property's `childAgeBelow` (e.g. "Children <12y").
+  - **Step 2 (rooms + meals):** Per-room type picker (each `roomItem` carries its own `roomTypeId`). Per-room rate editor with optional per-night rates. **Meal plan picker** at the bottom — shows enabled plans from `property.mealPlans` with live cost preview (price × guests × nights). Booking-level `mealPlanId` defaults to `'ep'`.
+  - **Step 3 (guest):** name, country, mobile (with dial-code prefix), email, extras, special note. **Repeat-guest auto-suggest:** as the hotelier types a name or phone, an indigo banner appears if a past non-cancelled booking matches by last-5-digit phone or name-prefix. "Use these details" prefills the form. Removed: cosmetic WhatsApp confirmation toggle, ID Proof picker, Business GSTIN field — all were unwired.
+  - **Step 4 (payment):** payment method, advance/full/custom, GST toggle (only on Invoicing plan), hold/release with auto-cancel timer. Summary shows tariff + meal plan + extras + CGST/SGST (rate computed via `blendedGstRate`).
 - **BookingDetail.jsx** —
-  - Check-in / check-out shown via `fmtStayDay(startIdx)` — real `ANCHOR + startIdx` date (was previously the hardcoded `'{4 + startIdx} May'` string template).
-  - Multi-room folio: "Rooms" row lists all `roomItems` with their types when there's more than one.
-  - **Plan-gated Invoice section** (Invoicing tier only):
-    - GST toggle ("Include in invoice register")
-    - CGST/SGST 6% rows in the folio
-    - Invoices list with View PDF + Void
-    - **Issue Invoice button + sheet**
-  - **IssueInvoiceSheet:**
-    - Single recipient (split flow retired)
-    - **"Amount includes GST" checkbox**, default ticked. Toggling switches between extracted-from-amount (inclusive) and added-on-top (exclusive). Live breakdown panel below shows pre-tax / CGST / SGST / total.
-    - **Smart default amount + contextual chip:** ADVANCE (partial payment, no invoices yet), BALANCE (more paid since last invoice), FULL (paid in full, no invoices yet). The defaultAmount + kind props come from BookingDetail's payment-state computation. Hotelier can override the amount before issuing.
+  - Check-in / check-out via `fmtStayDay(startIdx)`.
+  - Guest header shows `2A · Indian guest` or `2A · Foreign · Form C pending` (no false Aadhaar-verified claim).
+  - **WhatsApp / Call / Email buttons** open `wa.me/${digits}`, `tel:+${digits}`, and a templated `mailto:`. Disabled when contact field is missing.
+  - **Send ₹X reminder** button (visible when balance > 0) opens WhatsApp with a templated balance-due message.
+  - Multi-room folio: "Rooms" row lists all `roomItems` with their types.
+  - Folio shows: Tariff line (room rate × nights) + Meal plan line (when paid plan in effect) + CGST/SGST rows (with real rate from blended slab) + Total.
+  - **Activity feed** is now derived from real booking data — payments ledger, issued invoices, status transitions. Previously hardcoded "Razorpay · ₹0 captured · 03 May 18:25" mocks.
+  - **Plan-gated Invoice section** (Invoicing tier only): "Include in invoice register" toggle, Invoices list, Issue Invoice button + sheet.
+  - **IssueInvoiceSheet:** single recipient, **Tax inclusive/exclusive segmented control** (was a subtle checkbox), live breakdown, smart default kind (ADVANCE / BALANCE / FULL).
 - **BookingConfirmed.jsx** — Celebration screen after booking creation.
 - **Rates.jsx** — 30-day calendar grid anchored to today. Drag-select, overrides lifted to App.jsx and consumed by NewBooking.
 - **Channels.jsx** — "Coming soon" placeholder. Real OTA sync needs a channel-manager partnership (Phase 5).
 - **Reports.jsx** — Live KPIs from real bookings + ROOM_TYPES + DAYS. Subtitle shows current month/year. Month-end "Send to CA" card. Plain-English labels (Money earned, Rooms full, Per room/night, Per room/day).
-- **Guests.jsx** — Search + filters (All / VIP / Repeat / Foreign / In-house). **Clicking a guest row opens their most-recent non-cancelled booking detail.** Chevron icon shown only when an openable booking exists.
+- **Guests.jsx** — Search + filters (All / VIP / Repeat / Foreign / In-house). **List derives purely from the bookings store** (the old hardcoded `ALL_GUESTS` fake-customer list was removed). "Last stay" labels computed from booking dates relative to today. Tags auto-applied: Foreign / Repeat (≥2 stays) / Whale (VIP). Stay-date filter uses the same overlay-input date picker pattern as Diary. Top-right "+" opens New Booking.
 - **Settings.jsx** —
-  - **3-plan list** (Engine / Channels / Invoicing) as a stacked card with radio-style selection.
+  - **3-plan list** (Engine / Channels / Invoicing). Engine is the default and the core product (booking + voucher); Channels and Invoicing are paid add-ons. Default plan stored in localStorage.
   - Language toggle (EN/HI).
   - Integrations (Razorpay / WhatsApp / Channel manager / Form C placeholders).
-  - **Account section** with signed-in email + Sign-out button (Phase 1 auth).
+  - **Account section** with signed-in email + Sign-out button (hidden in DEMO_MODE).
   - **PropertyProfile sheet:**
-    - Logo (mocked), Brand colour (7 presets + native colour picker)
+    - Logo (upload not yet wired), Brand colour (7 presets + native colour picker)
     - Basics (name, type, check-in/out times)
     - Address (landmark + Google Maps link)
     - Contact
-    - **Accountant section:** CA email/name/firm, GSTIN, **Invoice number prefix** (gated to Invoicing plan), **Last invoice number issued (FY YY-YY)** (gated to Invoicing plan), all stored on the `accountant` jsonb on the property
-    - Room categories with collapsible amenity picker per category
+    - **Accountant section:** CA email/name/firm, GSTIN, **Invoice number prefix** (Invoicing tier), **Last invoice number issued** (Invoicing tier)
+    - **GST slabs card** (Invoicing tier) — shows the post-22-Sep-2025 CBIC rules: ≤₹1,000 exempt / ₹1,001–₹7,499 5% / ≥₹7,500 18%.
+    - **Room categories** — name, units, base rate, **per-category GST rate** (auto-picks from slab; override per category if CA differs), collapsible amenity picker.
+    - **Meal plans** — editable label + per-guest per-night price + on/off toggle for each of EP/CP/MAP/AP. EP is always on.
     - Property-wide amenities
-    - **House Rules:** new **"Children counted as below this age"** field (default 12) above the rules list — stored on `accountant.childAgeBelow`
+    - **House Rules:** "Children counted as below this age" (default 12) + house-rule list
 - **MoreMenu.jsx** — 2×2 grid linking to Rates/Channels/Reports/Settings. Tab labelled "Manage" / "प्रबंधन".
 
 ### Components (`src/components/`)
@@ -403,30 +416,37 @@ All fixed in the audit-pass commit.
 
 **See [NOT_WIRED.md](./NOT_WIRED.md) for the full inventory of mock/placeholder/removed features and what each needs to be wired.** Keep that file in sync when you stub or remove a feature.
 
+### Immediate next: Phase 2 — Payments
+**Architectural decision (May 2026):** start with **raw UPI deep links** (zero cost, zero KYC), then graduate to **BYOK Razorpay** (each hotelier pastes their own Key ID + Key Secret in Settings). Reasons documented in the previous chat:
+- Raw UPI: no account needed, no server needed, no fees. Hotelier adds their UPI VPA (e.g. `yatra@paytm`) → we generate `upi://pay?pa=...&pn=...&am=...&tn=...` → QR code rendered client-side via the `qrcode` npm package. Guest pays through any UPI app. Hotelier marks paid manually via the existing Cash/UPI buttons.
+- BYOK Razorpay (next): two text inputs in Settings → Integrations. Secret key MUST stay server-side (Supabase Edge Function); browser only ever sees the publishable Key ID. We never become the merchant of record — money settles direct to the hotelier's bank.
+- DO NOT pursue Razorpay Route / Marketplace — that turns Atithi into a Money Service Business under RBI rules.
+
 ### Phase 1 remaining (small)
-- **Migrate remaining localStorage keys to cloud:** `customExtras`, `rateOverrides`, `cashCloses`. Schema tables already exist (`saved_custom_extras`, `rate_overrides`, `cash_closes`); just need the load + seed + per-action helpers (mirror of what Chunk 4 did for bookings) and the one-time migration on first sign-in.
-- Better error toasts for cloud sync failures — currently silent console.error only.
+- **Migrate remaining localStorage keys to cloud:** `customExtras`, `rateOverrides`, `cashCloses`. Schema tables exist; mirror what Chunk 4 did for bookings.
+- **DEMO_MODE flip** — `src/App.jsx` line ~26. Set to `false` to re-enable magic-link sign-in. No other code changes required.
 
 ### Deferred features (queued, none of this is "lost")
-- **Per-night different room type** within a single booking ("guest stays in Deluxe night 1, moves to Luxury night 2"). Data-model rework: `roomItems` needs a `nightTypes` array, and the Diary needs to render a single booking spanning multiple unit rows. Most stays don't change room type mid-stay, but the owner explicitly asked for this — pick it up when other priorities clear.
-- **Per-room unit allocation + multi-pill Diary rendering** for multi-room bookings. Currently a booking with two rooms only shows in the Diary against the *first* room's slot; the second room is visible in BookingDetail but doesn't block inventory in the calendar.
+- **Per-night different room type** within a single booking. Data-model rework: `roomItems` needs a `nightTypes` array, Diary needs to render a pill spanning multiple unit rows.
+- **Per-room unit allocation + multi-pill Diary rendering** for multi-room bookings. Currently a booking with two rooms only shows in the Diary against the *first* room's slot.
+- **Owner-flagged future work:** day close-out (expand existing), daily expense tracker (new schema), team profiles with RBAC (memberships table exists), public booking widget for hotelier's own website.
 
-### Functional gaps (UI-only, waiting on external services — see Production roadmap)
+### Functional gaps (UI-only, waiting on external services — see [NOT_WIRED.md](./NOT_WIRED.md))
 - **Channels** — UI is a "Coming soon" panel. Real two-way sync needs a channel-manager partnership (Phase 5).
-- **Form C filing** — UI works, no e-FRRO API integration.
-- **WhatsApp confirmations** — UI works, no real Business API hookup (Phase 3).
-- **Razorpay UPI QR** — fake SVG, needs real Razorpay or raw UPI deeplink (Phase 2).
-- **OTA channel sync** — bookings from MMT/Goibibo/etc. don't flow in (Phase 5).
-- **Email-to-CA "send"** — currently opens `mailto:` and a printable register tab. No SMTP yet (Phase 3 — Resend).
+- **Form C filing** — UI shows "Form C filing required" pill for foreign guests; no e-FRRO API integration (no public API exists).
+- **WhatsApp confirmations** — Send-balance-reminder button opens WhatsApp with templated text but doesn't auto-send; needs Meta WhatsApp Business Cloud API.
+- **Razorpay payment links** — see Phase 2 above.
+- **Email-to-CA "send"** — opens `mailto:` and a printable register tab. No SMTP yet (Phase 3 — Resend).
+- **Logo upload** — Settings → Property Profile → Logo "Change" button is dead. Needs Supabase Storage.
+- **"GSTIN verified" / "FRRO registered" badges** — cosmetic chips that don't reflect real verification status.
 
 ### Polish opportunities (frontend, no backend dependency)
-- Hindi translations for newer UI strings (invoices, accountant, plan tiers — partial today).
+- Hindi translations for newer UI strings (meal plans, repeat-guest banner, GST slabs — English-only today).
 - Editable saved-custom-extra prices (currently can only delete).
 - Undo for cancellations / auto-releases.
 - Voice notes on bookings (browser MediaRecorder API).
 - Global search bar (across all bookings/guests).
 - Bulk actions (block dates, WhatsApp arrivals, etc.).
-- Guest direct edit (currently only via their booking).
 - Side-by-side panels on tablet+ (currently always a phone-frame on desktop).
 
 ---

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes } from '../data.js';
+import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate } from '../data.js';
 import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -67,8 +67,13 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const gstBookings = active.filter(bookingGstApplies);
     const reportedRevenue = gstBookings.reduce((s, b) => s + (b.paid || 0), 0);
     const reportedBilled = gstBookings.reduce((s, b) => s + (b.total || 0), 0);
-    // Treat reported totals as GST-inclusive: 12% / 112% lives inside the price.
-    const gstCollected = Math.round(reportedBilled * 12 / 112);
+    // Sum GST per booking using its blended slab rate (5% mid-tier / 18%
+    // luxury post 22 Sep 2025), treating each booking's total as
+    // GST-inclusive. Previously hardcoded as flat 12%.
+    const gstCollected = gstBookings.reduce((s, b) => {
+      const rate = blendedGstRate(b, property);
+      return s + Math.round((b.total || 0) * rate / (100 + rate));
+    }, 0);
     const unreported = revenue - reportedRevenue;
 
     // Occupancy is computed across the 14-day diary window. For each day, count

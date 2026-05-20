@@ -436,11 +436,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 </div>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
-              <Btn variant="wa" icon="wa" size="sm">WhatsApp</Btn>
-              <Btn variant="soft" icon="phone" size="sm">Call</Btn>
-              <Btn variant="soft" icon="mail" size="sm">Email</Btn>
-            </div>
+            {(() => {
+              // Contact action buttons — wired with native protocol links so
+              // they actually open WhatsApp / dialer / email client. Phone
+              // is stripped to digits for wa.me + tel: URIs.
+              const digits = String(b.phone || '').replace(/\D/g, '');
+              const waUrl = digits ? `https://wa.me/${digits}` : null;
+              const telUrl = digits ? `tel:+${digits}` : null;
+              const mailUrl = b.email ? `mailto:${b.email}?subject=${encodeURIComponent('Your booking at ' + (property?.profile?.name || ''))}&body=${encodeURIComponent('Hi ' + (b.guest || '') + ',\n\n')}` : null;
+              const open = (url) => { if (url) window.open(url, '_blank', 'noopener'); };
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
+                  <Btn variant="wa" icon="wa" size="sm" disabled={!waUrl} onClick={() => open(waUrl)}>WhatsApp</Btn>
+                  <Btn variant="soft" icon="phone" size="sm" disabled={!telUrl} onClick={() => open(telUrl)}>Call</Btn>
+                  <Btn variant="soft" icon="mail" size="sm" disabled={!mailUrl} onClick={() => open(mailUrl)}>Email</Btn>
+                </div>
+              );
+            })()}
           </Card>
         </div>
 
@@ -589,7 +601,21 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             </div>
             {balance > 0 && (
               <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                <Btn variant="wa" icon="wa" size="sm" style={{ flex: 1 }}>Send ₹{balance.toLocaleString('en-IN')} link</Btn>
+                <Btn
+                  variant="wa"
+                  icon="wa"
+                  size="sm"
+                  style={{ flex: 1 }}
+                  disabled={!b.phone}
+                  onClick={() => {
+                    const digits = String(b.phone || '').replace(/\D/g, '');
+                    if (!digits) return;
+                    const msg = `Hi ${b.guest || ''},\n\nBalance of ₹${balance.toLocaleString('en-IN')} is due for your booking ${b.id} at ${property?.profile?.name || 'our property'}.\n\nPlease confirm payment so we can finalise your reservation.`;
+                    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+                  }}
+                >
+                  Send ₹{balance.toLocaleString('en-IN')} reminder
+                </Btn>
               </div>
             )}
             {balance < 0 && (

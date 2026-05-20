@@ -280,10 +280,15 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
   const collectedToday = bookings
     .filter(b => b.startIdx === TODAY_IDX)
     .reduce((a, b) => a + b.paid, 0);
-
-  const monthlySales = [62, 70, 75, 68, 78, 88, 95, 90, 72, 80, 85, 92];
-  const totalMonth = monthlySales.reduce((a, v) => a + v * 1100, 0);
-  const peak = Math.max(...monthlySales);
+  // Yesterday's collection — used as the comparison point for the Daily
+  // Income card's % change badge. Real number, replacing the old hardcoded
+  // "+24%" placeholder.
+  const collectedYesterday = bookings
+    .filter(b => b.startIdx === TODAY_IDX - 1)
+    .reduce((a, b) => a + b.paid, 0);
+  const dailyChangePct = collectedYesterday > 0
+    ? Math.round(((collectedToday - collectedYesterday) / collectedYesterday) * 100)
+    : null;
 
   // Live "month so far" numbers, computed from real bookings so labels and values agree.
   const activeBookings = bookings.filter(b => b.status !== 'cancelled');
@@ -293,6 +298,16 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
   const availableRoomNights = totalRooms * DAYS.length;
   const monthOccPct = availableRoomNights > 0 ? Math.round((monthRoomNights / availableRoomNights) * 100) : 0;
   const monthAvgPerRoom = monthRoomNights > 0 ? Math.round(monthRevenue / monthRoomNights) : 0;
+
+  // 12-bar trailing mini-chart for the Daily Income card. Builds the last
+  // 12 days of paid amounts straight from the bookings ledger — was
+  // previously a hardcoded sample array [62, 70, ...] that didn't reflect
+  // anything real.
+  const dailyTrail = Array.from({ length: 12 }, (_, i) => {
+    const dayIdx = TODAY_IDX - 11 + i;
+    return bookings.filter(b => b.startIdx === dayIdx).reduce((s, b) => s + (b.paid || 0), 0);
+  });
+  const trailPeak = Math.max(1, ...dailyTrail);
 
   const onHold = bookings.filter(b => b.status === 'tentative');
 
@@ -387,18 +402,13 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
               return new Date().toLocaleDateString(locale, opts);
             })()}</div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, marginTop: 2 }} className="hi">
-              {t('namaste')}, Vikram
+              {t('namaste')}
             </div>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 1 }}>{property?.profile?.name || 'Yatra Desert Camp'} · {property?.profile?.city || 'Jaisalmer'}</div>
           </div>
-          <button style={{
-            width: 40, height: 40, borderRadius: '50%', border: 'none',
-            background: 'rgba(255,255,255,0.18)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
-          }}>
-            <Icon name="bell" size={18} />
-            <span style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, background: 'oklch(70% 0.18 60)', top: 6, right: 6 }} />
-          </button>
+          {/* Notifications bell removed — it didn't open anything. Will return
+              when there's a real notifications inbox (Phase 3 — WhatsApp /
+              email alerts have a destination). */}
         </div>
 
         <div style={{ display: 'flex', gap: 10, overflowX: 'auto', margin: '0 -20px', padding: '0 20px 4px', scrollSnapType: 'x mandatory' }}>
@@ -431,7 +441,11 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
           <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
               <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{t('dailyIncome')}</span>
-              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>+24%</span>
+              {dailyChangePct !== null && (
+                <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>
+                  {dailyChangePct > 0 ? '+' : ''}{dailyChangePct}%
+                </span>
+              )}
             </div>
             <div className="tnum" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, lineHeight: 1 }}>
               ₹{(dailyIncome/1000).toFixed(1)}<span style={{ fontSize: 14, opacity: 0.8 }}>k</span>
@@ -441,12 +455,14 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
             </div>
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{t('monthlySales')}</span>
-                <span className="tnum" style={{ fontSize: 11, fontWeight: 700 }}>₹{Math.round(totalMonth/100000)}L</span>
+                <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'पिछले 12 दिन' : 'LAST 12 DAYS'}</span>
+                <span className="tnum" style={{ fontSize: 11, fontWeight: 700 }}>
+                  ₹{(dailyTrail.reduce((a, v) => a + v, 0) / 1000).toFixed(1)}k
+                </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 30 }}>
-                {monthlySales.map((v, i) => (
-                  <div key={i} style={{ flex: 1, height: `${(v/peak)*100}%`, background: i === monthlySales.length - 1 ? '#fff' : 'rgba(255,255,255,0.55)', borderRadius: '2px 2px 0 0' }} />
+                {dailyTrail.map((v, i) => (
+                  <div key={i} style={{ flex: 1, height: `${Math.max(4, (v/trailPeak)*100)}%`, background: i === dailyTrail.length - 1 ? '#fff' : 'rgba(255,255,255,0.55)', borderRadius: '2px 2px 0 0' }} />
                 ))}
               </div>
             </div>
@@ -456,7 +472,9 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
           <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
               <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'इस महीने कमाई' : 'EARNED THIS MONTH'}</span>
-              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>{isHi ? 'मई 2026' : 'May 2026'}</span>
+              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>
+                {new Date().toLocaleDateString(isHi ? 'hi-IN' : 'en-IN', { month: 'short', year: 'numeric' })}
+              </span>
             </div>
             <div className="tnum" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, lineHeight: 1 }}>
               ₹{monthRevenue >= 100000

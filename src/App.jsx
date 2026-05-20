@@ -555,7 +555,7 @@ export default function App() {
       const patch = {
         roomTypeId: data.roomTypeId, nights: data.nights,
         guest: data.name || (existing && existing.guest) || '',
-        total, paid, phone,
+        total, paid, phone, email: data.email || '',
         notes: data.notes, extras: data.extras,
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
@@ -591,6 +591,7 @@ export default function App() {
         paid,
         guests: guestsStr,
         phone: dial + ' ' + data.phone,
+        email: data.email || '',
         country, formC,
         notes: data.notes,
         extras: data.extras,

@@ -20,17 +20,12 @@ const iconBtn2 = {
   color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
 };
 
-const ALL_GUESTS = [
-  { name: 'Aditya Birla',     phone: '+91 90099 ··· 50', stays: 7, lastStay: '2 days ago',  spent: 412000, vip: true,  tag: 'Whale' },
-  { name: 'Priya Nair',       phone: '+91 90220 ··· 33', stays: 4, lastStay: 'In-house',    spent: 84000,              tag: 'Repeat', inhouse: true },
-  { name: 'Aanya Sharma',     phone: '+91 98100 ··· 21', stays: 2, lastStay: 'Today',       spent: 26000 },
-  { name: 'James Whitman',    phone: '+44 7700 ··· 19',  stays: 1, lastStay: 'Today',       spent: 36000, formC: true, tag: 'Foreign' },
-  { name: 'Sonia Banerjee',   phone: '+91 90909 ··· 17', stays: 3, lastStay: '5 weeks ago', spent: 92000 },
-  { name: "Maeve O'Connor",   phone: '+353 87 ··· 41',   stays: 1, lastStay: 'Tomorrow',    spent: 28500, formC: true },
-  { name: 'Hiroshi Tanaka',   phone: '+81 90 ··· 28',    stays: 2, lastStay: '14 May',      spent: 28800, formC: true, tag: 'Foreign' },
-  { name: 'Vikram Sethi',     phone: '+91 98300 ··· 45', stays: 5, lastStay: 'Today',       spent: 58000,              tag: 'Repeat' },
-  { name: 'Karthik Iyer',     phone: '+91 88000 ··· 12', stays: 1, lastStay: '08 May',      spent: 9000 },
-];
+// The Guests screen now derives its list purely from the bookings store.
+// Earlier we shipped a hardcoded ALL_GUESTS array (Aditya Birla, Priya
+// Nair, etc.) that surfaced alongside real bookings — confusing for any
+// actual hotelier who'd see fake "whale" customers they never had. The
+// derivation in liveGuests below groups bookings by guest name and
+// aggregates stays / spend / status from there.
 
 const FILTERS = [
   { id: 'all',     label: 'All' },
@@ -65,20 +60,29 @@ export default function Guests({ go, bookings = [], t }) {
         ranges: [...(prev?.ranges || []), { startIdx: b.startIdx, nights: b.nights, cancelled: b.status === 'cancelled' }],
       });
     });
-    // Merge: prefer the booking-derived row when names match, else fall back to seed.
+    // Build guest rows from the bookings store only. Tag = Foreign for any
+    // foreign passport, Repeat for 2+ stays, otherwise no tag. "Last stay"
+    // labels come from the most recent non-cancelled booking's startIdx
+    // relative to today.
     const merged = [];
-    const seen = new Set();
-    bookingGuests.forEach((g, name) => {
-      const seed = ALL_GUESTS.find(s => s.name === name);
+    bookingGuests.forEach((g) => {
+      const lastNonCancelled = (g.ranges || []).filter(r => !r.cancelled).sort((a, b) => b.startIdx - a.startIdx)[0];
+      let lastStayLabel = 'Recent';
+      if (g.inhouse) lastStayLabel = 'In-house';
+      else if (lastNonCancelled) {
+        const idx = lastNonCancelled.startIdx;
+        if (idx === 0) lastStayLabel = 'Today';
+        else if (idx === -1) lastStayLabel = 'Yesterday';
+        else if (idx === 1) lastStayLabel = 'Tomorrow';
+        else if (idx < 0) lastStayLabel = `${-idx} days ago`;
+        else lastStayLabel = `in ${idx} days`;
+      }
       merged.push({
-        ...(seed || {}),
         ...g,
-        tag: seed?.tag || (g.formC ? 'Foreign' : g.stays > 2 ? 'Repeat' : g.vip ? 'Whale' : undefined),
-        lastStay: g.inhouse ? 'In-house' : (seed?.lastStay || 'Recent'),
+        tag: g.formC ? 'Foreign' : g.stays >= 2 ? 'Repeat' : g.vip ? 'Whale' : undefined,
+        lastStay: lastStayLabel,
       });
-      seen.add(name);
     });
-    ALL_GUESTS.forEach(s => { if (!seen.has(s.name)) merged.push(s); });
     return merged;
   }, [bookings]);
 
@@ -112,7 +116,7 @@ export default function Guests({ go, bookings = [], t }) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('guests')} subtitle={`${counts.all} contacts · ${counts.inhouse} in-house`}
-        right={<button style={iconBtn2}><Icon name="plus" size={18} /></button>}
+        right={<button style={iconBtn2} onClick={() => go('new')} title="New booking"><Icon name="plus" size={18} /></button>}
       />
       <div style={{ padding: '12px 16px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>
         <Field

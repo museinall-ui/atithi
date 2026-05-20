@@ -155,20 +155,73 @@ export function isRepeatGuest(booking, repeats) {
   return repeats.has(normPhone(booking.phone));
 }
 
-// GST breakdown for a booking, treating the price as GST-inclusive (12%
-// inside the total). Always splits as CGST 6% + SGST 6% — the IGST
-// inter-state branch was retired because owners found tracking guest-state
-// noise; the CA handles inter-state reporting from the invoice register if
-// it's ever relevant. The `interState` field is kept on the return for
-// backward compatibility with older callers; it's always false now.
-export function getTaxBreakdown(booking, _property) {
+// Indian hotel-industry GST slabs, keyed on declared room tariff per night.
+// Source: CBIC notifications on hotel accommodation services (HSN 996311).
+//   ≤ ₹1,000        — exempt (0%)
+//   ₹1,001 – 7,500  — 12% (CGST 6% + SGST 6%)
+//   > ₹7,500        — 18% (CGST 9% + SGST 9%)
+// The slab is determined by the published per-night tariff for the room
+// category, NOT the discounted price the guest actually paid.
+export const GST_SLABS = [
+  { upTo: 1000,     rate: 0,  label: '≤ ₹1,000 / night',       note: 'Exempt' },
+  { upTo: 7500,     rate: 12, label: '₹1,001 – 7,500 / night', note: '12% (6+6)' },
+  { upTo: Infinity, rate: 18, label: '> ₹7,500 / night',       note: '18% (9+9)' },
+];
+
+// Pick the GST slab that applies to a per-night tariff. Always returns a
+// slab — falls back to the highest one for any rate.
+export function gstSlabFor(perNightRate) {
+  return GST_SLABS.find(s => (perNightRate || 0) <= s.upTo) || GST_SLABS[GST_SLABS.length - 1];
+}
+
+// The GST rate (%) a hotelier has configured for a specific room category.
+// Resolution order:
+//   1. Explicit override on the category (category.gstRate, set in Settings)
+//   2. Auto-pick from the slab based on category.base
+//   3. 12% fallback (matches the historical default).
+export function gstRateForCategory(category) {
+  if (!category) return 12;
+  if (typeof category.gstRate === 'number' && category.gstRate >= 0) return category.gstRate;
+  return gstSlabFor(category.base || 0).rate;
+}
+
+// Blended GST rate across all rooms in a booking, weighted by tariff.
+// Used when the booking spans multiple room categories with different
+// slabs (e.g. one Deluxe at 12% + one Pool Cottage at 18%).
+export function blendedGstRate(booking, property) {
+  if (!booking) return 12;
+  const cats = effectiveRoomTypes(property);
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId }];
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const it of items) {
+    const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+    if (!cat) continue;
+    const rate = gstRateForCategory(cat);
+    const weight = (it.rate != null ? it.rate : (cat.base || 0)) || 1;
+    weightedSum += rate * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight === 0) return 12;
+  return weightedSum / totalWeight;
+}
+
+// GST breakdown for a booking, treating the price as GST-inclusive (rate
+// inside the total). The rate comes from the rooms' assigned slabs (or
+// explicit per-category override). Splits as CGST/SGST equally. The
+// `interState` field is kept on the return for backward compatibility;
+// it's always false — IGST inter-state path was retired.
+export function getTaxBreakdown(booking, property) {
   if (!bookingGstApplies(booking)) {
-    return { applies: false, gst: 0, cgst: 0, sgst: 0, igst: 0, interState: false };
+    return { applies: false, rate: 0, gst: 0, cgst: 0, sgst: 0, igst: 0, interState: false };
   }
   const total = booking?.total || 0;
-  const gst = Math.round(total * 12 / 112);
+  const rate = blendedGstRate(booking, property);
+  const gst = Math.round(total * rate / (100 + rate));
   const half = Math.round(gst / 2);
-  return { applies: true, gst, cgst: half, sgst: gst - half, igst: 0, interState: false };
+  return { applies: true, rate, gst, cgst: half, sgst: gst - half, igst: 0, interState: false };
 }
 
 // Whether this booking should be included in the monthly invoice export to the

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -585,7 +585,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
             {isForeign && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', background: T.indigoLt, borderRadius: 8 }}>
                 <Icon name="flag" size={11} color={T.indigo} />
-                <span style={{ fontSize: 11, color: T.indigo, fontWeight: 700 }}>Foreign national · Form C will be auto-filed with FRRO</span>
+                <span style={{ fontSize: 11, color: T.indigo, fontWeight: 700 }}>Foreign national · Form C filing required</span>
               </div>
             )}
           </div>
@@ -675,42 +675,18 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
         </div>
       </Card>
 
-      <Card padding={14} style={{ background: '#F0FDF4', borderColor: '#BBF7D0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#25D366', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name="wa" size={18} stroke={2} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Send WhatsApp confirmation</div>
-            <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>Auto-template + payment link</div>
-          </div>
-          <Toggle on={true} onChange={() => {}} />
-        </div>
-      </Card>
-
-      <Card padding={16}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 12 }}>
-          ID PROOF {isForeign && <Chip color="indigo" style={{ marginLeft: 6 }}>Form C required</Chip>}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <IDOption icon="qr" label="Aadhaar" sub="OCR + e-KYC" selected />
-          <IDOption icon="flag" label="Passport" sub="Form C auto" />
-          <IDOption icon="info" label="Other" sub="DL / Voter" />
-        </div>
-      </Card>
-
-      <Card padding={16}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>BUSINESS GSTIN (OPTIONAL)</div>
-          <Toggle on={!!data.gstin} onChange={(v) => set('gstin', v ? '27AABCU' : '')} />
-        </div>
-        {data.gstin && <Field label="" value={data.gstin} onChange={(e) => set('gstin', e.target.value)} placeholder="29ABCDE1234F1Z5" />}
-      </Card>
+      {/* Removed: cosmetic "Send WhatsApp confirmation" toggle, "ID proof"
+          picker, and "Business GSTIN" card. None of those were wired —
+          WhatsApp Business API isn't connected, the ID options weren't
+          persisted, and the form-level GSTIN never made it onto the
+          booking. They'll come back when the integrations land. The B2B
+          GSTIN flows through the Issue Invoice sheet (Invoicing tier),
+          where it actually appears on the tax invoice. */}
     </div>
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, t, plan }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 12, t, plan }) {
   const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -738,8 +714,8 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           <Row label={`Meal plan · ${mealPlan.code} (${mealPlan.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
         )}
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
-        {withTax && <Row label="CGST 6%" value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
-        {withTax && <Row label="SGST 6%" value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label={`CGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}%`} value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label={`SGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}%`} value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
         <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
         <Row label={t('total')} value={`₹${total.toLocaleString('en-IN')}`} bold />
       </Card>
@@ -909,7 +885,21 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const selectedMealPlan = mealPlans.find(p => p.id === data.mealPlanId);
   const mealCost = selectedMealPlan ? (selectedMealPlan.price || 0) * totalGuests * data.nights : 0;
   const subtotal = roomsSubtotal + extrasTotal + mealCost;
-  const gst = withTax ? Math.round(subtotal * 0.12) : 0;
+  // Blended GST rate across rooms — different categories sit in different
+  // Indian GST slabs (≤₹1k exempt, ₹1k-7.5k = 12%, >₹7.5k = 18%).
+  let blendedRate = 12;
+  if (withTax) {
+    let ws = 0, tw = 0;
+    for (const it of data.roomItems) {
+      const cat = ROOM_TYPES.find(c => c.id === (it.roomTypeId || data.roomTypeId));
+      if (!cat) continue;
+      const r = gstRateForCategory(cat);
+      const w = (it.rate != null ? it.rate : (cat.base || 0)) || 1;
+      ws += r * w; tw += w;
+    }
+    if (tw > 0) blendedRate = ws / tw;
+  }
+  const gst = withTax ? Math.round(subtotal * blendedRate / 100) : 0;
   const total = subtotal + gst;
 
   const titles = [t('stayDetails'), t('pickRoom'), t('guest'), t('payment')];
@@ -933,7 +923,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} allExtras={allExtras} plan={plan} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

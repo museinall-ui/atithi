@@ -1,4 +1,4 @@
-import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR } from '../data.js';
+import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 const FALLBACK_PROPERTY = {
@@ -67,7 +67,9 @@ export function generateVoucher(b, rt, property, invoice) {
   const gstAmt = tx.gst;
   const preTax = baseAmount - gstAmt;
   const extrasSum = isInvoice ? 0 : extrasList.reduce((s, e) => s + e.total, 0);
-  const tariffLine = preTax - extrasSum;
+  const mealPlan = mealPlanById(prop, b.mealPlanId);
+  const mealCost = isInvoice ? 0 : mealCostFor(b, prop);
+  const tariffLine = preTax - extrasSum - mealCost;
   const docNumber = isInvoice ? invoice.number : b.id;
 
   const html = `<!DOCTYPE html>
@@ -190,10 +192,17 @@ export function generateVoucher(b, rt, property, invoice) {
         <td class="r">—</td>
         <td class="r">${fmtINR(tariffLine)}</td>
       </tr>
+      ${mealPlan && mealCost > 0 ? `
+      <tr><td>Meal plan · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">${fmtINR(mealCost)}</td></tr>` : ''}
+      ${mealPlan && mealCost === 0 && mealPlan.id !== 'ep' ? `
+      <tr><td>Meal plan · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">Included</td><td class="r">—</td></tr>` : ''}
       ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
-      ${withTax ? `
-      <tr><td style="color:#666;">CGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.cgst)}</td></tr>
-      <tr><td style="color:#666;">SGST @ 6%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.sgst)}</td></tr>` : ''}
+      ${withTax ? (() => {
+        const halfRate = (tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0);
+        return `
+      <tr><td style="color:#666;">CGST @ ${halfRate}%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.cgst)}</td></tr>
+      <tr><td style="color:#666;">SGST @ ${halfRate}%</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">—</td><td class="r" style="color:#666;">${fmtINR(tx.sgst)}</td></tr>`;
+      })() : ''}
     </tbody>
     <tfoot>
       <tr><td colspan="3">${isInvoice ? 'Invoice total' : 'Total'}</td><td class="r total">${fmtINR(baseAmount)}</td></tr>

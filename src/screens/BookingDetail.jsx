@@ -541,8 +541,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 </>
               );
             })()}
-            {withTax && <Row label="CGST 6%" value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
-            {withTax && <Row label="SGST 6%" value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
+            {withTax && <Row label={`CGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
+            {withTax && <Row label={`SGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
             <Row label="Total" value={`₹${b.total.toLocaleString('en-IN')}`} bold />
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />

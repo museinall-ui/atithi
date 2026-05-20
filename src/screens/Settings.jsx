@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
-import { AMENITIES, currentFinancialYear } from '../data.js';
+import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory } from '../data.js';
 
 // Format the FY code stored in invoiceCounters ('2627') as a human-readable
 // label ('2026-27') for use on labels and hints.
@@ -395,6 +395,25 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
           </div>
         </Card>
 
+        {plan === 'invoicing' && (
+          <>
+            <SectionHead title="GST slabs (hotel rooms)" style={{ marginTop: 16 }} />
+            <Card padding={12}>
+              <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                Indian hotel-room GST is determined by the published room tariff per night. Each room category below auto-picks its slab — override per category if your CA has advised differently.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {GST_SLABS.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: T.bgSoft, borderRadius: 7 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 150 }}>{s.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: s.rate === 0 ? T.ok : s.rate === 12 ? T.indigo : T.danger }}>{s.note}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+
         <SectionHead title={t('roomCategories')} style={{ marginTop: 16 }} action={
           <button onClick={() => setCategories(c => [...c, { id: 'new-' + Date.now(), name: 'New category', units: 1, base: 3000, amenityIds: [] }])} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="plus" size={11} stroke={2.2} /> {t('addCategory')}
@@ -420,6 +439,41 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                     <input type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
                   </div>
                 </div>
+                {/* GST rate for this category. Auto-picked from the slab
+                    based on the base rate; hotelier can override if their
+                    CA has advised otherwise. */}
+                {(() => {
+                  const slab = gstSlabFor(c.base || 0);
+                  const isOverridden = typeof c.gstRate === 'number';
+                  const effective = isOverridden ? c.gstRate : slab.rate;
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '6px 8px', background: T.indigoLt, borderRadius: 7 }}>
+                      <span style={{ fontSize: 10, color: T.indigo, fontWeight: 700 }}>GST:</span>
+                      <input
+                        type="number"
+                        value={effective}
+                        onChange={e => {
+                          const v = e.target.value === '' ? null : Math.max(0, Math.min(28, +e.target.value));
+                          setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: v } : x));
+                        }}
+                        className="tnum"
+                        style={{ width: 50, border: `1px solid ${T.indigo}`, outline: 'none', background: T.card, borderRadius: 5, padding: '3px 6px', fontSize: 12, fontWeight: 700, color: T.indigo }}
+                      />
+                      <span style={{ fontSize: 10, color: T.indigo, fontWeight: 600 }}>%</span>
+                      <span style={{ flex: 1, fontSize: 10, color: T.ink3, fontWeight: 600, marginLeft: 4 }}>
+                        {isOverridden ? 'manual override' : `auto · slab ${slab.note}`}
+                      </span>
+                      {isOverridden && (
+                        <button
+                          onClick={() => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: null } : x))}
+                          style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 <button
                   onClick={() => setOpenCatAmenities(s => ({ ...s, [c.id]: !s[c.id] }))}
                   style={{ marginTop: 8, background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}

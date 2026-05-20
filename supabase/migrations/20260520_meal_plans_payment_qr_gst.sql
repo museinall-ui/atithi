@@ -1,0 +1,47 @@
+-- ============================================================
+-- Atithi — meal plans, payment QR, per-category GST override
+--
+-- Three property-shape fields that landed in the local code but
+-- weren't being persisted to Supabase, so a cloud round-trip
+-- silently dropped them:
+--
+--   1. property.mealPlans  — EP/CP/MAP/AP + any custom plans
+--   2. property.profile.paymentQrDataUrl + paymentQrLabel
+--   3. category.gstRate    — per-category GST override (null = auto)
+--
+-- Today DEMO_MODE = true so nothing is touching the cloud, but as
+-- soon as that flag flips off these fields would have been wiped
+-- on the first save. This migration adds the columns and the JS
+-- read/write paths land in the same commit.
+-- ============================================================
+
+-- Meal plans array — default seeds the four hotel-industry plans so
+-- existing properties bootstrapped before this migration still have
+-- a sane fallback on first cloud load.
+alter table properties
+  add column if not exists meal_plans jsonb not null default
+    '[
+      {"id":"ep",  "code":"EP",  "label":"Room only",                      "price":0,    "enabled":true},
+      {"id":"cp",  "code":"CP",  "label":"Breakfast included",             "price":500,  "enabled":true},
+      {"id":"map", "code":"MAP", "label":"Breakfast + 1 main meal",        "price":1200, "enabled":true},
+      {"id":"ap",  "code":"AP",  "label":"All meals (breakfast + 2 main)", "price":2000, "enabled":false}
+    ]'::jsonb;
+
+-- Hotelier-uploaded UPI/payment QR image. Stored as a base64 data
+-- URL on the property row (cap at ~700KB at the UI layer so the row
+-- stays small). The voucher renders this under "Scan to pay" so the
+-- guest can pay directly without us integrating a payment gateway.
+alter table properties
+  add column if not exists payment_qr_data_url text default '';
+
+alter table properties
+  add column if not exists payment_qr_label text default '';
+
+-- Per-room-category GST override. NULL means "auto-pick from the
+-- current CBIC slab based on base rate" (≤₹1k exempt / ₹1-7.5k 5% /
+-- ≥₹7.5k 18%). An explicit number wins over the slab — used when a
+-- hotelier's CA tells them a specific rate applies to a specific
+-- room type.
+alter table room_categories
+  add column if not exists gst_rate smallint
+    check (gst_rate is null or gst_rate between 0 and 28);

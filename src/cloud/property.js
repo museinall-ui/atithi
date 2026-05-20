@@ -8,6 +8,17 @@ import { supabase } from '../supabase.js';
 // accountant, customAmenities, invoiceCounters, gstin, theme }. The
 // converters keep all the existing screens working unchanged.
 
+// Default meal plans — kept in sync with DEFAULT_PROPERTY.mealPlans in
+// App.jsx. Used as a fallback when a cloud row predates the meal_plans
+// migration (column missing → undefined → seed defaults so the meal plan
+// editor in Settings doesn't render an empty list).
+const DEFAULT_MEAL_PLANS = [
+  { id: 'ep',  code: 'EP',  label: 'Room only',                       price: 0,    enabled: true },
+  { id: 'cp',  code: 'CP',  label: 'Breakfast included',              price: 500,  enabled: true },
+  { id: 'map', code: 'MAP', label: 'Breakfast + 1 main meal',         price: 1200, enabled: true },
+  { id: 'ap',  code: 'AP',  label: 'All meals (breakfast + 2 main)',  price: 2000, enabled: false },
+];
+
 function localToCloudProperty(local) {
   const p = (local && local.profile) || {};
   return {
@@ -24,6 +35,8 @@ function localToCloudProperty(local) {
     phone: p.phone || '',
     email: p.email || '',
     website: p.website || '',
+    payment_qr_data_url: p.paymentQrDataUrl || '',
+    payment_qr_label: p.paymentQrLabel || '',
     gstin: (local && local.gstin) || '',
     accountant: (local && local.accountant) || { name: '', email: '', firm: '' },
     theme: (local && local.theme) || { hue: 38 },
@@ -31,6 +44,9 @@ function localToCloudProperty(local) {
     custom_amenities: (local && local.customAmenities) || [],
     rules: (local && local.rules) || [],
     invoice_counters: (local && local.invoiceCounters) || {},
+    meal_plans: Array.isArray(local && local.mealPlans) && local.mealPlans.length
+      ? local.mealPlans
+      : DEFAULT_MEAL_PLANS,
   };
 }
 
@@ -50,6 +66,8 @@ function cloudToLocalProperty(row, categories) {
       phone: row.phone || '',
       email: row.email || '',
       website: row.website || '',
+      paymentQrDataUrl: row.payment_qr_data_url || '',
+      paymentQrLabel: row.payment_qr_label || '',
     },
     categories: (categories || []).map(c => ({
       id: c.code,
@@ -57,6 +75,8 @@ function cloudToLocalProperty(row, categories) {
       units: c.units,
       base: c.base_rate,
       amenityIds: c.amenity_ids || [],
+      // null = auto-pick from CBIC slab; explicit number = override
+      gstRate: (c.gst_rate == null) ? null : c.gst_rate,
     })),
     rules: row.rules || [],
     amenityIds: row.amenity_ids || [],
@@ -65,6 +85,11 @@ function cloudToLocalProperty(row, categories) {
     accountant: row.accountant || { name: '', email: '', firm: '' },
     gstin: row.gstin || '',
     theme: row.theme || { hue: 38 },
+    // Cloud rows predating the meal_plans column come back with undefined;
+    // seed defaults so the Settings meal-plan editor isn't empty.
+    mealPlans: Array.isArray(row.meal_plans) && row.meal_plans.length
+      ? row.meal_plans
+      : DEFAULT_MEAL_PLANS.map(p => ({ ...p })),
   };
 }
 
@@ -147,6 +172,7 @@ export async function bootstrapProperty(user, seedLocalProperty) {
         units: c.units || 1,
         base_rate: c.base || 0,
         amenity_ids: c.amenityIds || [],
+        gst_rate: (c.gstRate == null) ? null : c.gstRate,
         sort_order: i,
       })));
     if (cErr) throw cErr;
@@ -199,6 +225,7 @@ export async function saveCloudProperty(propertyId, localProperty) {
         units: c.units || 1,
         base_rate: c.base || 0,
         amenity_ids: c.amenityIds || [],
+        gst_rate: (c.gstRate == null) ? null : c.gstRate,
         sort_order: i,
       })), { onConflict: 'property_id,code' });
     if (uErr) throw uErr;

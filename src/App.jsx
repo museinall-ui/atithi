@@ -78,6 +78,17 @@ const DEFAULT_PROPERTY = {
   // is just a hue choice; saturation/lightness are derived to stay coherent.
   // 38 = default Atithi sunset orange.
   theme: { hue: 38 },
+  // Standard hotel meal plans. EP/CP/MAP/AP are the industry shorthand;
+  // price is per guest per night, added on top of the room tariff.
+  // `enabled` controls whether the plan shows up in the booking flow.
+  // The default plan (EP, no meal) is always enabled so every booking has
+  // a valid fallback.
+  mealPlans: [
+    { id: 'ep',  code: 'EP',  label: 'Room only',                       price: 0,    enabled: true },
+    { id: 'cp',  code: 'CP',  label: 'Breakfast included',              price: 500,  enabled: true },
+    { id: 'map', code: 'MAP', label: 'Breakfast + 1 main meal',         price: 1200, enabled: true },
+    { id: 'ap',  code: 'AP',  label: 'All meals (breakfast + 2 main)',  price: 2000, enabled: false },
+  ],
 };
 
 // Older saved property objects used { amenities: { wifi: true, ... } }; convert that to
@@ -106,6 +117,11 @@ function migrateProperty(p) {
   const validColor = out.theme && typeof out.theme === 'object' && typeof out.theme.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(out.theme.color);
   if (!validHue && !validColor) {
     out.theme = { ...DEFAULT_PROPERTY.theme };
+  }
+  // Meal plans: seed from defaults if missing. Existing properties created
+  // before this field was added don't have it.
+  if (!Array.isArray(out.mealPlans) || out.mealPlans.length === 0) {
+    out.mealPlans = DEFAULT_PROPERTY.mealPlans.map(p => ({ ...p }));
   }
   return out;
 }
@@ -544,6 +560,7 @@ export default function App() {
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
+        mealPlanId: data.mealPlanId || 'ep',
         guests: guestsStr,
       };
       if (isHold) {
@@ -581,6 +598,7 @@ export default function App() {
         customExtras: data.customExtras,
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,
+        mealPlanId: data.mealPlanId || 'ep',
         state: data.state || '',
         releaseTs: releaseTs || undefined,
         releaseAt: releaseAt || undefined,
@@ -623,7 +641,7 @@ export default function App() {
       // { prefill: { date, roomTypeId } } from a Diary cell quick-create.
       const argIsPrefill = route.arg && typeof route.arg === 'object';
       const prefill = argIsPrefill ? (route.arg.prefill || route.arg) : null;
-      screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} />;
+      screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
       break;
     }
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;

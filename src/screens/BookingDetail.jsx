@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
+import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById } from '../data.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
 // or "23 May 2026". Was previously hardcoded as `{4 + b.startIdx} May`
@@ -524,7 +524,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             </span>
           } />
           <Card>
-            <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${(withTax ? b.total - tx.gst : b.total).toLocaleString('en-IN')}`} />
+            {(() => {
+              const mealCost = mealCostFor(b, property);
+              const meal = mealPlanById(property, b.mealPlanId);
+              const preTax = withTax ? b.total - tx.gst : b.total;
+              const tariff = preTax - mealCost;
+              return (
+                <>
+                  <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${tariff.toLocaleString('en-IN')}`} />
+                  {meal && mealCost > 0 && (
+                    <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
+                  )}
+                  {meal && mealCost === 0 && meal.id !== 'ep' && (
+                    <Row label="Meal plan" value={`${meal.code} · ${meal.label}`} />
+                  )}
+                </>
+              );
+            })()}
             {withTax && <Row label="CGST 6%" value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
             {withTax && <Row label="SGST 6%" value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />

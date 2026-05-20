@@ -207,6 +207,42 @@ export function invoicePrefixOf(property) {
   return p || 'INV';
 }
 
+// ─── Meal plans ───────────────────────────────────────────────────────────
+// Standard hotel-industry plans (EP / CP / MAP / AP) live on `property.mealPlans`.
+// Each booking carries a `mealPlanId` that points at one of them. Cost is
+// per guest per night, added on top of the room tariff.
+
+export function effectiveMealPlans(property) {
+  return Array.isArray(property && property.mealPlans) ? property.mealPlans : [];
+}
+
+export function mealPlanById(property, id) {
+  return effectiveMealPlans(property).find(p => p.id === id) || null;
+}
+
+// Total guest-count for cost math. Children count toward meals too by default
+// — most Indian hotels charge full meal rate for kids above ~5. The owner can
+// adjust price points per plan, so we keep the math simple here.
+function bookingGuestCount(b) {
+  if (Array.isArray(b.roomItems) && b.roomItems.length > 0) {
+    return b.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+  }
+  // Fall back to parsing the guests string ("2A 1C" -> 3) for legacy bookings.
+  const m = String(b.guests || '').match(/(\d+)A.*?(\d+)?C?/);
+  return m ? (+m[1] || 0) + (+m[2] || 0) : 1;
+}
+
+// Compute the meal-plan cost for a booking. Returns 0 when no plan, plan
+// is the default "Room only" (price 0), or the plan no longer exists.
+export function mealCostFor(booking, property) {
+  if (!booking || !booking.mealPlanId) return 0;
+  const plan = mealPlanById(property, booking.mealPlanId);
+  if (!plan || !plan.price) return 0;
+  const guests = bookingGuestCount(booking);
+  const nights = booking.nights || 1;
+  return plan.price * guests * nights;
+}
+
 // All issued (non-voided) invoices across the given bookings, in the order they
 // were issued. Used by the month-end CA export.
 export function listIssuedInvoices(bookings) {

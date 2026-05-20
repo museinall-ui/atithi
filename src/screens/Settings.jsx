@@ -15,6 +15,7 @@ import Card from '../components/Card.jsx';
 import Field from '../components/Field.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+import Toggle from '../components/Toggle.jsx';
 
 // Reusable amenity picker: works for property-wide and per-category lists.
 // `selected` is an array of amenity ids; calls `onChange` with the new array.
@@ -125,6 +126,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
   const [newRule, setNewRule] = useState('');
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
+  const [mealPlans, setMealPlans] = useState(property.mealPlans || []);
   const [openCatAmenities, setOpenCatAmenities] = useState({});
   const [gstin, setGstin] = useState(property.gstin || '');
   const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
@@ -163,6 +165,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
+      mealPlans,
     }));
     onClose();
   };
@@ -454,6 +457,59 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
             onAddCustom={addCustomAmenity}
             onRemoveCustom={removeCustomAmenity}
           />
+        </Card>
+
+        <SectionHead title="Meal plans" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Enable the meal plans you offer and set the per-guest per-night price.
+            EP (Room only) is always available as the no-meals default.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {mealPlans.map((mp, i) => {
+              const isEP = mp.id === 'ep';
+              return (
+                <div key={mp.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: 10,
+                  background: mp.enabled ? T.bgSoft : T.card,
+                  border: `1px solid ${mp.enabled ? T.borderSoft : T.border}`,
+                  borderRadius: 8,
+                }}>
+                  <span style={{
+                    width: 42, fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                    color: mp.enabled ? T.primaryDk : T.ink3,
+                    flexShrink: 0,
+                  }}>{mp.code}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <input
+                      value={mp.label}
+                      onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, label: e.target.value } : p))}
+                      style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, padding: 0 }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                      <input
+                        type="number"
+                        value={mp.price}
+                        onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
+                        disabled={isEP}
+                        className="tnum"
+                        style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: isEP ? T.bgSunk : T.card, color: T.ink, opacity: isEP ? 0.6 : 1 }}
+                      />
+                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>/ guest / night</span>
+                    </div>
+                  </div>
+                  <Toggle
+                    on={mp.enabled || isEP}
+                    onChange={(v) => {
+                      if (isEP) return;
+                      setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />

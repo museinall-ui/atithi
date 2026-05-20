@@ -385,18 +385,19 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
 // roomTypeId, so a single booking can mix Deluxe + Luxury + Pool etc.
 // The booking-level `roomTypeId` (kept for backward-compat with screens
 // that still read it) is auto-derived from the first room.
-function StepRoom({ data, set, t, rateForNight, roomTypes }) {
+function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans }) {
   const totalAdults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const totalChildren = data.roomItems.reduce((s, r) => s + r.children, 0);
+  const totalGuests = totalAdults + totalChildren;
   const roomsLabel = `${data.roomItems.length} room${data.roomItems.length > 1 ? 's' : ''}`;
   const guestsLabel = `${totalAdults}A${totalChildren > 0 ? ` ${totalChildren}C` : ''}`;
   const setItem = (idx, patch) => {
     const next = data.roomItems.map((x, i) => i === idx ? { ...x, ...patch } : x);
     set('roomItems', next);
-    // Mirror the first room's chosen type onto data.roomTypeId so legacy
-    // callers (folio, voucher, single-room codepaths) still work.
     if ('roomTypeId' in patch && idx === 0) set('roomTypeId', patch.roomTypeId);
   };
+  const enabledMealPlans = (mealPlans || []).filter(p => p.enabled);
+  const selectedMealPlanId = data.mealPlanId || 'ep';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, color: T.ink3, marginBottom: 2 }}>
@@ -414,16 +415,103 @@ function StepRoom({ data, set, t, rateForNight, roomTypes }) {
           onChange={(patch) => setItem(idx, patch)}
         />
       ))}
+      {enabledMealPlans.length > 0 && (
+        <Card padding={14}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>MEAL PLAN</div>
+            <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{totalGuests} guest{totalGuests > 1 ? 's' : ''} × {data.nights} night{data.nights > 1 ? 's' : ''}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {enabledMealPlans.map(plan => {
+              const sel = plan.id === selectedMealPlanId;
+              const planCost = (plan.price || 0) * totalGuests * data.nights;
+              return (
+                <button
+                  key={plan.id}
+                  onClick={() => set('mealPlanId', plan.id)}
+                  className="atithi-tap"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 10,
+                    border: sel ? `1.5px solid ${T.primary}` : `1px solid ${T.border}`,
+                    background: sel ? T.primaryLt : T.card,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <span style={{
+                    width: 38, fontSize: 10, fontWeight: 800,
+                    color: sel ? T.primaryDk : T.ink2, letterSpacing: 0.5,
+                    flexShrink: 0,
+                  }}>{plan.code}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{plan.label}</div>
+                    <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
+                      {plan.price > 0
+                        ? `₹${plan.price.toLocaleString('en-IN')} / guest / night`
+                        : 'No extra charge'}
+                    </div>
+                  </div>
+                  <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: sel ? T.primaryDk : T.ink2 }}>
+                    {planCost > 0 ? `+₹${planCost.toLocaleString('en-IN')}` : '—'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
 
-function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
+function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [], editingId }) {
   const isForeign = data.country !== 'IN';
   const [showAdd, setShowAdd] = useState(false);
   const [newEx, setNewEx] = useState({ label: '', price: '' });
   const [editingPriceId, setEditingPriceId] = useState(null);
+  const [dismissedMatchKey, setDismissedMatchKey] = useState(null);
   const country = COUNTRIES.find(c => c.code === data.country) || COUNTRIES[0];
+
+  // Repeat-guest detection. As soon as the typed phone or name resembles
+  // an existing guest, surface a banner with their saved details. Tapping
+  // "Use these details" prefills name, country and email from the most
+  // recent non-cancelled stay so the hotelier doesn't have to retype.
+  const repeatMatch = (() => {
+    const typedPhone = (data.phone || '').replace(/\D/g, '');
+    const typedName = (data.name || '').trim().toLowerCase();
+    if (typedPhone.length < 5 && typedName.length < 3) return null;
+    // Search non-cancelled past stays. Exclude the current booking when editing.
+    const candidates = bookings
+      .filter(b => b.id !== editingId && b.status !== 'cancelled')
+      .filter(b => {
+        const pPhone = String(b.phone || '').replace(/\D/g, '');
+        const pName = String(b.guest || '').trim().toLowerCase();
+        if (typedPhone.length >= 5 && pPhone && pPhone.endsWith(typedPhone.slice(-5))) return true;
+        if (typedName.length >= 3 && pName.startsWith(typedName)) return true;
+        return false;
+      });
+    if (candidates.length === 0) return null;
+    // Pick the most recent stay (highest startIdx).
+    const best = candidates.reduce((m, b) => (!m || (b.startIdx || 0) > (m.startIdx || 0) ? b : m), null);
+    const sameGuestCount = candidates.filter(c =>
+      String(c.phone || '').replace(/\D/g, '') === String(best.phone || '').replace(/\D/g, '')
+    ).length;
+    return { best, count: sameGuestCount };
+  })();
+  const matchKey = repeatMatch ? `${repeatMatch.best.id}` : null;
+  const showRepeatBanner = repeatMatch && matchKey !== dismissedMatchKey;
+
+  const applyRepeatPrefill = () => {
+    const b = repeatMatch.best;
+    set('name', b.guest || '');
+    // Strip the dial-code prefix from the saved phone so the form's phone
+    // field (which sits next to a separate dial-code prefix) doesn't end
+    // up with two prefixes.
+    const phoneLocal = String(b.phone || '').replace(/^\+\d+\s*/, '');
+    if (phoneLocal) set('phone', phoneLocal);
+    if (b.country) set('country', b.country);
+    setDismissedMatchKey(matchKey);
+  };
 
   const addCustom = () => {
     if (!newEx.label.trim() || !newEx.price) return;
@@ -439,10 +527,44 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
       <Card padding={16}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>LEAD GUEST</div>
-          <button style={{ background: 'none', border: 'none', color: T.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            <Icon name="search" size={11} /> Find existing
-          </button>
         </div>
+        {showRepeatBanner && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '10px 12px', marginBottom: 10,
+            background: T.indigoLt, borderRadius: 10,
+            border: `1px solid ${T.indigo}`,
+          }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: T.card, color: T.indigo, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon name="sync" size={14} stroke={2} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.indigo }}>
+                Repeat guest? · {repeatMatch.count > 1 ? `${repeatMatch.count} previous stays` : 'previous stay found'}
+              </div>
+              <div style={{ fontSize: 11, color: T.ink2, marginTop: 2, lineHeight: 1.35 }}>
+                <strong style={{ color: T.ink }}>{repeatMatch.best.guest}</strong>
+                {repeatMatch.best.phone ? <> · <span className="tnum">{repeatMatch.best.phone}</span></> : null}
+                {repeatMatch.best.country ? ` · ${repeatMatch.best.country}` : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <button
+                  onClick={applyRepeatPrefill}
+                  className="atithi-tap"
+                  style={{ border: 'none', background: T.indigo, color: '#fff', borderRadius: 7, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Use these details
+                </button>
+                <button
+                  onClick={() => setDismissedMatchKey(matchKey)}
+                  style={{ border: `1px solid ${T.borderSoft}`, background: T.card, color: T.ink3, borderRadius: 7, padding: '6px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Not the same
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Field label="Full name" value={data.name} onChange={(e) => set('name', e.target.value)} placeholder="As on ID (required)" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -588,7 +710,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra }) {
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, t, plan }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, t, plan }) {
   const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -612,6 +734,9 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           </div>
         )}
         <Row label={`Tariff · ${data.nights}N × ${data.roomItems.length} room${data.roomItems.length>1?'s':''}`} value={`₹${roomsSubtotal.toLocaleString('en-IN')}`} />
+        {mealPlan && mealCost > 0 && (
+          <Row label={`Meal plan · ${mealPlan.code} (${mealPlan.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
+        )}
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
         {withTax && <Row label="CGST 6%" value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
         {withTax && <Row label="SGST 6%" value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
@@ -677,7 +802,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
   );
 }
 
-export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property }) {
+export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [] }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const isEdit = !!editing;
   const [step, setStep] = useState(1);
@@ -700,6 +825,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         payMethod: null, payAmount: 'full', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
+        mealPlanId: editing.mealPlanId || 'ep',
       };
     }
     // New booking. If a Diary cell prefilled the date + room type, seed
@@ -718,6 +844,9 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // New bookings created here are channel='direct', so GST defaults to off.
       // Hotelier toggles it on via the GST switch on Step 4 if needed.
       gstApplies: false,
+      // Default to EP (room only, no meal). Hotelier picks a different
+      // plan in Step 2 if the booking includes meals.
+      mealPlanId: 'ep',
     };
   });
 
@@ -774,7 +903,12 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     const ex = allExtras.find(x => x.id === id);
     return ex ? sum + ex.price * qty : sum;
   }, 0);
-  const subtotal = roomsSubtotal + extrasTotal;
+  // Meal plan cost: per-guest per-night × total guests × nights.
+  const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+  const mealPlans = Array.isArray(property?.mealPlans) ? property.mealPlans.filter(p => p.enabled) : [];
+  const selectedMealPlan = mealPlans.find(p => p.id === data.mealPlanId);
+  const mealCost = selectedMealPlan ? (selectedMealPlan.price || 0) * totalGuests * data.nights : 0;
+  const subtotal = roomsSubtotal + extrasTotal + mealCost;
   const gst = withTax ? Math.round(subtotal * 0.12) : 0;
   const total = subtotal + gst;
 
@@ -797,9 +931,9 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow} />}
-        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} />}
-        {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} allExtras={allExtras} plan={plan} />}
+        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} />}
+        {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
+        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} allExtras={allExtras} plan={plan} />}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

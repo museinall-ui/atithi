@@ -261,7 +261,7 @@ const matchesFilter = (b, filter) => {
   return true;
 };
 
-const HORIZONS = [14, 30, 60, 90];
+const HORIZONS = [14, 30, 60, 90, 180];
 
 // Generate a contiguous day-meta array running from `-pastN` to `futureN - 1`
 // relative to ANCHOR (today). Negative idx values represent past dates,
@@ -293,7 +293,12 @@ function isoToDayIdx(iso) {
 
 export default function Diary({ go, bookings, setBookings, moveBooking, t, property }) {
   const [zoom, setZoom] = useState(58);
-  const [horizon, setHorizon] = useState(14);
+  // Default to a 30-day forward window. The 14-day default was too short
+  // — hoteliers scrolled to the right edge of the grid and the calendar
+  // appeared to "stop" because there were no more columns. 30 days gives
+  // a month of forward visibility; the auto-extend below bumps higher
+  // when the user keeps scrolling past the rightmost column.
+  const [horizon, setHorizon] = useState(30);
   const [collapsed, setCollapsed] = useState({});
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
@@ -339,6 +344,24 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
     }, 80);
     return () => clearTimeout(tid);
   }, [jumpDate, horizon, pastDays, colW, labelW, viewDaysStart]);
+
+  // Auto-extend the horizon when the user scrolls within ~1 column of the
+  // right edge. Previously the grid would just stop at the chosen horizon
+  // and the owner would see a hard "wall" — feels like the calendar
+  // disappears. Now we bump to the next horizon step transparently.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distanceToEnd = el.scrollWidth - (el.scrollLeft + el.clientWidth);
+      if (distanceToEnd <= colW * 1.5) {
+        const next = HORIZONS.find(h => h > horizon);
+        if (next) setHorizon(next);
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [horizon, colW]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
   const counts = {

@@ -84,14 +84,21 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const leadingBlanks = days.length ? days[0].dowMonFirst : 0;
   const visibleDays = days.slice(0, 35 - leadingBlanks);
 
-  const cellKey = (i) => `${selectedType}:${i}`;
-  const getRate = (i) => {
-    const o = overrides[cellKey(i)];
+  const cellKey = (i, typeId = selectedType) => `${typeId}:${i}`;
+  // Effective rate for a specific room type on a specific day idx.
+  // Honors that type's overrides and falls back to its base × the
+  // property's weekend uplift. Used both for the live cell render
+  // and for the F2 "copy rates from another type" computation.
+  const rateFor = (typeId, i) => {
+    const o = overrides[cellKey(i, typeId)];
     if (o && o.closed) return null;
     if (o && o.rate != null) return o.rate;
+    const cat = ROOM_TYPES.find(r => r.id === typeId);
+    if (!cat) return null;
     const day = days.find(d => d.idx === i);
-    return Math.round(rt.base * (day && day.isWknd ? upliftMultiplier : 1));
+    return Math.round(cat.base * (day && day.isWknd ? upliftMultiplier : 1));
   };
+  const getRate = (i) => rateFor(selectedType, i);
   const isClosed = (i) => !!overrides[cellKey(i)]?.closed;
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
@@ -174,6 +181,34 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => { delete next[`${selectedType}:${i}`]; });
+      return next;
+    });
+    setShowBulkSheet(null);
+  };
+
+  // F2: copy rates from a source room type to the current type with a
+  // multiplier (e.g. "Luxury = Deluxe × 1.6"). Snapshot — runs over the
+  // currently-visible window so the hotelier can preview before deciding
+  // to extend. Only days where the source has a real effective rate get
+  // written; closed source days propagate as closed on the target too.
+  const [copyState, setCopyState] = useState({ sourceId: null, multiplier: 1.0 });
+  const applyCopyFromSource = () => {
+    if (!copyState.sourceId || copyState.sourceId === selectedType) return;
+    const m = Number(copyState.multiplier) || 1;
+    if (m <= 0) return;
+    setOverrides(o => {
+      const next = { ...o };
+      visibleDays.forEach(d => {
+        const i = d.idx;
+        const sourceOverride = overrides[cellKey(i, copyState.sourceId)];
+        if (sourceOverride && sourceOverride.closed) {
+          next[cellKey(i)] = { closed: true };
+          return;
+        }
+        const sourceRate = rateFor(copyState.sourceId, i);
+        if (sourceRate == null) return;
+        next[cellKey(i)] = { rate: Math.round(sourceRate * m), closed: false };
+      });
       return next;
     });
     setShowBulkSheet(null);
@@ -263,9 +298,18 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
         </div>
 
         <SectionHead title={t('dailyRate')} action={
-          selCount > 0
-            ? <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('clearSelection')}</button>
-            : <button onClick={() => setSelected(new Set(visibleDays.map(d => d.idx)))} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('selectAll')}</button>
+          <div style={{ display: 'inline-flex', gap: 12 }}>
+            {ROOM_TYPES.length > 1 && (
+              <button
+                onClick={() => { setCopyState({ sourceId: ROOM_TYPES.find(r => r.id !== selectedType)?.id, multiplier: 1.0 }); setShowBulkSheet('copy'); }}
+                style={{ background: 'none', border: 'none', color: T.indigo, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >Copy from…</button>
+            )}
+            {selCount > 0
+              ? <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('clearSelection')}</button>
+              : <button onClick={() => setSelected(new Set(visibleDays.map(d => d.idx)))} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('selectAll')}</button>
+            }
+          </div>
         } />
         <Card padding={10}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
@@ -378,6 +422,79 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 </div>
               </>
             )}
+            {showBulkSheet === 'copy' && (() => {
+              const sourceRT = ROOM_TYPES.find(r => r.id === copyState.sourceId);
+              const m = Number(copyState.multiplier) || 1;
+              const sampleSource = sourceRT ? rateFor(sourceRT.id, viewStartIdx) : null;
+              const samplePreview = sampleSource != null ? Math.round(sampleSource * m) : null;
+              return (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Copy rates from another type</div>
+                  <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>
+                    Copies {visibleDays.length} days of rates from the source to <strong>{rt.name}</strong> with a multiplier. Closed days propagate as closed. Per-day overrides on the target are replaced.
+                  </div>
+                  <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SOURCE ROOM TYPE</div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {ROOM_TYPES.filter(r => r.id !== selectedType).map(r => {
+                      const sel = copyState.sourceId === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => setCopyState(s => ({ ...s, sourceId: r.id }))}
+                          style={{
+                            padding: '6px 11px', borderRadius: 999,
+                            border: `1.5px solid ${sel ? T.primary : T.border}`,
+                            background: sel ? T.primaryLt : T.card,
+                            color: sel ? T.primaryDk : T.ink2,
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}
+                        >{r.name}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>MULTIPLIER</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    {[0.7, 0.85, 1.0, 1.2, 1.5, 1.8, 2.0].map(p => {
+                      const sel = Math.abs(m - p) < 0.001;
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => setCopyState(s => ({ ...s, multiplier: p }))}
+                          style={{
+                            padding: '5px 9px', borderRadius: 8,
+                            border: `1.5px solid ${sel ? T.indigo : T.border}`,
+                            background: sel ? T.indigoLt : T.card,
+                            color: sel ? T.indigo : T.ink2,
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}
+                        >×{p}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>Or custom:</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={copyState.multiplier}
+                      onChange={(e) => setCopyState(s => ({ ...s, multiplier: parseFloat(e.target.value) || 0 }))}
+                      className="tnum"
+                      style={{ width: 80, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '5px 8px', background: T.card }}
+                    />
+                    <span style={{ fontSize: 11, color: T.ink3 }}>×</span>
+                  </div>
+                  {sampleSource != null && samplePreview != null && (
+                    <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>
+                      <strong>Preview:</strong> {sourceRT?.name} ₹{sampleSource.toLocaleString('en-IN')} × {m} = <strong style={{ color: T.primaryDk }}>₹{samplePreview.toLocaleString('en-IN')}</strong> on {visibleDays[0]?.dom} {visibleDays[0]?.monthShort}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Btn variant="ghost" full onClick={() => setShowBulkSheet(null)}>{t('cancel')}</Btn>
+                    <Btn full onClick={applyCopyFromSource} disabled={!copyState.sourceId}>Copy {visibleDays.length} days</Btn>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

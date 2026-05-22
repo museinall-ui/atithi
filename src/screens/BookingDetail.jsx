@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { T } from '../tokens.js';
 import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById } from '../data.js';
+import { bookingShareWaUrl } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
 // or "23 May 2026". Was previously hardcoded as `{4 + b.startIdx} May`
@@ -599,13 +600,29 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund</Btn>
               <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit note</Btn>
             </div>
-            {balance > 0 && (
-              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {/* Send booking confirmation summary via WhatsApp. Always
+                  available when there's a phone — covers both the post-create
+                  share and re-sending later if the guest loses the message. */}
+              <Btn
+                variant="wa"
+                icon="wa"
+                size="sm"
+                style={{ flex: 1, minWidth: 0 }}
+                disabled={!b.phone}
+                onClick={() => {
+                  const url = bookingShareWaUrl(b, property, t('home') === 'होम' ? 'hi' : 'en');
+                  if (url) window.open(url, '_blank', 'noopener');
+                }}
+              >
+                Send booking summary
+              </Btn>
+              {balance > 0 && (
                 <Btn
-                  variant="wa"
+                  variant="ghost"
                   icon="wa"
                   size="sm"
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 0 }}
                   disabled={!b.phone}
                   onClick={() => {
                     const digits = String(b.phone || '').replace(/\D/g, '');
@@ -616,8 +633,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 >
                   Send ₹{balance.toLocaleString('en-IN')} reminder
                 </Btn>
-              </div>
-            )}
+              )}
+            </div>
             {balance < 0 && (
               <div style={{ marginTop: 8, padding: '8px 10px', background: T.indigoLt, borderRadius: 7, fontSize: 11, color: T.indigo, fontWeight: 600, lineHeight: 1.4 }}>
                 <Icon name="info" size={11} /> Guest has ₹{Math.abs(balance).toLocaleString('en-IN')} excess. Issue refund or convert to credit note for future bookings.

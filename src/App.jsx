@@ -748,7 +748,7 @@ export default function App() {
           const created = await syncCloud('Create booking',
             createBookingCloud(propertyId, session && session.user && session.user.id, newBk));
           setBookings(arr => [...arr, created]);
-          go('booking-confirmed');
+          go('booking-confirmed', created.id);
           return;
         } catch {
           // syncCloud already toasted the failure; fall through to the
@@ -759,7 +759,7 @@ export default function App() {
       // Offline or cloud-error fallback — assign an id locally.
       newBk.id = 'BK-' + (2854 + bookings.length);
       setBookings(arr => [...arr, newBk]);
-      go('booking-confirmed');
+      go('booking-confirmed', newBk.id);
     }
   };
 
@@ -779,7 +779,7 @@ export default function App() {
       break;
     }
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
-    case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} />; break;
+    case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;

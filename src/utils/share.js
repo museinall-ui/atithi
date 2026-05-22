@@ -1,0 +1,103 @@
+// WhatsApp share helpers for sending the booking voucher details to the
+// guest. Composes a plain-text message that lands in the guest's WhatsApp,
+// pre-filled with check-in / check-out / room / total / outstanding amount.
+//
+// We can't attach the voucher PDF over wa.me (the protocol only accepts a
+// text body, no files). So the message reads like the voucher summary, and
+// if the property has uploaded a payment QR, we point the guest at it with
+// a "scan the QR your hotel sent you" line. The hotelier can edit the
+// message before tapping Send on WhatsApp.
+
+import { idxToDate } from '../data.js';
+
+function fmtIN(amount) {
+  return '₹' + Number(amount || 0).toLocaleString('en-IN');
+}
+
+function fmtDate(idx) {
+  try {
+    const d = new Date(idxToDate(idx) + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
+// Compose the WhatsApp message body for a booking. Returns plain text.
+// `lang` is 'en' or 'hi' — the hotelier's app preference, used as a hint
+// for which language the guest most likely reads (most guests at a small
+// Indian hotel speak Hindi or English).
+export function bookingShareMessage(booking, property, lang = 'en') {
+  if (!booking) return '';
+  const propName = (property && property.profile && property.profile.name) || 'Your hotel';
+  const propPhone = (property && property.profile && property.profile.phone) || '';
+  const checkIn = fmtDate(booking.startIdx);
+  const checkOut = fmtDate(booking.startIdx + (booking.nights || 1));
+  const nights = booking.nights || 1;
+  const total = booking.total || 0;
+  const paid = booking.paid || 0;
+  const balance = Math.max(0, total - paid);
+  const qrLabel = (property && property.profile && property.profile.paymentQrLabel) || '';
+
+  if (lang === 'hi') {
+    const lines = [
+      `नमस्ते ${booking.guest || ''},`,
+      ``,
+      `आपकी ${propName} में बुकिंग पक्की हो गई है।`,
+      ``,
+      `बुकिंग ID: ${booking.id}`,
+      `चेक-इन: ${checkIn}`,
+      `चेक-आउट: ${checkOut}  (${nights} रात)`,
+      `कुल: ${fmtIN(total)}`,
+    ];
+    if (paid > 0) lines.push(`चुकाया: ${fmtIN(paid)}`);
+    if (balance > 0) {
+      lines.push(`बकाया: ${fmtIN(balance)}`);
+      lines.push('');
+      lines.push(qrLabel
+        ? `भुगतान के लिए UPI QR स्कैन करें (${qrLabel})।`
+        : `भुगतान के लिए UPI QR स्कैन करें।`);
+    } else {
+      lines.push('');
+      lines.push(`भुगतान प्राप्त हो गया है। धन्यवाद!`);
+    }
+    lines.push('');
+    lines.push(`संपर्क: ${propPhone || propName}`);
+    return lines.join('\n');
+  }
+
+  const lines = [
+    `Hi ${booking.guest || ''},`,
+    ``,
+    `Your booking at ${propName} is confirmed.`,
+    ``,
+    `Booking ID: ${booking.id}`,
+    `Check-in:  ${checkIn}`,
+    `Check-out: ${checkOut}  (${nights} night${nights > 1 ? 's' : ''})`,
+    `Total:     ${fmtIN(total)}`,
+  ];
+  if (paid > 0) lines.push(`Paid:      ${fmtIN(paid)}`);
+  if (balance > 0) {
+    lines.push(`Balance:   ${fmtIN(balance)}`);
+    lines.push('');
+    lines.push(qrLabel
+      ? `Please scan the UPI QR we shared to pay (${qrLabel}).`
+      : `Please scan the UPI QR we shared to pay.`);
+  } else {
+    lines.push('');
+    lines.push(`Payment received in full. Thank you!`);
+  }
+  lines.push('');
+  lines.push(`Reach us: ${propPhone || propName}`);
+  return lines.join('\n');
+}
+
+// Build a wa.me URL with the booking-summary message pre-filled. Returns
+// null when there's no phone to send to.
+export function bookingShareWaUrl(booking, property, lang = 'en') {
+  if (!booking) return null;
+  const digits = String(booking.phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const msg = bookingShareMessage(booking, property, lang);
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}

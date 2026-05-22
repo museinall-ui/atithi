@@ -321,11 +321,26 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const holdsExpiringSoon = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs < 4 * 3600 * 1000);
   const nudges = [];
   if (arrivingTomorrow.length > 0) {
+    // The green WhatsApp button promises WhatsApp, so it should open
+    // WhatsApp — not just navigate. Compose a directions message for the
+    // first arriving guest. If there are multiple, the hotelier sees the
+    // first one's chat, sends, then can tap again (the nudge re-renders
+    // with the next guest first if they've been contacted; otherwise the
+    // hotelier opens the rest from Diary).
+    const first = arrivingTomorrow[0];
+    const firstDigits = (first && first.phone || '').replace(/\D/g, '');
     nudges.push({
       icon: 'wa', tone: '#25D366',
       text: `${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} arrive tomorrow — send directions?`,
-      cta: 'WhatsApp',
-      onClick: () => go('diary'),
+      cta: arrivingTomorrow.length > 1 ? `WhatsApp ${first.guest.split(' ')[0]}` : 'WhatsApp',
+      onClick: () => {
+        if (!firstDigits) { go('diary'); return; }
+        const propName = property?.profile?.name || 'our property';
+        const mapUrl = property?.profile?.mapUrl || '';
+        const checkInTime = property?.profile?.checkIn || '14:00';
+        const msg = `Hi ${first.guest},\n\nLooking forward to hosting you at ${propName} tomorrow.\n\n${mapUrl ? `📍 Directions: ${mapUrl}\n\n` : ''}Check-in opens at ${checkInTime}. Your booking ID is ${first.id}.\n\nReach us anytime on this number.`;
+        window.open(`https://wa.me/${firstDigits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+      },
     });
   }
   if (foreignOnProperty.length > 0) {

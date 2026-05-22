@@ -9,6 +9,11 @@ import {
   createBookingCloud, updateBookingCloud,
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
+import {
+  loadSavedExtras, seedSavedExtras, addSavedExtraCloud, removeSavedExtraCloud,
+  loadRateOverrides, seedRateOverrides, setRateOverrideCloud,
+  loadCashCloses, seedCashCloses, setCashCloseCloud,
+} from './cloud/extras.js';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import TabBar from './components/TabBar.jsx';
@@ -36,10 +41,12 @@ const LS_KEYS = {
   bookings: 'atithi.bookings.v1',
   customExtras: 'atithi.customExtras.v1',
   overrides: 'atithi.rateOverrides.v1',
+  cashCloses: 'atithi.cashCloses.v1',
   plan: 'atithi.plan.v1',
   lang: 'atithi.lang.v1',
   property: 'atithi.property.v1',
   bookingsSeeded: 'atithi.bookings.seeded.v1',  // set once cloud bookings have been seeded for this browser
+  extrasSeeded: 'atithi.extras.seeded.v1',      // set once cloud saved_extras/rate_overrides/cash_closes have been seeded
 };
 
 const DEFAULT_PROPERTY = {
@@ -189,6 +196,7 @@ export default function App() {
   const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, BOOKINGS_SEED.map(b => ({ ...b }))));
   const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
+  const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
   const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
   const [editing, setEditing] = useState(null);
   // Auth: session is null until Supabase tells us whether the user is signed
@@ -217,6 +225,7 @@ export default function App() {
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
   useEffect(() => { saveLS(LS_KEYS.overrides, rateOverrides); }, [rateOverrides]);
+  useEffect(() => { saveLS(LS_KEYS.cashCloses, cashCloses); }, [cashCloses]);
   useEffect(() => { saveLS(LS_KEYS.plan, plan); }, [plan]);
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
   useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
@@ -285,10 +294,43 @@ export default function App() {
           saveLS(LS_KEYS.bookingsSeeded, true);
         }
 
+        // Saved extras / rate overrides / cash closes — same load+seed pattern.
+        // One shared seeded flag because these three move together.
+        let [cloudExtras, cloudOverrides, cloudCloses] = await Promise.all([
+          loadSavedExtras(result.id),
+          loadRateOverrides(result.id),
+          loadCashCloses(result.id),
+        ]);
+        const extrasSeededBefore = !!loadLS(LS_KEYS.extrasSeeded, false);
+        const cloudExtrasEmpty = cloudExtras.length === 0
+          && Object.keys(cloudOverrides).length === 0
+          && Object.keys(cloudCloses).length === 0;
+        const localExtrasHaveData = (savedCustomExtras && savedCustomExtras.length)
+          || (rateOverrides && Object.keys(rateOverrides).length)
+          || (cashCloses && Object.keys(cashCloses).length);
+        if (cloudExtrasEmpty && localExtrasHaveData && (isFirstTime || !extrasSeededBefore)) {
+          await Promise.all([
+            seedSavedExtras(result.id, savedCustomExtras),
+            seedRateOverrides(result.id, rateOverrides),
+            seedCashCloses(result.id, session.user.id, cashCloses),
+          ]);
+          saveLS(LS_KEYS.extrasSeeded, true);
+          [cloudExtras, cloudOverrides, cloudCloses] = await Promise.all([
+            loadSavedExtras(result.id),
+            loadRateOverrides(result.id),
+            loadCashCloses(result.id),
+          ]);
+        } else if (!cloudExtrasEmpty && !extrasSeededBefore) {
+          saveLS(LS_KEYS.extrasSeeded, true);
+        }
+
         if (cancelled) return;
         setPropertyId(result.id);
         setProperty(result.property);
         setBookings(cloudBookings);
+        setSavedCustomExtras(cloudExtras);
+        setRateOverrides(cloudOverrides);
+        setCashCloses(cloudCloses);
         setCloudReady(true);
       } catch (err) {
         notifySyncFailure('Load from cloud', err);
@@ -314,6 +356,77 @@ export default function App() {
     }, 600);
     return () => clearTimeout(tid);
   }, [property, cloudReady, propertyId]);
+
+  // Diff-sync for the three extras collections. We compare the live state
+  // against a ref of the last-synced snapshot; whatever differs gets fired
+  // at the cloud as add/remove/upsert. This keeps the screens unaware of
+  // cloud sync — they just call setSavedCustomExtras/setRateOverrides/etc.
+  // as before, and the diff effect propagates per-cell changes upstream.
+  const savedExtrasRef = useRef(savedCustomExtras);
+  useEffect(() => {
+    if (!cloudReady || !propertyId) { savedExtrasRef.current = savedCustomExtras; return; }
+    const prev = savedExtrasRef.current;
+    const next = savedCustomExtras;
+    const nextIds = new Set(next.map(e => e.id));
+    // Removals
+    prev.filter(e => !nextIds.has(e.id)).forEach(e => {
+      syncFire('Remove saved extra', removeSavedExtraCloud(e.id));
+    });
+    // Additions — server may rewrite the id; if so, swap the local row.
+    const prevIds = new Set(prev.map(e => e.id));
+    const added = next.filter(e => !prevIds.has(e.id));
+    added.forEach(async e => {
+      try {
+        const cloudExtra = await syncCloud('Add saved extra', addSavedExtraCloud(propertyId, e));
+        if (cloudExtra && cloudExtra.id && cloudExtra.id !== e.id) {
+          setSavedCustomExtras(arr => arr.map(x => x.id === e.id ? { ...x, id: cloudExtra.id } : x));
+        }
+      } catch { /* syncCloud already toasted */ }
+    });
+    savedExtrasRef.current = next;
+  }, [savedCustomExtras, cloudReady, propertyId]);
+
+  const rateOverridesRef = useRef(rateOverrides);
+  useEffect(() => {
+    if (!cloudReady || !propertyId) { rateOverridesRef.current = rateOverrides; return; }
+    const prev = rateOverridesRef.current;
+    const next = rateOverrides;
+    const allKeys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+    for (const key of allKeys) {
+      const pv = prev[key], nv = next[key];
+      const pvRate = pv && pv.rate, pvClosed = !!(pv && pv.closed);
+      const nvRate = nv && nv.rate, nvClosed = !!(nv && nv.closed);
+      if (!!pv === !!nv && pvRate === nvRate && pvClosed === nvClosed) continue;
+      const [roomTypeId, idxStr] = key.split(':');
+      const idx = parseInt(idxStr, 10);
+      if (!roomTypeId || !isFinite(idx)) continue;
+      if (!nv) {
+        syncFire('Clear rate override', setRateOverrideCloud(propertyId, roomTypeId, idx, null));
+      } else {
+        syncFire('Update rate override', setRateOverrideCloud(propertyId, roomTypeId, idx, nv));
+      }
+    }
+    rateOverridesRef.current = next;
+  }, [rateOverrides, cloudReady, propertyId]);
+
+  const cashClosesRef = useRef(cashCloses);
+  useEffect(() => {
+    if (!cloudReady || !propertyId) { cashClosesRef.current = cashCloses; return; }
+    const prev = cashClosesRef.current;
+    const next = cashCloses;
+    const userId = session && session.user && session.user.id;
+    const allDates = new Set([...Object.keys(prev), ...Object.keys(next)]);
+    for (const date of allDates) {
+      const pv = prev[date], nv = next[date];
+      if (pv === nv) continue;
+      if (!nv) {
+        syncFire('Clear cash close', setCashCloseCloud(propertyId, userId, date, null));
+      } else if (!pv || pv.cash !== nv.cash || pv.digital !== nv.digital || pv.note !== nv.note) {
+        syncFire('Save cash close', setCashCloseCloud(propertyId, userId, date, nv));
+      }
+    }
+    cashClosesRef.current = next;
+  }, [cashCloses, cloudReady, propertyId, session]);
 
   // Auto-release: every 30s, scan tentative bookings; if releaseTs has passed, cancel.
   // Cancellations also sync to the cloud so cross-device state stays consistent.
@@ -531,6 +644,19 @@ export default function App() {
     setSavedCustomExtras(arr => arr.filter(x => x.id !== id));
   };
 
+  // Cash close setter: null value = delete (reopen the day). Local state
+  // update is optimistic; the cashCloses diff-sync effect propagates the
+  // change up to Supabase.
+  const setCashClose = (date, value) => {
+    setCashCloses(prev => {
+      if (value == null) {
+        const { [date]: _drop, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [date]: value };
+    });
+  };
+
   const onCreate = async (data, total) => {
     const paid = data.payAmount === 'full' ? total
       : data.payAmount === 'half' ? Math.round(total / 2)
@@ -642,7 +768,7 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} property={property} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
@@ -660,7 +786,7 @@ export default function App() {
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} session={session} onSignOut={supaSignOut} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
   }
 
   // Splash while Supabase tells us whether the user is signed in, and again

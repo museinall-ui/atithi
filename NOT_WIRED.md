@@ -123,11 +123,8 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 
 ## Persistence
 
-### Cloud sync for `customExtras`, `rateOverrides`, `cashCloses`
-- **At:** These still live in localStorage only (`src/App.jsx`).
-- **State:** Schema tables `saved_custom_extras`, `rate_overrides`, `cash_closes` exist in Supabase but the load/seed/per-action helpers haven't been written.
-- **Needs:** Mirror what `src/cloud/bookings.js` does for bookings: load on sign-in, seed on first-time, per-action helpers wrapped in `syncCloud()`.
-- **Phase:** 1 remainder
+### Cloud sync for `customExtras`, `rateOverrides`, `cashCloses` (DONE)
+- **State:** Wired in `src/cloud/extras.js`. App.jsx loads + seeds on sign-in and diff-syncs per-cell changes (saved-extras add/remove, rate-override upsert/delete, cash-close upsert/delete) through `syncFire`/`syncCloud`. Dormant under DEMO_MODE but exercises real schema once flipped.
 
 ### Magic-link sign-in (DISABLED via DEMO_MODE)
 - **At:** `src/App.jsx` — `const DEMO_MODE = true` at the top of the file.

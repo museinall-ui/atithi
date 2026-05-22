@@ -29,10 +29,9 @@ function StatTile({ label, value, icon, color }) {
 }
 
 // Daily cash-close card. Keeps a per-day snapshot of what the hotelier
-// physically counted at end-of-day (cash + digital + free-text note). Stored
-// in localStorage so it survives reloads; future Phase 1 Supabase will push
-// these into a real ledger table for cross-device sync.
-const CASH_CLOSES_KEY = 'atithi.cashCloses.v1';
+// physically counted at end-of-day (cash + digital + free-text note). State
+// is lifted to App.jsx so it can flow through the cloud sync path; we just
+// read/write through `cashCloses` + `onSetCashClose(date, value | null)`.
 function todayKey() {
   // Local YYYY-MM-DD for today. Was previously hardwired to '2026-05-05'
   // (the demo's fake "today"), which meant every close the hotelier
@@ -40,16 +39,10 @@ function todayKey() {
   // dashboard on next reload. Now keyed by the real calendar date.
   return ymd(ANCHOR);
 }
-function loadCloses() {
-  try { return JSON.parse(localStorage.getItem(CASH_CLOSES_KEY) || '{}'); } catch { return {}; }
-}
-function saveCloses(map) {
-  try { localStorage.setItem(CASH_CLOSES_KEY, JSON.stringify(map)); } catch {}
-}
 
-function DailyCloseCard({ todayBookings, isHi }) {
+function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
   const dateKey = todayKey();
-  const [closes, setCloses] = useState(loadCloses);
+  const closes = cashCloses || {};
   const closed = closes[dateKey];
   const [open, setOpen] = useState(false);
   const [cash, setCash] = useState('');
@@ -64,18 +57,13 @@ function DailyCloseCard({ todayBookings, isHi }) {
     if (c + d <= 0 && !note.trim()) return;
     const now = new Date();
     const closedAt = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const next = { ...closes, [dateKey]: { cash: c, digital: d, total: c + d, expected, note: note.trim(), closedAt } };
-    setCloses(next);
-    saveCloses(next);
+    onSetCashClose(dateKey, { cash: c, digital: d, total: c + d, expected, note: note.trim(), closedAt });
     setOpen(false);
     setCash(''); setDigital(''); setNote('');
   };
 
   const reopen = () => {
-    const next = { ...closes };
-    delete next[dateKey];
-    setCloses(next);
-    saveCloses(next);
+    onSetCashClose(dateKey, null);
   };
 
   if (closed) {
@@ -249,7 +237,7 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold }) {
+export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose }) {
   const isHi = lang === 'hi';
   const ROOM_TYPES = effectiveRoomTypes(property);
   const repeats = repeatGuestKeys(bookings);
@@ -696,7 +684,7 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
         </Card>
       </div>
 
-      <DailyCloseCard todayBookings={today} isHi={isHi} />
+      <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} />
     </div>
   );
 }

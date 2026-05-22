@@ -1,0 +1,230 @@
+import { supabase } from '../supabase.js';
+import { idxToDate, dateToIdx } from '../data.js';
+
+// Cloud-sync helpers for the three "extra" property-scoped collections that
+// were left in localStorage during Chunk 4. Schema tables already exist in
+// the initial migration; this module mirrors what cloud/bookings.js does:
+// load on sign-in, seed on first-time, per-action upsert/delete wrapped in
+// syncCloud() at the call site.
+//
+//   1. saved_custom_extras  — reusable add-on pool (e.g. "Bonfire dinner")
+//   2. rate_overrides       — per-day rate / close-out by room type
+//   3. cash_closes          — daily end-of-day cash snapshot
+//
+// Local shapes (preserved across the boundary so screens don't change):
+//   savedCustomExtras: [{id, name, price, unit?}]
+//   rateOverrides:     { 'roomTypeId:dayIdx': {rate, closed} }
+//   cashCloses:        { 'YYYY-MM-DD': {cash, digital, total, expected, note, closedAt} }
+
+// ----------------------------------------------------------------------------
+// saved_custom_extras
+// ----------------------------------------------------------------------------
+
+export async function loadSavedExtras(propertyId) {
+  const { data, error } = await supabase
+    .from('saved_custom_extras')
+    .select('*')
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id,
+    name: r.name || '',
+    price: r.price || 0,
+    unit: r.unit || 'per stay',
+  }));
+}
+
+export async function seedSavedExtras(propertyId, localExtras) {
+  if (!localExtras || !localExtras.length) return;
+  const rows = localExtras.map(e => ({
+    // Honour the local-side id if it's a uuid; otherwise let the DB mint one.
+    ...(isUuid(e.id) ? { id: e.id } : {}),
+    property_id: propertyId,
+    name: e.name || '',
+    price: e.price || 0,
+    unit: e.unit || 'per stay',
+  }));
+  const { error } = await supabase.from('saved_custom_extras').insert(rows);
+  if (error) throw error;
+}
+
+export async function addSavedExtraCloud(propertyId, extra) {
+  const row = {
+    ...(isUuid(extra.id) ? { id: extra.id } : {}),
+    property_id: propertyId,
+    name: extra.name || '',
+    price: extra.price || 0,
+    unit: extra.unit || 'per stay',
+  };
+  const { data, error } = await supabase
+    .from('saved_custom_extras')
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  // Return server-assigned id so the local store can adopt it.
+  return { id: data.id, name: data.name, price: data.price || 0, unit: data.unit || 'per stay' };
+}
+
+export async function removeSavedExtraCloud(extraId) {
+  if (!isUuid(extraId)) return; // local-only id, never made it to cloud
+  const { error } = await supabase
+    .from('saved_custom_extras')
+    .delete()
+    .eq('id', extraId);
+  if (error) throw error;
+}
+
+// ----------------------------------------------------------------------------
+// rate_overrides
+// ----------------------------------------------------------------------------
+
+export async function loadRateOverrides(propertyId) {
+  const { data, error } = await supabase
+    .from('rate_overrides')
+    .select('*')
+    .eq('property_id', propertyId);
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(r => {
+    const idx = dateToIdx(r.date);
+    map[`${r.room_category_code}:${idx}`] = {
+      rate: r.rate == null ? null : r.rate,
+      closed: !!r.closed_out,
+    };
+  });
+  return map;
+}
+
+export async function seedRateOverrides(propertyId, localMap) {
+  if (!localMap || typeof localMap !== 'object') return;
+  const rows = [];
+  for (const key of Object.keys(localMap)) {
+    const [roomTypeId, idxStr] = key.split(':');
+    const idx = parseInt(idxStr, 10);
+    if (!roomTypeId || !isFinite(idx)) continue;
+    const v = localMap[key] || {};
+    rows.push({
+      property_id: propertyId,
+      room_category_code: roomTypeId,
+      date: idxToDate(idx),
+      rate: v.rate == null ? null : v.rate,
+      closed_out: !!v.closed,
+    });
+  }
+  if (!rows.length) return;
+  const { error } = await supabase
+    .from('rate_overrides')
+    .upsert(rows, { onConflict: 'property_id,room_category_code,date' });
+  if (error) throw error;
+}
+
+// Upsert a single cell. Pass `value=null` to delete the override (open day at
+// the base rate). Otherwise pass `{rate, closed}`.
+export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value) {
+  const date = idxToDate(dayIdx);
+  if (value == null) {
+    const { error } = await supabase
+      .from('rate_overrides')
+      .delete()
+      .eq('property_id', propertyId)
+      .eq('room_category_code', roomTypeId)
+      .eq('date', date);
+    if (error) throw error;
+    return;
+  }
+  const row = {
+    property_id: propertyId,
+    room_category_code: roomTypeId,
+    date,
+    rate: value.rate == null ? null : value.rate,
+    closed_out: !!value.closed,
+  };
+  const { error } = await supabase
+    .from('rate_overrides')
+    .upsert(row, { onConflict: 'property_id,room_category_code,date' });
+  if (error) throw error;
+}
+
+// ----------------------------------------------------------------------------
+// cash_closes
+// ----------------------------------------------------------------------------
+
+export async function loadCashCloses(propertyId) {
+  const { data, error } = await supabase
+    .from('cash_closes')
+    .select('*')
+    .eq('property_id', propertyId);
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(r => {
+    map[r.date] = {
+      cash: r.cash || 0,
+      digital: r.digital || 0,
+      total: (r.cash || 0) + (r.digital || 0),
+      // The local shape used to carry expected + closedAt computed at close
+      // time. We don't persist those server-side (expected is re-derivable
+      // and closedAt = closed_at). Re-derive on load.
+      expected: undefined,
+      note: r.note || '',
+      closedAt: r.closed_at
+        ? new Date(r.closed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '',
+    };
+  });
+  return map;
+}
+
+export async function seedCashCloses(propertyId, userId, localMap) {
+  if (!localMap || typeof localMap !== 'object') return;
+  const rows = [];
+  for (const date of Object.keys(localMap)) {
+    const v = localMap[date] || {};
+    rows.push({
+      property_id: propertyId,
+      date,
+      cash: v.cash || 0,
+      digital: v.digital || 0,
+      note: v.note || '',
+      closed_by: userId || null,
+    });
+  }
+  if (!rows.length) return;
+  const { error } = await supabase
+    .from('cash_closes')
+    .upsert(rows, { onConflict: 'property_id,date' });
+  if (error) throw error;
+}
+
+export async function setCashCloseCloud(propertyId, userId, date, value) {
+  if (value == null) {
+    const { error } = await supabase
+      .from('cash_closes')
+      .delete()
+      .eq('property_id', propertyId)
+      .eq('date', date);
+    if (error) throw error;
+    return;
+  }
+  const row = {
+    property_id: propertyId,
+    date,
+    cash: value.cash || 0,
+    digital: value.digital || 0,
+    note: value.note || '',
+    closed_by: userId || null,
+  };
+  const { error } = await supabase
+    .from('cash_closes')
+    .upsert(row, { onConflict: 'property_id,date' });
+  if (error) throw error;
+}
+
+// ----------------------------------------------------------------------------
+// helpers
+// ----------------------------------------------------------------------------
+
+function isUuid(s) {
+  return typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}

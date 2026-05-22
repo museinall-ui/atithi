@@ -126,12 +126,13 @@ UI state (not persisted):
 |---|---|---|
 | `atithi.bookings.v1` | All booking objects | Cloud (Chunk 4) ✓ |
 | `atithi.property.v1` | Full property profile | Cloud (Chunk 3) ✓ |
-| `atithi.customExtras.v1` | Saved custom extras | **Local-only — Chunk 5 TBD** |
-| `atithi.rateOverrides.v1` | Per-day rate / close-out | **Local-only — Chunk 5 TBD** |
-| `atithi.cashCloses.v1` | Daily cash-close snapshots, keyed by ISO date (today's real date) | **Local-only — Chunk 5 TBD** |
+| `atithi.customExtras.v1` | Saved custom extras | Cloud (Chunk 5) ✓ |
+| `atithi.rateOverrides.v1` | Per-day rate / close-out | Cloud (Chunk 5) ✓ |
+| `atithi.cashCloses.v1` | Daily cash-close snapshots, keyed by ISO date (today's real date) | Cloud (Chunk 5) ✓ |
 | `atithi.plan.v1` | Current plan tier | Local-only (per-user preference) |
 | `atithi.lang.v1` | Language preference | Local-only (per-user preference) |
 | `atithi.bookings.seeded.v1` | One-time migration flag | Local-only |
+| `atithi.extras.seeded.v1` | One-time migration flag for the 3 extras tables | Local-only |
 
 To wipe state for a fresh start: clear the bookings + payments + invoices tables in Supabase (Table Editor), then in browser console: `localStorage.removeItem('atithi.bookings.seeded.v1')` and hard-refresh.
 
@@ -139,6 +140,7 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
 - `src/supabase.js` — singleton client + auth helpers (signInWithEmail, signOut)
 - `src/cloud/property.js` — load / bootstrap / save property + room_categories + membership
 - `src/cloud/bookings.js` — load, seed, and per-action CRUD; date-conversion helpers (re-exported from data.js); issueInvoiceCloud (uses `issue_invoice()` RPC)
+- `src/cloud/extras.js` — saved custom extras, rate overrides, cash closes. Load/seed on sign-in; per-cell diff sync in App.jsx propagates UI mutations to the cloud.
 
 ### Supabase schema — `supabase/migrations/`
 - `20260518_initial_schema.sql` — initial 10 tables + RLS + has_property_access() + issue_invoice() stored proc
@@ -430,8 +432,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 **Do NOT pursue Razorpay Route / Marketplace** — turns Atithi into a Money Service Business under RBI rules.
 
 ### Phase 1 remaining (small)
-- **Migrate remaining localStorage keys to cloud:** `customExtras`, `rateOverrides`, `cashCloses`. Schema tables exist; mirror what Chunk 4 did for bookings.
-- **DEMO_MODE flip** — `src/App.jsx` line ~26. Set to `false` to re-enable magic-link sign-in. No other code changes required.
+- **DEMO_MODE flip** — `src/App.jsx` line ~33. Set to `false` to re-enable magic-link sign-in. No other code changes required.
 
 ### Deferred features (queued, none of this is "lost")
 - **Per-night different room type** within a single booking. Data-model rework: `roomItems` needs a `nightTypes` array, Diary needs to render a pill spanning multiple unit rows.
@@ -464,7 +465,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 - Email magic-link auth ✓
 - Cloud sync for properties, bookings, payments, invoices ✓
 - PWA wrapper (install-to-home-screen) — **TBD**
-- Remaining localStorage cutover (3 keys) — **TBD**
+- Final DEMO_MODE flip — **TBD**
 
 ### Phase 2 — Money flow (Razorpay / UPI) — TBD
 ### Phase 3 — Communication (WhatsApp Cloud API + Resend email) — TBD

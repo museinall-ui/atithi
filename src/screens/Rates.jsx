@@ -100,6 +100,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   };
   const getRate = (i) => rateFor(selectedType, i);
   const isClosed = (i) => !!overrides[cellKey(i)]?.closed;
+  // Per-unit close-out: { closedUnits: [3, 5] } means units #4 and #6 are
+  // out for the day even though the type-wide rate is still live.
+  const closedUnitsFor = (i) => {
+    const o = overrides[cellKey(i)];
+    return (o && Array.isArray(o.closedUnits)) ? o.closedUnits : [];
+  };
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
   const onCellEnter = (i) => {
@@ -172,9 +178,34 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const applyBlock = () => {
     setOverrides(o => {
       const next = { ...o };
-      selected.forEach(i => { next[`${selectedType}:${i}`] = { ...(next[`${selectedType}:${i}`] || {}), closed: true }; });
+      selected.forEach(i => {
+        const prev = next[`${selectedType}:${i}`] || {};
+        // Whole-type close-out clears any partial closedUnits since the
+        // type is now blanket-closed.
+        const { closedUnits: _drop, ...rest } = prev;
+        next[`${selectedType}:${i}`] = { ...rest, closed: true };
+      });
       return next;
     });
+    setShowBulkSheet(null);
+  };
+  // Close specific units (not the whole type). Each picked unit gets its
+  // own row in the override's closedUnits list. The type's rate stays
+  // live for the remaining units.
+  const [blockUnits, setBlockUnits] = useState([]);
+  const applyBlockUnits = () => {
+    if (blockUnits.length === 0) return;
+    setOverrides(o => {
+      const next = { ...o };
+      selected.forEach(i => {
+        const prev = next[`${selectedType}:${i}`] || {};
+        // Merge with any pre-existing closedUnits and dedupe.
+        const merged = Array.from(new Set([...(prev.closedUnits || []), ...blockUnits])).sort((a, b) => a - b);
+        next[`${selectedType}:${i}`] = { ...prev, closed: false, closedUnits: merged };
+      });
+      return next;
+    });
+    setBlockUnits([]);
     setShowBulkSheet(null);
   };
   const applyOpen = () => {
@@ -328,6 +359,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               const i = d.idx;
               const rate = getRate(i);
               const closed = isClosed(i);
+              const partialClosed = closedUnitsFor(i);
               const isSel = selected.has(i);
               const inDrag = inDragRange(i);
               const isOverride = !!overrides[cellKey(i)];
@@ -362,6 +394,17 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                     <div className="tnum" style={{ fontSize: 8, fontWeight: 700, color: isOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
                       ₹{Math.round(rate/100)/10}k
                     </div>
+                  )}
+                  {/* Partial close-out: bottom-left badge "−N" tells the
+                      hotelier some specific units are closed even though
+                      the type is otherwise live for this date. */}
+                  {!closed && partialClosed.length > 0 && (
+                    <div className="tnum" title={`Units #${partialClosed.map(u => u + 1).join(', #')} closed`} style={{
+                      position: 'absolute', bottom: 2, left: 2,
+                      fontSize: 7, fontWeight: 800, color: T.danger,
+                      background: '#fff', border: `1px solid ${T.danger}`,
+                      borderRadius: 4, padding: '0 3px', lineHeight: 1.3, letterSpacing: 0.2,
+                    }}>−{partialClosed.length}</div>
                   )}
                   {isSel && <div style={{ position: 'absolute', top: 2, right: 2, width: 5, height: 5, borderRadius: 3, background: T.primary }} />}
                 </div>
@@ -415,11 +458,38 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             {showBulkSheet === 'block' && (
               <>
                 <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('closeOut')}</div>
-                <div style={{ fontSize: 12, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>Close {selCount} dates for {rt.name}. No new bookings (direct or OTA) will be accepted.</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Btn variant="ghost" full onClick={applyOpen}>{t('openDates')}</Btn>
-                  <Btn full style={{ background: T.danger, borderColor: T.danger }} onClick={applyBlock}>{t('closeOut')}</Btn>
+                <div style={{ fontSize: 12, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>
+                  Close {selCount} date{selCount > 1 ? 's' : ''} for <strong>{rt.name}</strong>. Choose to close the whole room type or just specific units (for maintenance, deep cleaning, etc).
                 </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SPECIFIC UNITS</div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {Array.from({ length: rt.units }).map((_, ui) => {
+                    const on = blockUnits.includes(ui);
+                    return (
+                      <button
+                        key={ui}
+                        onClick={() => setBlockUnits(arr => arr.includes(ui) ? arr.filter(x => x !== ui) : [...arr, ui])}
+                        style={{
+                          width: 40, height: 36, borderRadius: 7, cursor: 'pointer',
+                          border: `1.5px solid ${on ? T.danger : T.border}`,
+                          background: on ? `color-mix(in oklch, ${T.danger} 14%, white)` : T.card,
+                          color: on ? T.danger : T.ink2,
+                          fontSize: 11, fontWeight: 800, letterSpacing: 0.2,
+                        }}
+                      >#{ui + 1}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <Btn
+                    full
+                    style={{ background: T.danger, borderColor: T.danger, opacity: blockUnits.length === 0 ? 0.5 : 1 }}
+                    onClick={applyBlockUnits}
+                    disabled={blockUnits.length === 0}
+                  >Close {blockUnits.length || '—'} unit{blockUnits.length === 1 ? '' : 's'}</Btn>
+                  <Btn full style={{ background: T.danger, borderColor: T.danger }} onClick={applyBlock}>Close whole type</Btn>
+                </div>
+                <Btn variant="ghost" full onClick={applyOpen}>{t('openDates')} (clear close-out)</Btn>
               </>
             )}
             {showBulkSheet === 'copy' && (() => {

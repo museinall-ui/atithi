@@ -98,6 +98,11 @@ const DEFAULT_PROPERTY = {
   // is just a hue choice; saturation/lightness are derived to stay coherent.
   // 38 = default Atithi sunset orange.
   theme: { hue: 38 },
+  // Weekend rules. Some Indian properties treat Friday as weekend (Goa,
+  // Jaisalmer); others stick to Sat+Sun. Multiplier applies to the base
+  // rate on weekend days unless an explicit per-day override is set.
+  // weekendDays uses 0=Sun ... 6=Sat (JS getDay convention).
+  weekendRules: { weekendDays: [0, 6], upliftPct: 20 },
   // Standard hotel meal plans. EP/CP/MAP/AP are the industry shorthand;
   // price is per guest per night, added on top of the room tariff.
   // `enabled` controls whether the plan shows up in the booking flow.
@@ -142,6 +147,15 @@ function migrateProperty(p) {
   // before this field was added don't have it.
   if (!Array.isArray(out.mealPlans) || out.mealPlans.length === 0) {
     out.mealPlans = DEFAULT_PROPERTY.mealPlans.map(p => ({ ...p }));
+  }
+  // Weekend rules — seed defaults; clamp/migrate from any partial saved state.
+  if (!out.weekendRules || typeof out.weekendRules !== 'object') {
+    out.weekendRules = { ...DEFAULT_PROPERTY.weekendRules };
+  } else {
+    out.weekendRules = {
+      weekendDays: Array.isArray(out.weekendRules.weekendDays) ? out.weekendRules.weekendDays.filter(n => Number.isInteger(n) && n >= 0 && n <= 6) : [0, 6],
+      upliftPct: Number.isFinite(out.weekendRules.upliftPct) ? Math.max(0, Math.min(200, out.weekendRules.upliftPct)) : 20,
+    };
   }
   return out;
 }

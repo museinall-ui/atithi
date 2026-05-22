@@ -43,6 +43,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   const rt = ROOM_TYPES.find(r => r.id === selectedType);
 
+  // Weekend rules come from property settings. Defaults: Sat + Sun, +20%.
+  const weekendDays = (property?.weekendRules?.weekendDays) || [0, 6];
+  const upliftPct = property?.weekendRules?.upliftPct ?? 20;
+  const upliftMultiplier = 1 + (upliftPct / 100);
+  const weekendDaySet = useMemo(() => new Set(weekendDays), [weekendDays.join(',')]);
+
   // 42-cell grid (6 weeks × 7 days) starting from viewStartIdx. We render
   // the calendar exactly as it appears on a wall calendar — first cell
   // sits in the column of its weekday, with blank cells before it. Lets
@@ -58,9 +64,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
         // Mon=0 ... Sun=6 so the grid aligns to the Mon-first header below.
         dowMonFirst: (d.getDay() + 6) % 7,
         dow: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()],
-        // Sat + Sun count as weekend for the rate uplift. Friday is a
-        // working day at most Indian hotels; keeping the modifier honest.
-        isWknd: d.getDay() === 0 || d.getDay() === 6,
+        dowIdx: d.getDay(),
+        // Weekend = days in the property's configured weekendDays set.
+        isWknd: weekendDaySet.has(d.getDay()),
         iso: ymd(d),
         // Real "today" detection vs the strict idx===0 check we used to
         // do — the user could jump-pick today on the date picker.
@@ -70,7 +76,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       });
     }
     return out;
-  }, [viewStartIdx]);
+  }, [viewStartIdx, weekendDaySet]);
 
   // Leading blank cells so the first real date appears under its real
   // weekday column (Mon-first header). The whole 42-cell grid is then
@@ -84,7 +90,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     if (o && o.closed) return null;
     if (o && o.rate != null) return o.rate;
     const day = days.find(d => d.idx === i);
-    return Math.round(rt.base * (day && day.isWknd ? 1.2 : 1));
+    return Math.round(rt.base * (day && day.isWknd ? upliftMultiplier : 1));
   };
   const isClosed = (i) => !!overrides[cellKey(i)]?.closed;
 
@@ -197,7 +203,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             <div>
               <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>{t('baseRate')}</div>
               <div className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.6 }}>₹{rt.base.toLocaleString('en-IN')}</div>
-              <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>{rt.units} {t('units')} · Sat/Sun +20%</div>
+              <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>{rt.units} {t('units')} · {(() => {
+                const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const names = weekendDays.map(d => dows[d]).join('/');
+                return upliftPct > 0 ? `${names} +${upliftPct}%` : 'No weekend uplift';
+              })()}</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {/* Synced chip used to claim OTA sync regardless of plan.

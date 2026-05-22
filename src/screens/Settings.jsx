@@ -127,6 +127,12 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
   const [mealPlans, setMealPlans] = useState(property.mealPlans || []);
+  // Weekend rules (advanced setting). Hotelier toggles which days count
+  // as weekend and the uplift % applied on those days in Rates &
+  // inventory. Defaults: Sat + Sun, +20%.
+  const [weekendRules, setWeekendRules] = useState(
+    property.weekendRules || { weekendDays: [0, 6], upliftPct: 20 }
+  );
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -169,7 +175,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans,
+      mealPlans, weekendRules,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -829,6 +835,66 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             <Icon name="plus" size={12} color={T.ink2} />
             Add saved extra
           </button>
+        </Card>
+
+        <SectionHead title="Weekend rules" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Pick which days count as weekend and how much extra you charge on them. Used in Rates & inventory to compute the default per-day rate. Per-day overrides always win.
+          </div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>WEEKEND DAYS</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 14 }}>
+            {[
+              { idx: 1, label: 'Mon' },
+              { idx: 2, label: 'Tue' },
+              { idx: 3, label: 'Wed' },
+              { idx: 4, label: 'Thu' },
+              { idx: 5, label: 'Fri' },
+              { idx: 6, label: 'Sat' },
+              { idx: 0, label: 'Sun' },
+            ].map(d => {
+              const on = (weekendRules.weekendDays || []).includes(d.idx);
+              return (
+                <button
+                  key={d.idx}
+                  onClick={() => setWeekendRules(prev => {
+                    const set = new Set(prev.weekendDays || []);
+                    if (set.has(d.idx)) set.delete(d.idx); else set.add(d.idx);
+                    return { ...prev, weekendDays: [...set].sort() };
+                  })}
+                  className="atithi-tap"
+                  style={{
+                    padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                    border: `1.5px solid ${on ? T.primary : T.border}`,
+                    background: on ? T.primaryLt : T.card,
+                    color: on ? T.primaryDk : T.ink2,
+                    fontSize: 11, fontWeight: 700, letterSpacing: 0.2,
+                  }}
+                >{d.label}</button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>WEEKEND UPLIFT</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="number"
+              value={weekendRules.upliftPct ?? 20}
+              onChange={(e) => setWeekendRules(prev => ({ ...prev, upliftPct: Math.max(0, Math.min(200, parseInt(e.target.value, 10) || 0)) }))}
+              className="tnum"
+              style={{
+                width: 80, fontSize: 14, fontWeight: 700, color: T.ink,
+                border: `1px solid ${T.border}`, outline: 'none',
+                borderRadius: 7, padding: '7px 10px', background: T.card,
+              }}
+            />
+            <span style={{ fontSize: 13, color: T.ink2, fontWeight: 700 }}>%</span>
+            <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>
+              extra on weekend days
+            </span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 10, color: T.ink3, fontStyle: 'italic' }}>
+            E.g. a ₹4,500 base with a 20% uplift becomes ₹5,400 on a weekend day. Set to 0 if you don't want a weekend uplift.
+          </div>
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />

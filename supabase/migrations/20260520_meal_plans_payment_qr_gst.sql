@@ -52,3 +52,11 @@ alter table properties
 alter table room_categories
   add column if not exists gst_rate smallint
     check (gst_rate is null or gst_rate between 0 and 28);
+
+-- Weekend rules: which days of the week count as weekend (0=Sun ...
+-- 6=Sat, JS getDay convention) and the % uplift applied on those
+-- days when computing the default per-day rate in Rates & inventory.
+-- Per-day overrides always win; this is just the auto-default.
+alter table properties
+  add column if not exists weekend_rules jsonb not null default
+    '{"weekendDays":[0,6],"upliftPct":20}'::jsonb;

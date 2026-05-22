@@ -476,10 +476,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
 
         {plan === 'invoicing' && (
           <>
-            <SectionHead title="GST slabs (hotel rooms)" style={{ marginTop: 16 }} />
+            <SectionHead title={t('gstSlabsTitle')} style={{ marginTop: 16 }} />
             <Card padding={12}>
               <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-                Indian hotel-room GST is determined by the published room tariff per night. Each room category below auto-picks its slab — override per category if your CA has advised differently.
+                {t('gstSlabsHint')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {GST_SLABS.map((s, i) => (
@@ -592,11 +592,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
           />
         </Card>
 
-        <SectionHead title="Meal plans" style={{ marginTop: 16 }} />
+        <SectionHead title={t('mealPlansTitle')} style={{ marginTop: 16 }} />
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-            Tap any name or price to edit. The per-guest per-night price is added on top of the room rate.
-            EP (Room only) is always on as the no-meals default. Add your own plan at the bottom for anything outside EP/CP/MAP/AP.
+            {t('mealPlansHint')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {mealPlans.map((mp, i) => {
@@ -637,7 +636,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <input
                       value={mp.label}
-                      placeholder="Plan name (e.g. Festive thali)"
+                      placeholder={t('mealPlanNamePlaceholder')}
                       onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, label: e.target.value } : p))}
                       style={{
                         width: '100%', boxSizing: 'border-box',
@@ -657,7 +656,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                         className="tnum"
                         style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: isEP ? T.bgSunk : T.card, color: T.ink, opacity: isEP ? 0.6 : 1 }}
                       />
-                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>/ guest / night</span>
+                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>{t('perGuestPerNight')}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -671,7 +670,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
                     {!isStandard && (
                       <button
                         onClick={() => setMealPlans(arr => arr.filter((_, j) => j !== i))}
-                        title="Remove this plan"
+                        title={t('removeMealPlan')}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           color: T.ink3, padding: 0, fontSize: 10,
@@ -697,7 +696,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
             }}
           >
             <Icon name="plus" size={12} color={T.ink2} />
-            Add custom meal plan
+            {t('addCustomMealPlan')}
           </button>
         </Card>
 

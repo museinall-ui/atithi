@@ -71,6 +71,25 @@ export const STRINGS = {
     syncSaving: 'Saving…',
     syncErrorTitle: "Couldn't save your changes",
     syncErrorHint: "We'll keep trying. Check your internet.",
+    // Meal plans (Settings → Property profile → Meal plans)
+    mealPlansTitle: 'Meal plans',
+    mealPlansHint: 'Tap any name or price to edit. The per-guest per-night price is added on top of the room rate. EP (Room only) is always on as the no-meals default. Add your own plan at the bottom for anything outside EP/CP/MAP/AP.',
+    addCustomMealPlan: 'Add custom meal plan',
+    mealPlanNamePlaceholder: 'Plan name (e.g. Festive thali)',
+    perGuestPerNight: '/ guest / night',
+    removeMealPlan: 'Remove this plan',
+    // NewBooking meal plan picker (Step 2)
+    mealPlanHeader: 'MEAL PLAN',
+    mealPlanNoExtra: 'No extra charge',
+    // Repeat-guest banner (NewBooking Step 3)
+    repeatGuestQ: 'Repeat guest?',
+    previousStayFound: 'previous stay found',
+    previousStays: 'previous stays',
+    useTheseDetails: 'Use these details',
+    notTheSame: 'Not the same',
+    // GST slabs card (Settings → Property profile)
+    gstSlabsTitle: 'GST slabs (hotel rooms)',
+    gstSlabsHint: 'Indian hotel-room GST is determined by the published room tariff per night. Each room category below auto-picks its slab — override per category if your CA has advised differently.',
   },
   hi: {
     home: 'होम', diary: 'डायरी', guests: 'मेहमान', more: 'प्रबंधन', newBk: 'नया',
@@ -144,6 +163,25 @@ export const STRINGS = {
     syncSaving: 'सहेजा जा रहा है…',
     syncErrorTitle: 'बदलाव सहेजे नहीं गए',
     syncErrorHint: 'फिर कोशिश करेंगे। इंटरनेट देखें।',
+    // Meal plans (Settings → Property profile → Meal plans)
+    mealPlansTitle: 'भोजन योजनाएँ',
+    mealPlansHint: 'नाम या कीमत बदलने के लिए टैप करें। यह कीमत प्रति-मेहमान प्रति-रात के हिसाब से कमरे की दर पर जोड़ी जाएगी। EP (सिर्फ़ कमरा) हमेशा चालू रहता है। EP/CP/MAP/AP के अलावा कुछ अलग चाहिए तो नीचे अपनी योजना जोड़ें।',
+    addCustomMealPlan: 'अपनी भोजन योजना जोड़ें',
+    mealPlanNamePlaceholder: 'योजना का नाम (जैसे: त्यौहार थाली)',
+    perGuestPerNight: '/ मेहमान / रात',
+    removeMealPlan: 'यह योजना हटाएँ',
+    // NewBooking meal plan picker (Step 2)
+    mealPlanHeader: 'भोजन योजना',
+    mealPlanNoExtra: 'कोई अतिरिक्त शुल्क नहीं',
+    // Repeat-guest banner (NewBooking Step 3)
+    repeatGuestQ: 'पुराने मेहमान?',
+    previousStayFound: 'पिछला ठहराव मिला',
+    previousStays: 'पिछले ठहराव',
+    useTheseDetails: 'ये जानकारी भरें',
+    notTheSame: 'यह वो नहीं हैं',
+    // GST slabs card (Settings → Property profile)
+    gstSlabsTitle: 'GST स्लैब (होटल कमरे)',
+    gstSlabsHint: 'भारतीय होटल-कमरे का GST प्रति-रात की घोषित दर से तय होता है। नीचे हर श्रेणी अपना स्लैब अपने आप चुनती है — अगर आपके CA ने अलग बताया हो तो हर श्रेणी पर अलग दर सेट कर सकते हैं।',
   },
 };
 

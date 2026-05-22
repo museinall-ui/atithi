@@ -397,7 +397,7 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans }) {
       {enabledMealPlans.length > 0 && (
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>MEAL PLAN</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>{t('mealPlanHeader')}</div>
             <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{totalGuests} guest{totalGuests > 1 ? 's' : ''} × {data.nights} night{data.nights > 1 ? 's' : ''}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -426,8 +426,8 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans }) {
                     <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{plan.label}</div>
                     <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
                       {plan.price > 0
-                        ? `₹${plan.price.toLocaleString('en-IN')} / guest / night`
-                        : 'No extra charge'}
+                        ? `₹${plan.price.toLocaleString('en-IN')} ${t('perGuestPerNight')}`
+                        : t('mealPlanNoExtra')}
                     </div>
                   </div>
                   <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: sel ? T.primaryDk : T.ink2 }}>
@@ -519,7 +519,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.indigo }}>
-                Repeat guest? · {repeatMatch.count > 1 ? `${repeatMatch.count} previous stays` : 'previous stay found'}
+                {t('repeatGuestQ')} · {repeatMatch.count > 1 ? `${repeatMatch.count} ${t('previousStays')}` : t('previousStayFound')}
               </div>
               <div style={{ fontSize: 11, color: T.ink2, marginTop: 2, lineHeight: 1.35 }}>
                 <strong style={{ color: T.ink }}>{repeatMatch.best.guest}</strong>
@@ -532,13 +532,13 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   className="atithi-tap"
                   style={{ border: 'none', background: T.indigo, color: '#fff', borderRadius: 7, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  Use these details
+                  {t('useTheseDetails')}
                 </button>
                 <button
                   onClick={() => setDismissedMatchKey(matchKey)}
                   style={{ border: `1px solid ${T.borderSoft}`, background: T.card, color: T.ink3, borderRadius: 7, padding: '6px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                 >
-                  Not the same
+                  {t('notTheSame')}
                 </button>
               </div>
             </div>

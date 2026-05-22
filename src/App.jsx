@@ -16,6 +16,8 @@ import {
 } from './cloud/extras.js';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
+import SearchOverlay from './components/SearchOverlay.jsx';
+import Icon from './components/Icon.jsx';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -203,6 +205,7 @@ export default function App() {
   const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
   const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
   const [editing, setEditing] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   // Auth: session is null until Supabase tells us whether the user is signed
   // in. authReady gates the initial render so we don't briefly flash SignIn
   // for a user who's already logged in (the magic-link flow puts the access
@@ -835,6 +838,32 @@ export default function App() {
           else go(id);
         }} t={t} />
       )}
+      {/* Floating search trigger — visible on the four tab-bar screens
+          (home / diary / guests / more). Hidden on inner screens like
+          BookingDetail / NewBooking where the back arrow occupies the
+          same top-left zone visually. */}
+      {showTabs && (
+        <button
+          onClick={() => setSearchOpen(true)}
+          aria-label="Search bookings"
+          style={{
+            position: 'absolute', top: 14, right: 14, zIndex: 30,
+            width: 36, height: 36, borderRadius: 10,
+            border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          <Icon name="search" size={15} stroke={2.2} />
+        </button>
+      )}
+      <SearchOverlay
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        bookings={bookings}
+        property={property}
+        go={go}
+      />
       <SyncOverlay t={t} />
     </div>
   );

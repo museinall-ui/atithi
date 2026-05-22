@@ -119,7 +119,14 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   // even when the badge is hidden on the very tightest pills. The full name
   // stays in the `title` attribute for desktop hover; mobile users tap to
   // open the booking detail where everything is shown in full.
-  const totalW = b.nights * colW - 6;
+  // Clip the leading edge when the stay started before viewDaysStart:
+  // pill anchors at column 0 and shrinks so it doesn't render at a
+  // negative `left` (which would visually bleed past the room-label).
+  const startCol = (b.startIdx || 0) + dx - viewDaysStart;
+  const isPastStart = startCol < 0;
+  const visibleNights = isPastStart ? Math.max(0, (b.nights || 1) + startCol) : (b.nights || 1);
+  const totalW = Math.max(0, visibleNights * colW - 6);
+  const pillLeft = isPastStart ? (labelW + 3) : (labelW + startCol * colW + 3);
   const fullBadgeW = isHold ? 56 : 36;
   const iconBadgeW = 22;
   const fixedChrome = 4 /*channel stripe*/ + 6 /*paddings + gaps*/;
@@ -156,11 +163,9 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
       title={`${b.guest}${b.vip ? ' · VIP' : ''}`}
       style={{
         position: 'absolute',
-        // viewDaysStart is the idx of viewDays[0] — usually negative now
-        // because the Diary shows past days too. Subtract it so a booking
-        // at startIdx 0 (today) lands in today's column rather than at the
-        // far-left edge.
-        left: labelW + (b.startIdx + dx - viewDaysStart) * colW + 3,
+        // Pill horizontal position is computed above with past-start
+        // clipping so it never bleeds into the room-label column.
+        left: pillLeft,
         width: totalW,
         top: 4, bottom: 4,
         background: bg,
@@ -303,18 +308,28 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                 />
               );
             })}
-            {instances.filter(inst => inst.unitIdx === ui).map(inst => {
-              const dx = drag && drag.id === inst.b.id ? drag.dx : 0;
-              return (
-                <BookingPill
-                  key={inst.b.id + ':' + inst.itemIndex}
-                  b={inst.b}
-                  colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
-                  onPointerDown={(e) => onPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
-                  multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
-                />
-              );
-            })}
+            {instances
+              .filter(inst => inst.unitIdx === ui)
+              // Hide pills whose stay ends before the first visible column
+              // (their last night is before viewDaysStart). A past booking
+              // that ended yesterday would otherwise render at a negative
+              // `left` and bleed into the room-label area on the left edge.
+              .filter(inst => {
+                const stayEnd = (inst.b.startIdx || 0) + (inst.b.nights || 1);
+                return stayEnd > viewDaysStart;
+              })
+              .map(inst => {
+                const dx = drag && drag.id === inst.b.id ? drag.dx : 0;
+                return (
+                  <BookingPill
+                    key={inst.b.id + ':' + inst.itemIndex}
+                    b={inst.b}
+                    colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
+                    onPointerDown={(e) => onPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
+                    multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
+                  />
+                );
+              })}
           </div>
         );
       })}
@@ -376,7 +391,11 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   // appeared to "stop" because there were no more columns. 30 days gives
   // a month of forward visibility; the auto-extend below bumps higher
   // when the user keeps scrolling past the rightmost column.
-  const [horizon, setHorizon] = useState(30);
+  // 180-day default — gives the hotelier a six-month forward view from
+  // today / the jumped-to date out of the box. Auto-scroll-right doesn't
+  // do much from here since 180 is the top of HORIZONS; the picker still
+  // lets them dial back to a tighter view.
+  const [horizon, setHorizon] = useState(180);
   const [collapsed, setCollapsed] = useState({});
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
@@ -613,9 +632,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
         </div>
       </div>
 
-      <div style={{ padding: '10px 16px', display: 'flex', gap: 8, overflowX: 'auto', borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center' }}>
-        {/* Horizon picker — how many days forward the Diary shows. The
-            preceding date bar handles past dates via auto-extension. */}
+      {/* Horizon picker — how many days forward the Diary shows. The
+          preceding date bar handles past dates via auto-extension. */}
+      <div style={{ padding: '10px 16px 6px', display: 'flex', gap: 8, borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center', overflowX: 'auto' }}>
         {HORIZONS.map(h => {
           const active = horizon === h;
           return (
@@ -634,7 +653,10 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
             >{h}d</button>
           );
         })}
-        <span style={{ width: 1, alignSelf: 'stretch', background: T.borderSoft, margin: '2px 2px' }} />
+      </div>
+      {/* Filter chips on their own row so they're discoverable without
+          horizontal scroll. Counts surface how many bookings match. */}
+      <div style={{ padding: '6px 16px 10px', display: 'flex', gap: 6, borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center', overflowX: 'auto' }}>
         {FILTERS.map(f => {
           const active = filter === f.id;
           const count = f.id === 'all' ? bookings.length : counts[f.id];
@@ -645,8 +667,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               onClick={() => setFilter(f.id)}
               className="atithi-tap"
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '5px 11px', borderRadius: 999,
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '5px 10px', borderRadius: 999,
                 background: tone.bg, color: tone.fg,
                 border: `1px solid ${tone.br}`,
                 fontSize: 11, fontWeight: 600, letterSpacing: 0.1, lineHeight: 1.4,

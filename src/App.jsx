@@ -10,7 +10,7 @@ import {
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
 import {
-  loadSavedExtras, seedSavedExtras, addSavedExtraCloud, removeSavedExtraCloud,
+  loadSavedExtras, seedSavedExtras, addSavedExtraCloud, removeSavedExtraCloud, updateSavedExtraCloud,
   loadRateOverrides, seedRateOverrides, setRateOverrideCloud,
   loadCashCloses, seedCashCloses, setCashCloseCloud,
 } from './cloud/extras.js';
@@ -367,14 +367,22 @@ export default function App() {
     if (!cloudReady || !propertyId) { savedExtrasRef.current = savedCustomExtras; return; }
     const prev = savedExtrasRef.current;
     const next = savedCustomExtras;
-    const nextIds = new Set(next.map(e => e.id));
+    const nextById = new Map(next.map(e => [e.id, e]));
+    const prevById = new Map(prev.map(e => [e.id, e]));
     // Removals
-    prev.filter(e => !nextIds.has(e.id)).forEach(e => {
+    prev.filter(e => !nextById.has(e.id)).forEach(e => {
       syncFire('Remove saved extra', removeSavedExtraCloud(e.id));
     });
+    // Updates — same id, changed name/price/unit
+    next.forEach(e => {
+      const old = prevById.get(e.id);
+      if (!old) return;
+      if (old.name !== e.name || old.price !== e.price || old.unit !== e.unit) {
+        syncFire('Update saved extra', updateSavedExtraCloud(e.id, e));
+      }
+    });
     // Additions — server may rewrite the id; if so, swap the local row.
-    const prevIds = new Set(prev.map(e => e.id));
-    const added = next.filter(e => !prevIds.has(e.id));
+    const added = next.filter(e => !prevById.has(e.id));
     added.forEach(async e => {
       try {
         const cloudExtra = await syncCloud('Add saved extra', addSavedExtraCloud(propertyId, e));
@@ -784,7 +792,7 @@ export default function App() {
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} t={t} session={session} onSignOut={supaSignOut} />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} onSignOut={supaSignOut} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
   }

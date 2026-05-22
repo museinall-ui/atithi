@@ -119,7 +119,7 @@ function AmenityPicker({ selected = [], onChange, customAmenities = [], onAddCus
   );
 }
 
-function PropertyProfile({ t, onClose, property, plan, onSave }) {
+function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
@@ -127,6 +127,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
   const [mealPlans, setMealPlans] = useState(property.mealPlans || []);
+  // Saved extras live at the App level (not on property), but the PropertyProfile
+  // sheet edits them in-line and commits on Save. Local-state pattern mirrors
+  // the other in-sheet collections so cancel-without-save discards changes.
+  const [extras, setExtras] = useState(savedExtras);
   const [openCatAmenities, setOpenCatAmenities] = useState({});
   const [gstin, setGstin] = useState(property.gstin || '');
   const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
@@ -167,6 +171,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
       mealPlans,
     }));
+    // Saved extras live outside `property` so they go through their own setter.
+    if (onChangeSavedExtras) onChangeSavedExtras(extras);
     onClose();
   };
   const propTypes = [
@@ -700,6 +706,90 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
           </button>
         </Card>
 
+        <SectionHead title="Saved extras" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Reusable add-ons that show up in the New Booking extras list (e.g. Bonfire dinner, Airport pickup, Late check-out). Rename and reprice freely; old bookings that used the previous values aren't changed.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {extras.length === 0 && (
+              <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>
+                None yet. Add one below, or save extras from inside a New Booking — they'll appear here.
+              </div>
+            )}
+            {extras.map((e, i) => (
+              <div key={e.id} style={{
+                display: 'flex', flexDirection: 'column', gap: 8, padding: 10,
+                background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={e.name}
+                    placeholder="Extra name (e.g. Bonfire dinner)"
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, name: ev.target.value } : x))}
+                    style={{
+                      flex: 1, minWidth: 0, boxSizing: 'border-box',
+                      border: 'none', borderBottom: `1px dashed ${T.border}`, outline: 'none', background: 'transparent',
+                      fontSize: 12, fontWeight: 700, color: T.ink, padding: '2px 0',
+                    }}
+                  />
+                  <button
+                    onClick={() => setExtras(arr => arr.filter((_, j) => j !== i))}
+                    title="Remove this extra"
+                    style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                  <input
+                    type="number"
+                    value={e.price}
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: Math.max(0, +ev.target.value || 0) } : x))}
+                    className="tnum"
+                    style={{
+                      width: 90, border: `1px solid ${T.border}`, outline: 'none',
+                      borderRadius: 5, padding: '3px 6px',
+                      fontSize: 11, fontWeight: 700, background: T.card, color: T.ink,
+                    }}
+                  />
+                  <select
+                    value={e.unit || 'per stay'}
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, unit: ev.target.value } : x))}
+                    style={{
+                      flex: 1, fontSize: 11, fontWeight: 700, color: T.ink2, background: T.card,
+                      border: `1px solid ${T.border}`, borderRadius: 5, padding: '3px 6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="per stay">per stay</option>
+                    <option value="per night">per night</option>
+                    <option value="per guest">per guest</option>
+                    <option value="per guest per night">per guest / night</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              const id = 'sx_' + Date.now().toString(36);
+              setExtras(arr => [...arr, { id, name: '', price: 0, unit: 'per stay' }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            Add saved extra
+          </button>
+        </Card>
+
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
         <Card padding={12}>
           {/* Children age cap. Stored on the accountant jsonb to avoid a
@@ -736,7 +826,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave }) {
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, t, session, onSignOut }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, onSignOut }) {
   const [showProfile, setShowProfile] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
@@ -903,7 +993,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         )}
       </div>
 
-      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} onClose={() => setShowProfile(false)} />}
     </div>
   );
 }

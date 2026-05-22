@@ -76,6 +76,23 @@ export async function removeSavedExtraCloud(extraId) {
   if (error) throw error;
 }
 
+// Patch an existing saved extra. Pass a local-shape partial — only the
+// fields you include are touched on the server.
+export async function updateSavedExtraCloud(extraId, patch) {
+  if (!isUuid(extraId)) return; // local-only row hasn't been synced yet; the
+                                 // diff-sync will pick it up on the next add path
+  const row = {};
+  if ('name' in patch)  row.name = patch.name || '';
+  if ('price' in patch) row.price = patch.price || 0;
+  if ('unit' in patch)  row.unit = patch.unit || 'per stay';
+  if (Object.keys(row).length === 0) return;
+  const { error } = await supabase
+    .from('saved_custom_extras')
+    .update(row)
+    .eq('id', extraId);
+  if (error) throw error;
+}
+
 // ----------------------------------------------------------------------------
 // rate_overrides
 // ----------------------------------------------------------------------------

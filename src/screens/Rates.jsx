@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
 import { effectiveRoomTypes, ANCHOR, ymd } from '../data.js';
+import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -59,6 +60,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       const idx = viewStartIdx + i;
       const d = new Date(ANCHOR);
       d.setDate(d.getDate() + idx);
+      const iso = ymd(d);
       out.push({
         idx, dom: d.getDate(),
         // Mon=0 ... Sun=6 so the grid aligns to the Mon-first header below.
@@ -67,12 +69,14 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
         dowIdx: d.getDay(),
         // Weekend = days in the property's configured weekendDays set.
         isWknd: weekendDaySet.has(d.getDay()),
-        iso: ymd(d),
+        iso,
         // Real "today" detection vs the strict idx===0 check we used to
         // do — the user could jump-pick today on the date picker.
         isToday: idx === 0,
         // Month / monthShort for the month label on the 1st of each month.
         monthShort: d.toLocaleDateString('en-IN', { month: 'short' }),
+        // Holiday metadata from src/holidays.js. Null for ordinary days.
+        holiday: holidayFor(iso),
       });
     }
     return out;
@@ -207,6 +211,17 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const goPrevMonth = () => setViewStartIdx(i => i - 28);
   const goNextMonth = () => setViewStartIdx(i => i + 28);
   const goToday = () => { setViewStartIdx(0); setJumpDate(''); };
+
+  // Bulk-select pattern picker. The "Select…" button opens a sheet with
+  // one-tap presets: all of a given weekday, all weekend days, or all
+  // holidays falling inside the visible window. Lets the hotelier set,
+  // for instance, "all Fridays in October" without tapping each.
+  const [showSelectPattern, setShowSelectPattern] = useState(false);
+  const selectByPredicate = (pred) => {
+    const ids = visibleDays.filter(pred).map(d => d.idx);
+    setSelected(new Set(ids));
+    setShowSelectPattern(false);
+  };
 
   const applyBulkRate = () => {
     const v = +bulkVal;
@@ -373,16 +388,19 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
         <SectionHead title={t('dailyRate')} action={
           <div style={{ display: 'inline-flex', gap: 12 }}>
+            <button
+              onClick={() => setShowSelectPattern(true)}
+              style={{ background: 'none', border: 'none', color: T.indigo, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            >Select…</button>
             {ROOM_TYPES.length > 1 && (
               <button
                 onClick={() => { setCopyState({ sourceId: ROOM_TYPES.find(r => r.id !== selectedType)?.id, multiplier: 1.0 }); setShowBulkSheet('copy'); }}
                 style={{ background: 'none', border: 'none', color: T.indigo, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
               >Copy from…</button>
             )}
-            {selCount > 0
-              ? <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('clearSelection')}</button>
-              : <button onClick={() => setSelected(new Set(visibleDays.map(d => d.idx)))} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('selectAll')}</button>
-            }
+            {selCount > 0 && (
+              <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('clearSelection')}</button>
+            )}
           </div>
         } />
         <Card padding={10}>
@@ -475,6 +493,17 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                       lineHeight: 1.3, letterSpacing: 0.2,
                     }}>↑</div>
                   )}
+                  {/* Holiday badge — bottom-right dot tinted by intensity.
+                      Tooltip names the holiday. High-intensity (Diwali /
+                      Holi / Christmas / NY) gets a stronger orange dot. */}
+                  {d.holiday && (
+                    <div title={d.holiday.label + (d.holiday.intensity === 'high' ? ' · high demand' : '')} style={{
+                      position: 'absolute', bottom: 2, right: 2,
+                      width: 6, height: 6, borderRadius: 3,
+                      background: d.holiday.intensity === 'high' ? T.primary : d.holiday.intensity === 'mid' ? 'oklch(72% 0.12 75)' : 'oklch(80% 0.06 230)',
+                      border: `1px solid #fff`, boxShadow: '0 0 0 1px rgba(0,0,0,0.06)',
+                    }} />
+                  )}
                   {isSel && <div style={{ position: 'absolute', top: 2, right: 2, width: 5, height: 5, borderRadius: 3, background: T.primary }} />}
                 </div>
               );
@@ -488,6 +517,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(95% 0.06 60)', border: '1.5px solid oklch(80% 0.13 60)', borderRadius: 2 }} /> 60%+</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(92% 0.08 30)', border: '1.5px solid oklch(70% 0.16 30)', borderRadius: 2 }} /> 85%+</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ background: T.primary, color: '#fff', fontWeight: 800, fontSize: 8, padding: '0 3px', borderRadius: 3, lineHeight: 1.3 }}>↑</span> Suggest surge</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: T.primary, borderRadius: 4 }} /> Holiday</span>
           </div>
         </Card>
 
@@ -506,6 +536,60 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           </div>
           <button onClick={() => setShowBulkSheet('rate')} style={bulkBtn(T.primary)}><Icon name="inr" size={12} stroke={2.4}/> {t('setRate')}</button>
           <button onClick={() => setShowBulkSheet('block')} style={bulkBtn(T.danger)}><Icon name="x" size={12} stroke={2.4}/> {t('closeOut')}</button>
+        </div>
+      )}
+
+      {showSelectPattern && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 30, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowSelectPattern(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Select dates by pattern</div>
+            <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>Bulk-select all matching dates in the visible {visibleDays.length}-day window. Then tap Set rate or Close-out.</div>
+            <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>BY WEEKDAY</div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+              {[
+                { idx: 1, label: 'All Mondays' },
+                { idx: 2, label: 'All Tuesdays' },
+                { idx: 3, label: 'All Wednesdays' },
+                { idx: 4, label: 'All Thursdays' },
+                { idx: 5, label: 'All Fridays' },
+                { idx: 6, label: 'All Saturdays' },
+                { idx: 0, label: 'All Sundays' },
+              ].map(opt => {
+                const count = visibleDays.filter(d => d.dowIdx === opt.idx).length;
+                return (
+                  <button
+                    key={opt.idx}
+                    onClick={() => selectByPredicate(d => d.dowIdx === opt.idx)}
+                    style={{
+                      padding: '6px 11px', borderRadius: 999, cursor: 'pointer',
+                      border: `1.5px solid ${T.border}`, background: T.card, color: T.ink2,
+                      fontSize: 11, fontWeight: 700,
+                    }}
+                  >{opt.label} <span className="tnum" style={{ opacity: 0.6 }}>· {count}</span></button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SHORTCUTS</div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+              <button
+                onClick={() => selectByPredicate(d => d.isWknd)}
+                style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700 }}
+              >Every weekend · {visibleDays.filter(d => d.isWknd).length}</button>
+              <button
+                onClick={() => selectByPredicate(d => !!d.holiday)}
+                style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid oklch(72% 0.12 75)`, background: 'oklch(96% 0.04 75)', color: 'oklch(48% 0.14 75)', fontSize: 11, fontWeight: 700 }}
+              >Indian holidays · {visibleDays.filter(d => !!d.holiday).length}</button>
+              <button
+                onClick={() => selectByPredicate(d => d.holiday && d.holiday.intensity === 'high')}
+                style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700 }}
+              >Peak holidays (Diwali / Holi / NY) · {visibleDays.filter(d => d.holiday && d.holiday.intensity === 'high').length}</button>
+              <button
+                onClick={() => selectByPredicate(() => true)}
+                style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700 }}
+              >All visible · {visibleDays.length}</button>
+            </div>
+            <Btn variant="ghost" full onClick={() => setShowSelectPattern(false)}>{t('cancel')}</Btn>
+          </div>
         </div>
       )}
 

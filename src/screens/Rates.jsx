@@ -23,7 +23,7 @@ function isoToIdx(iso) {
   return Math.round(ms / (24 * 60 * 60 * 1000));
 }
 
-export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp, property, plan = 'engine' }) {
+export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp, property, plan = 'engine', bookings = [] }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const [selectedType, setSelectedType] = useState(() => ROOM_TYPES[0]?.id || 'dlx');
   const [selected, setSelected] = useState(new Set());
@@ -105,6 +105,49 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const closedUnitsFor = (i) => {
     const o = overrides[cellKey(i)];
     return (o && Array.isArray(o.closedUnits)) ? o.closedUnits : [];
+  };
+
+  // Occupancy forecast: per-day count of bookings consuming this type's
+  // inventory, divided by units available (total minus closedUnits).
+  // Multi-room bookings count once per matching roomItem.
+  const bookingsForType = useMemo(() => {
+    return bookings.filter(b => {
+      if (b.status === 'cancelled') return false;
+      if (b.roomTypeId === selectedType) return true;
+      if (Array.isArray(b.roomItems) && b.roomItems.some(r => r.roomTypeId === selectedType)) return true;
+      return false;
+    });
+  }, [bookings, selectedType]);
+  const occupiedCountFor = (i) => {
+    let count = 0;
+    for (const b of bookingsForType) {
+      const startIdx = b.startIdx || 0;
+      const endIdx = startIdx + (b.nights || 1);
+      if (i < startIdx || i >= endIdx) continue;
+      const items = Array.isArray(b.roomItems) && b.roomItems.length
+        ? b.roomItems
+        : [{ roomTypeId: b.roomTypeId }];
+      count += items.filter(r => (r.roomTypeId || b.roomTypeId) === selectedType).length;
+    }
+    return count;
+  };
+  const availableUnitsFor = (i) => {
+    if (!rt) return 0;
+    return Math.max(0, rt.units - closedUnitsFor(i).length);
+  };
+  const occupancyPctFor = (i) => {
+    const avail = availableUnitsFor(i);
+    if (avail === 0) return 0;
+    return Math.min(100, Math.round((occupiedCountFor(i) / avail) * 100));
+  };
+  // Cell tint based on occupancy. Returns null for low-occupancy
+  // (no tint), or { bg, border } for higher bands. Auto-surge banner
+  // triggers separately when pct >= 70 and the cell isn't overridden.
+  const occupancyTint = (pct) => {
+    if (pct >= 85) return { bg: 'oklch(92% 0.08 30)', border: 'oklch(70% 0.16 30)' };
+    if (pct >= 60) return { bg: 'oklch(95% 0.06 60)', border: 'oklch(80% 0.13 60)' };
+    if (pct >= 30) return { bg: 'oklch(97% 0.04 90)', border: 'oklch(88% 0.08 90)' };
+    return null;
   };
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
@@ -364,16 +407,22 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               const inDrag = inDragRange(i);
               const isOverride = !!overrides[cellKey(i)];
               const isFirstOfMonth = d.dom === 1;
+              // Occupancy heatmap — only tint when the cell isn't already
+              // sel / closed / overridden so the other states stay readable.
+              const occPct = occupancyPctFor(i);
+              const tint = !closed && !isSel && !inDrag && !isOverride ? occupancyTint(occPct) : null;
+              const showSurge = !closed && !isSel && !inDrag && !isOverride && occPct >= 70 && i >= 0;
               return (
                 <div
                   key={i}
                   onMouseDown={(e) => { e.preventDefault(); onCellDown(i); }}
                   onMouseEnter={() => onCellEnter(i)}
                   onTouchStart={() => onCellDown(i)}
+                  title={occPct > 0 ? `${occPct}% booked (${occupiedCountFor(i)} of ${availableUnitsFor(i)})` : undefined}
                   style={{
                     aspectRatio: '1 / 1.1', borderRadius: 7, padding: 3,
-                    background: closed ? 'oklch(94% 0.04 25)' : (isSel || inDrag) ? T.primaryLt : (d.isToday ? `color-mix(in oklch, ${T.primary} 7%, white)` : T.card),
-                    border: `1.5px solid ${(isSel || inDrag) ? T.primary : closed ? T.danger : isOverride ? T.indigo : d.isToday ? T.primary : T.borderSoft}`,
+                    background: closed ? 'oklch(94% 0.04 25)' : (isSel || inDrag) ? T.primaryLt : (tint ? tint.bg : d.isToday ? `color-mix(in oklch, ${T.primary} 7%, white)` : T.card),
+                    border: `1.5px solid ${(isSel || inDrag) ? T.primary : closed ? T.danger : isOverride ? T.indigo : tint ? tint.border : d.isToday ? T.primary : T.borderSoft}`,
                     cursor: 'pointer', position: 'relative', userSelect: 'none',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
                   }}
@@ -406,6 +455,26 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                       borderRadius: 4, padding: '0 3px', lineHeight: 1.3, letterSpacing: 0.2,
                     }}>−{partialClosed.length}</div>
                   )}
+                  {/* Occupancy % badge — top-left when there's any booking
+                      for this date / type. Tooltip on the cell has the
+                      full breakdown. */}
+                  {!closed && occPct > 0 && (
+                    <div className="tnum" style={{
+                      position: 'absolute', top: 2, left: 2,
+                      fontSize: 7, fontWeight: 800, color: occPct >= 85 ? T.danger : occPct >= 60 ? 'oklch(48% 0.14 65)' : T.ink3,
+                      lineHeight: 1, letterSpacing: 0.2,
+                    }}>{occPct}%</div>
+                  )}
+                  {/* Auto-surge suggestion — small ↑ icon top-right when
+                      occupancy is tight and the rate hasn't been bumped. */}
+                  {showSurge && (
+                    <div title="High demand — consider raising the rate" style={{
+                      position: 'absolute', top: 2, right: 2,
+                      fontSize: 7, fontWeight: 800, color: '#fff',
+                      background: T.primary, borderRadius: 4, padding: '0 3px',
+                      lineHeight: 1.3, letterSpacing: 0.2,
+                    }}>↑</div>
+                  )}
                   {isSel && <div style={{ position: 'absolute', top: 2, right: 2, width: 5, height: 5, borderRadius: 3, background: T.primary }} />}
                 </div>
               );
@@ -414,8 +483,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           <div style={{ display: 'flex', gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.borderSoft}`, fontSize: 9, color: T.ink3, fontWeight: 600, flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.indigo}`, borderRadius: 2 }} /> {t('overrideRate')}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.danger}`, borderRadius: 2 }} /> {t('closed')}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: T.primary, borderRadius: 2 }} /> Sat/Sun</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.primary}`, borderRadius: 2, background: `color-mix(in oklch, ${T.primary} 7%, white)` }} /> Today</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(97% 0.04 90)', border: '1.5px solid oklch(88% 0.08 90)', borderRadius: 2 }} /> 30%+</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(95% 0.06 60)', border: '1.5px solid oklch(80% 0.13 60)', borderRadius: 2 }} /> 60%+</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(92% 0.08 30)', border: '1.5px solid oklch(70% 0.16 30)', borderRadius: 2 }} /> 85%+</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ background: T.primary, color: '#fff', fontWeight: 800, fontSize: 8, padding: '0 3px', borderRadius: 3, lineHeight: 1.3 }}>↑</span> Suggest surge</span>
           </div>
         </Card>
 

@@ -809,7 +809,7 @@ export default function App() {
     }
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
-    case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} />; break;
+    case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;

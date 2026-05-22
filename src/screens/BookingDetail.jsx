@@ -323,7 +323,7 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
@@ -380,7 +380,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <ScreenHeader title={b.id} subtitle={rt.name} onBack={() => go('diary')}
         right={
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <button onClick={() => generateVoucher(b, rt, property)} className="atithi-tap" title="Download voucher PDF" style={{
+            <button onClick={() => generateVoucher(b, rt, property, undefined, lang)} className="atithi-tap" title="Download voucher PDF" style={{
               height: 36, width: 36, borderRadius: 10, border: `1px solid ${T.border}`,
               background: T.card, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: T.ink2,
@@ -691,7 +691,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   {!inv.voided && (
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                       <button
-                        onClick={() => generateVoucher(b, rt, property, inv)}
+                        onClick={() => generateVoucher(b, rt, property, inv, lang)}
                         className="atithi-tap"
                         style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >

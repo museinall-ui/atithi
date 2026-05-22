@@ -772,9 +772,17 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
               </div>
               <Icon name="chev" size={14} color={T.ink3} />
             </div>
+            {/* Honest status chips — show the GSTIN only when the hotelier
+                has actually entered one in Property Profile. The earlier
+                "verified" wording falsely implied we'd validated it. The
+                old "FRRO registered" chip was a cosmetic claim with no
+                real signal behind it; dropped until we have an actual
+                hook. */}
             <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-              <Chip color="ok" icon="check" style={{ fontSize: 9 }}>GSTIN verified</Chip>
-              <Chip color="indigo" style={{ fontSize: 9 }}>FRRO registered</Chip>
+              {property.gstin
+                ? <Chip color="ok" icon="check" style={{ fontSize: 9 }}>GSTIN · {property.gstin}</Chip>
+                : <Chip color="warn" style={{ fontSize: 9 }}>GSTIN not set</Chip>}
+              {totalUnits > 0 && <Chip color="indigo" style={{ fontSize: 9 }}>{totalUnits} rooms live</Chip>}
             </div>
           </div>
         </Card>
@@ -844,11 +852,18 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
 
         <SectionHead title={t('integrations')} />
         <Card padding={0}>
+          {/* Honest status: each row carries a real `status` chip rather than
+              a blanket green "Active" lie. Right now none of these are wired
+              to external services — Razorpay/WhatsApp/Channel-manager/FRRO
+              are all on the production roadmap. The "Manual" pill flags that
+              the hotelier does the work themselves today (record payments
+              by hand, send WhatsApp from their phone, file Form C manually).
+              Switches to "Connected" when each integration goes live. */}
           {[
-            { icon: 'inr',  tone: T.indigo,              title: 'Razorpay',               sub: 'KYC verified · payouts T+1' },
-            { icon: 'wa',   tone: '#25D366',              title: 'WhatsApp Business API',  sub: 'Templates approved · 3 active' },
-            { icon: 'plug', tone: T.primary,              title: 'Channel manager',        sub: '4 OTAs · ₹999/mo' },
-            { icon: 'flag', tone: 'oklch(48% 0.13 230)', title: 'Form C / FRRO',          sub: 'Auto-submit on check-in' },
+            { icon: 'inr',  tone: T.indigo,              title: 'Razorpay payments',     sub: 'Record payments by hand for now',           status: 'Manual' },
+            { icon: 'wa',   tone: '#25D366',             title: 'WhatsApp messaging',    sub: 'Buttons open wa.me — no auto-send yet',     status: 'Manual' },
+            { icon: 'plug', tone: T.primary,             title: 'Channel manager',       sub: 'OTAs (MMT, Booking, Goibibo, Agoda)',       status: 'Coming soon' },
+            { icon: 'flag', tone: 'oklch(48% 0.13 230)', title: 'Form C / FRRO',         sub: 'Submit foreign-guest details manually',     status: 'Manual' },
           ].map((it, i, arr) => (
             <div key={i} style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
               <div style={{ width: 32, height: 32, borderRadius: 9, background: `color-mix(in oklch, ${it.tone} 14%, white)`, color: it.tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -858,7 +873,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink }}>{it.title}</div>
                 <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 1 }}>{it.sub}</div>
               </div>
-              <Chip color="ok" style={{ fontSize: 9 }}>Active</Chip>
+              <Chip color={it.status === 'Coming soon' ? 'indigo' : 'warn'} style={{ fontSize: 9 }}>{it.status}</Chip>
             </div>
           ))}
         </Card>

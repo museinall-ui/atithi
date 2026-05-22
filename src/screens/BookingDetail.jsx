@@ -328,7 +328,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
   const ch = CHANNELS[b.channel];
-  const payments = b.payments || (b.paid > 0 ? [{ id: 'p1', kind: 'payment', method: b.channel === 'direct' ? 'upi' : 'card', amount: b.paid, note: b.channel === 'direct' ? 'Razorpay UPI · auto-captured' : `${ch.label} pre-payment`, date: '03 May · 18:25' }] : []);
+  // Fallback synthetic payment row for legacy bookings with `paid > 0` but
+  // no actual payments[] ledger. Real bookings created through the app
+  // populate b.payments properly. The hardcoded "Razorpay UPI · auto-
+  // captured · 03 May · 18:25" copy was a false claim; this is honestly
+  // labelled as a pre-payment that landed when the booking was created.
+  const payments = b.payments || (b.paid > 0 ? [{ id: 'p1', kind: 'payment', method: b.channel === 'direct' ? 'upi' : 'card', amount: b.paid, note: b.channel === 'direct' ? 'Initial payment · recorded' : `${ch.label} pre-payment`, date: '' }] : []);
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
   const statusInfo = STATUS[b.status];

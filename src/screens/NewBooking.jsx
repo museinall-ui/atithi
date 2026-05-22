@@ -734,9 +734,9 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
             <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 8 }}>METHOD</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <PayMethod icon="qr" label="UPI / QR" sub="Your saved QR" selected={data.payMethod === 'upi'} onClick={() => set('payMethod', 'upi')} />
-              <PayMethod icon="wa" label="WhatsApp link" sub="Send to guest" selected={data.payMethod === 'wa'} onClick={() => set('payMethod', 'wa')} />
+              <PayMethod icon="wa" label="WhatsApp" sub="Share + collect manually" selected={data.payMethod === 'wa'} onClick={() => set('payMethod', 'wa')} />
               <PayMethod icon="inr" label="Cash" sub="At reception" selected={data.payMethod === 'cash'} onClick={() => set('payMethod', 'cash')} />
-              <PayMethod icon="tag" label="Card" sub="Razorpay POS" selected={data.payMethod === 'card'} onClick={() => set('payMethod', 'card')} />
+              <PayMethod icon="tag" label="Card" sub="Manual record" selected={data.payMethod === 'card'} onClick={() => set('payMethod', 'card')} />
             </div>
           </>
         )}

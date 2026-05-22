@@ -133,6 +133,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [weekendRules, setWeekendRules] = useState(
     property.weekendRules || { weekendDays: [0, 6], upliftPct: 20 }
   );
+  // Named seasons. Each: { id, name, startIso, endIso, multiplierPct }.
+  // Multiplier stacks with weekend uplift; per-day overrides still win.
+  const [seasons, setSeasons] = useState(Array.isArray(property.seasons) ? property.seasons : []);
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -175,7 +178,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, weekendRules,
+      mealPlans, weekendRules, seasons,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -895,6 +898,91 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           <div style={{ marginTop: 8, fontSize: 10, color: T.ink3, fontStyle: 'italic' }}>
             E.g. a ₹4,500 base with a 20% uplift becomes ₹5,400 on a weekend day. Set to 0 if you don't want a weekend uplift.
           </div>
+        </Card>
+
+        <SectionHead title="Seasons" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Name your peak / off-peak periods (e.g. "Winter peak Oct 15 – Jan 31, +30%" or "Monsoon discount Jul – Sep, −15%"). The Rates calendar applies the multiplier on top of your weekend uplift. Per-day overrides still win.
+          </div>
+          {seasons.length === 0 && (
+            <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>
+              No seasons yet. Add one below to start.
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {seasons.map((s, i) => (
+              <div key={s.id} style={{
+                display: 'flex', flexDirection: 'column', gap: 8, padding: 10,
+                background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={s.name}
+                    placeholder="Season name (e.g. Winter peak)"
+                    onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, name: ev.target.value } : x))}
+                    style={{
+                      flex: 1, minWidth: 0,
+                      border: 'none', borderBottom: `1px dashed ${T.border}`, outline: 'none', background: 'transparent',
+                      fontSize: 12, fontWeight: 700, color: T.ink, padding: '2px 0',
+                    }}
+                  />
+                  <button
+                    onClick={() => setSeasons(arr => arr.filter((_, j) => j !== i))}
+                    title="Remove this season"
+                    style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  ><Icon name="x" size={12} /></button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 2 }}>FROM</div>
+                    <input
+                      type="date"
+                      value={s.startIso || ''}
+                      onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, startIso: ev.target.value } : x))}
+                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, color: T.ink, background: T.card }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 2 }}>TO</div>
+                    <input
+                      type="date"
+                      value={s.endIso || ''}
+                      onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, endIso: ev.target.value } : x))}
+                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, color: T.ink, background: T.card }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>MULTIPLIER</span>
+                  <input
+                    type="number"
+                    value={s.multiplierPct ?? 0}
+                    onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(500, parseInt(ev.target.value, 10) || 0)) } : x))}
+                    className="tnum"
+                    style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 12, fontWeight: 700, background: T.card, color: T.ink }}
+                  />
+                  <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>% on base rate</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              const id = 'season_' + Date.now().toString(36);
+              setSeasons(arr => [...arr, { id, name: '', startIso: '', endIso: '', multiplierPct: 20 }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            Add season
+          </button>
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />

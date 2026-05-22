@@ -60,3 +60,10 @@ alter table room_categories
 alter table properties
   add column if not exists weekend_rules jsonb not null default
     '{"weekendDays":[0,6],"upliftPct":20}'::jsonb;
+
+-- Named seasons (Winter peak, Monsoon discount, etc). Each entry:
+-- { id, name, startIso, endIso, multiplierPct }. Multiplier stacks
+-- with the weekend uplift; explicit per-day overrides still win.
+-- Empty array by default.
+alter table properties
+  add column if not exists seasons jsonb not null default '[]'::jsonb;

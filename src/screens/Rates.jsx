@@ -50,6 +50,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const upliftMultiplier = 1 + (upliftPct / 100);
   const weekendDaySet = useMemo(() => new Set(weekendDays), [weekendDays.join(',')]);
 
+  // Seasons: each one multiplies the rate for any date inside its range.
+  // Overlapping seasons multiply together (rare in practice, but defined).
+  const seasons = Array.isArray(property?.seasons) ? property.seasons : [];
+  const seasonsFor = (iso) => seasons.filter(s => iso >= s.startIso && iso <= s.endIso);
+  const seasonMultiplier = (iso) => seasonsFor(iso).reduce((m, s) => m * (1 + ((s.multiplierPct || 0) / 100)), 1);
+
   // 42-cell grid (6 weeks × 7 days) starting from viewStartIdx. We render
   // the calendar exactly as it appears on a wall calendar — first cell
   // sits in the column of its weekday, with blank cells before it. Lets
@@ -100,7 +106,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const cat = ROOM_TYPES.find(r => r.id === typeId);
     if (!cat) return null;
     const day = days.find(d => d.idx === i);
-    return Math.round(cat.base * (day && day.isWknd ? upliftMultiplier : 1));
+    const wknd = day && day.isWknd ? upliftMultiplier : 1;
+    const seasonMult = day ? seasonMultiplier(day.iso) : 1;
+    return Math.round(cat.base * wknd * seasonMult);
   };
   const getRate = (i) => rateFor(selectedType, i);
   const isClosed = (i) => !!overrides[cellKey(i)]?.closed;
@@ -504,6 +512,21 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                       border: `1px solid #fff`, boxShadow: '0 0 0 1px rgba(0,0,0,0.06)',
                     }} />
                   )}
+                  {/* Season stripe — thin top band when this date is
+                      inside any named season. Tooltip names the season(s)
+                      and shows the cumulative multiplier. */}
+                  {(() => {
+                    const ss = seasonsFor(d.iso);
+                    if (ss.length === 0) return null;
+                    const label = ss.map(s => `${s.name || '(unnamed)'} ${s.multiplierPct >= 0 ? '+' : ''}${s.multiplierPct}%`).join(' · ');
+                    return (
+                      <div title={label} style={{
+                        position: 'absolute', top: 0, left: 0, right: 0,
+                        height: 3, background: T.indigo,
+                        borderTopLeftRadius: 5, borderTopRightRadius: 5,
+                      }} />
+                    );
+                  })()}
                   {isSel && <div style={{ position: 'absolute', top: 2, right: 2, width: 5, height: 5, borderRadius: 3, background: T.primary }} />}
                 </div>
               );

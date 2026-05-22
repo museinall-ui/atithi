@@ -103,6 +103,12 @@ const DEFAULT_PROPERTY = {
   // rate on weekend days unless an explicit per-day override is set.
   // weekendDays uses 0=Sun ... 6=Sat (JS getDay convention).
   weekendRules: { weekendDays: [0, 6], upliftPct: 20 },
+  // Named seasons / periods. Each season multiplies the per-day rate
+  // for any date inside [startIso, endIso] (both inclusive). Stacks
+  // multiplicatively with the weekend uplift; explicit per-day
+  // overrides still win over both. Color is just for the calendar
+  // stripe so the hotelier can eyeball where seasons land.
+  seasons: [],
   // Standard hotel meal plans. EP/CP/MAP/AP are the industry shorthand;
   // price is per guest per night, added on top of the room tariff.
   // `enabled` controls whether the plan shows up in the booking flow.
@@ -157,6 +163,7 @@ function migrateProperty(p) {
       upliftPct: Number.isFinite(out.weekendRules.upliftPct) ? Math.max(0, Math.min(200, out.weekendRules.upliftPct)) : 20,
     };
   }
+  if (!Array.isArray(out.seasons)) out.seasons = [];
   return out;
 }
 

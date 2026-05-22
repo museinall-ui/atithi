@@ -49,6 +49,7 @@ function localToCloudProperty(local) {
       ? local.mealPlans
       : DEFAULT_MEAL_PLANS,
     weekend_rules: (local && local.weekendRules) || { weekendDays: [0, 6], upliftPct: 20 },
+    seasons: Array.isArray(local && local.seasons) ? local.seasons : [],
   };
 }
 
@@ -94,6 +95,7 @@ function cloudToLocalProperty(row, categories) {
       ? row.meal_plans
       : DEFAULT_MEAL_PLANS.map(p => ({ ...p })),
     weekendRules: row.weekend_rules || { weekendDays: [0, 6], upliftPct: 20 },
+    seasons: Array.isArray(row.seasons) ? row.seasons : [],
   };
 }
 

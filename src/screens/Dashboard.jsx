@@ -237,7 +237,7 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose }) {
+export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose }) {
   const isHi = lang === 'hi';
   const ROOM_TYPES = effectiveRoomTypes(property);
   const repeats = repeatGuestKeys(bookings);
@@ -653,36 +653,42 @@ export default function Dashboard({ go, bookings, property, t, lang, onAddPaymen
         </div>
       </div>
 
-      <div style={{ padding: '0 16px 16px' }}>
-        <SectionHead title={t('channelMix')} />
-        <Card>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ position: 'relative', width: 70, height: 70 }}>
-              <svg width="70" height="70" viewBox="0 0 70 70">
-                <circle cx="35" cy="35" r="28" fill="none" stroke={T.bgSoft} strokeWidth="10"/>
-                <circle cx="35" cy="35" r="28" fill="none" stroke={T.primary} strokeWidth="10" strokeDasharray={`${0.55 * 175.9} 175.9`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                <circle cx="35" cy="35" r="28" fill="none" stroke="#EB2026" strokeWidth="10" strokeDasharray={`${0.20 * 175.9} 175.9`} strokeDashoffset={`${-0.55 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                <circle cx="35" cy="35" r="28" fill="none" stroke="#003580" strokeWidth="10" strokeDasharray={`${0.15 * 175.9} 175.9`} strokeDashoffset={`${-0.75 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                <circle cx="35" cy="35" r="28" fill="none" stroke="#F0728F" strokeWidth="10" strokeDasharray={`${0.10 * 175.9} 175.9`} strokeDashoffset={`${-0.90 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-              </svg>
+      {/* Channel mix donut — only relevant when the hotelier has actual
+          OTA channels syncing. On the Engine tier (no channel manager)
+          this card was confusing decoration, so we hide it. Returns on
+          Channels / Invoicing tiers. */}
+      {plan !== 'engine' && (
+        <div style={{ padding: '0 16px 16px' }}>
+          <SectionHead title={t('channelMix')} />
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ position: 'relative', width: 70, height: 70 }}>
+                <svg width="70" height="70" viewBox="0 0 70 70">
+                  <circle cx="35" cy="35" r="28" fill="none" stroke={T.bgSoft} strokeWidth="10"/>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke={T.primary} strokeWidth="10" strokeDasharray={`${0.55 * 175.9} 175.9`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke="#EB2026" strokeWidth="10" strokeDasharray={`${0.20 * 175.9} 175.9`} strokeDashoffset={`${-0.55 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke="#003580" strokeWidth="10" strokeDasharray={`${0.15 * 175.9} 175.9`} strokeDashoffset={`${-0.75 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
+                  <circle cx="35" cy="35" r="28" fill="none" stroke="#F0728F" strokeWidth="10" strokeDasharray={`${0.10 * 175.9} 175.9`} strokeDashoffset={`${-0.90 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  [isHi ? 'डायरेक्ट' : 'Direct', 55, T.primary],
+                  ['MakeMyTrip', 20, '#EB2026'],
+                  ['Booking.com', 15, '#003580'],
+                  ['Goibibo', 10, '#F0728F'],
+                ].map(([n, p, c]) => (
+                  <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
+                    <span style={{ flex: 1, color: T.ink2 }}>{n}</span>
+                    <span className="tnum" style={{ fontWeight: 700, color: T.ink }}>{p}%</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[
-                [isHi ? 'डायरेक्ट' : 'Direct', 55, T.primary],
-                ['MakeMyTrip', 20, '#EB2026'],
-                ['Booking.com', 15, '#003580'],
-                ['Goibibo', 10, '#F0728F'],
-              ].map(([n, p, c]) => (
-                <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
-                  <span style={{ flex: 1, color: T.ink2 }}>{n}</span>
-                  <span className="tnum" style={{ fontWeight: 700, color: T.ink }}>{p}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </div>
+          </Card>
+        </div>
+      )}
 
       <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} />
     </div>

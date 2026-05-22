@@ -388,7 +388,10 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   const jumpDateRef = useRef(null);
   // Show 7 days of recent history by default. Bumps automatically when
   // the hotelier jumps to an older date via the date picker.
-  const [pastDays, setPastDays] = useState(7);
+  // Default to no past-context columns — TODAY is the first column. The
+  // jump-to-date picker still auto-extends pastDays backwards when the
+  // hotelier picks an older date, so past bookings remain reachable.
+  const [pastDays, setPastDays] = useState(0);
   const scrollRef = useRef(null);
   const colW = zoom;
   const rowH = 36;

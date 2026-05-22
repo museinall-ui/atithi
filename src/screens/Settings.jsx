@@ -701,18 +701,16 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         type="number"
                         value={mp.price}
                         onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
-                        disabled={isEP}
                         className="tnum"
-                        style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: isEP ? T.bgSunk : T.card, color: T.ink, opacity: isEP ? 0.6 : 1 }}
+                        style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
                       />
                       <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>{t('perGuestPerNight')}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <Toggle
-                      on={mp.enabled || isEP}
+                      on={mp.enabled}
                       onChange={(v) => {
-                        if (isEP) return;
                         setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
                       }}
                     />

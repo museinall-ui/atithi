@@ -783,7 +783,7 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} property={property} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
@@ -801,7 +801,7 @@ export default function App() {
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} onSignOut={supaSignOut} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
   }
 
   // Splash while Supabase tells us whether the user is signed in, and again
@@ -838,24 +838,48 @@ export default function App() {
           else go(id);
         }} t={t} />
       )}
-      {/* Floating search trigger — visible on the four tab-bar screens
-          (home / diary / guests / more). Hidden on inner screens like
-          BookingDetail / NewBooking where the back arrow occupies the
-          same top-left zone visually. */}
+      {/* Floating header actions (bell + search) — visible on the four
+          tab-bar screens. The bell jumps the dashboard scroll to the
+          "Today's nudges" card; the search opens the global overlay. */}
       {showTabs && (
-        <button
-          onClick={() => setSearchOpen(true)}
-          aria-label="Search bookings"
-          style={{
-            position: 'absolute', top: 14, right: 14, zIndex: 30,
-            width: 36, height: 36, borderRadius: 10,
-            border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          }}
-        >
-          <Icon name="search" size={15} stroke={2.2} />
-        </button>
+        <div style={{
+          position: 'absolute', top: 14, right: 14, zIndex: 30,
+          display: 'inline-flex', gap: 6,
+        }}>
+          <button
+            onClick={() => {
+              if (route.name !== 'home') { go('home'); return; }
+              // Best-effort scroll — find the Today's nudges card by heading.
+              const headings = [...document.querySelectorAll('div')];
+              const target = headings.find(d => {
+                const t = (d.textContent || '').trim();
+                return t === "TODAY'S NUDGES" || t === 'आज की सूचनाएँ';
+              });
+              if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            aria-label="Today's nudges"
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            }}
+          >
+            <Icon name="bell" size={15} stroke={2.2} />
+          </button>
+          <button
+            onClick={() => setSearchOpen(true)}
+            aria-label="Search bookings"
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            }}
+          >
+            <Icon name="search" size={15} stroke={2.2} />
+          </button>
+        </div>
       )}
       <SearchOverlay
         open={searchOpen}

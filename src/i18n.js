@@ -73,7 +73,7 @@ export const STRINGS = {
     syncErrorHint: "We'll keep trying. Check your internet.",
     // Meal plans (Settings → Property profile → Meal plans)
     mealPlansTitle: 'Meal plans',
-    mealPlansHint: 'Tap any name or price to edit. The per-guest per-night price is added on top of the room rate. EP (Room only) is always on as the no-meals default. Add your own plan at the bottom for anything outside EP/CP/MAP/AP.',
+    mealPlansHint: "Tap any name or price to edit. The per-guest per-night price is added on top of the room rate. Turn off any plan you don't offer — an all-MAP camp can disable EP. Add your own plan at the bottom for anything outside EP/CP/MAP/AP.",
     addCustomMealPlan: 'Add custom meal plan',
     mealPlanNamePlaceholder: 'Plan name (e.g. Festive thali)',
     perGuestPerNight: '/ guest / night',
@@ -165,7 +165,7 @@ export const STRINGS = {
     syncErrorHint: 'फिर कोशिश करेंगे। इंटरनेट देखें।',
     // Meal plans (Settings → Property profile → Meal plans)
     mealPlansTitle: 'भोजन योजनाएँ',
-    mealPlansHint: 'नाम या कीमत बदलने के लिए टैप करें। यह कीमत प्रति-मेहमान प्रति-रात के हिसाब से कमरे की दर पर जोड़ी जाएगी। EP (सिर्फ़ कमरा) हमेशा चालू रहता है। EP/CP/MAP/AP के अलावा कुछ अलग चाहिए तो नीचे अपनी योजना जोड़ें।',
+    mealPlansHint: 'नाम या कीमत बदलने के लिए टैप करें। यह कीमत प्रति-मेहमान प्रति-रात के हिसाब से कमरे की दर पर जोड़ी जाएगी। जो योजना आप नहीं देते उसे बंद कर दें — सिर्फ़ MAP देने वाले कैम्प EP बंद कर सकते हैं। EP/CP/MAP/AP के अलावा कुछ अलग चाहिए तो नीचे अपनी योजना जोड़ें।',
     addCustomMealPlan: 'अपनी भोजन योजना जोड़ें',
     mealPlanNamePlaceholder: 'योजना का नाम (जैसे: त्यौहार थाली)',
     perGuestPerNight: '/ मेहमान / रात',

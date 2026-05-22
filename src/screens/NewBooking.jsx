@@ -1,6 +1,17 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans } from '../data.js';
+
+// Default mealPlanId for a fresh booking. Used to always be 'ep' but the
+// hotelier can now disable EP (e.g. an all-MAP camp). Falls back to 'ep'
+// only if literally no plan is enabled, so the booking object is never
+// left without a mealPlanId — downstream cost code happily treats unknown
+// ids as zero-cost.
+function firstEnabledMealPlanId(property) {
+  const enabled = effectiveMealPlans(property).filter(p => p.enabled);
+  if (enabled.length === 0) return 'ep';
+  return enabled[0].id;
+}
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -798,7 +809,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         payMethod: null, payAmount: 'full', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
-        mealPlanId: editing.mealPlanId || 'ep',
+        mealPlanId: editing.mealPlanId || firstEnabledMealPlanId(property),
       };
     }
     // New booking. If a Diary cell prefilled the date + room type, seed
@@ -817,9 +828,10 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // New bookings created here are channel='direct', so GST defaults to off.
       // Hotelier toggles it on via the GST switch on Step 4 if needed.
       gstApplies: false,
-      // Default to EP (room only, no meal). Hotelier picks a different
-      // plan in Step 2 if the booking includes meals.
-      mealPlanId: 'ep',
+      // Default to the first enabled plan. Used to always be 'ep' but the
+      // hotelier can now disable EP (e.g. an all-MAP camp), so we look up
+      // the active default at booking-create time.
+      mealPlanId: firstEnabledMealPlanId(property),
     };
   });
 

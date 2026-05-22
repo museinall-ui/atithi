@@ -16,7 +16,70 @@ function initialsOf(name) {
   return (name || '').trim().split(/\s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
 }
 
-function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown }) {
+// Expand each booking into one "pill instance" per roomItem. A multi-room
+// booking returns N instances, each with its own roomTypeId + unitIdx so the
+// Diary can render one pill per room (rather than just the primary one).
+//
+// roomItems that don't carry an explicit unitIdx get auto-assigned to the
+// first free unit in their roomTypeId during the booking's date range.
+// Cancelled bookings still produce instances (so the strike-through pill
+// renders) but don't reserve units against other bookings.
+function expandToPillInstances(bookings, ROOM_TYPES) {
+  // used[roomTypeId][unitIdx] = [{startIdx, endIdx}, ...]
+  const used = {};
+  for (const rt of ROOM_TYPES) {
+    used[rt.id] = {};
+    for (let u = 0; u < rt.units; u++) used[rt.id][u] = [];
+  }
+  // Stable processing order so auto-assignment doesn't shuffle on re-render.
+  const sorted = [...bookings].sort((a, b) => {
+    const da = a.startIdx ?? 0, db = b.startIdx ?? 0;
+    if (da !== db) return da - db;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+  const instances = [];
+  for (const b of sorted) {
+    const items = Array.isArray(b.roomItems) && b.roomItems.length
+      ? b.roomItems
+      : [{ roomTypeId: b.roomTypeId, unitIdx: b.unitIdx }];
+    const startIdx = b.startIdx ?? 0;
+    const endIdx = startIdx + (b.nights || 1);
+    items.forEach((item, itemIndex) => {
+      const rtId = item.roomTypeId || b.roomTypeId;
+      if (!used[rtId]) return; // unknown room type — skip
+      let unitIdx = item.unitIdx;
+      // Legacy: the primary item (whose roomTypeId matches the booking-level
+      // one) inherits the booking-level unitIdx if its own is missing.
+      if (unitIdx == null && itemIndex === 0 && b.unitIdx != null && rtId === b.roomTypeId) {
+        unitIdx = b.unitIdx;
+      }
+      if (unitIdx == null) {
+        const rt = ROOM_TYPES.find(r => r.id === rtId);
+        const unitCount = rt ? rt.units : 0;
+        for (let u = 0; u < unitCount; u++) {
+          const conflict = used[rtId][u].some(r => !(endIdx <= r.startIdx || startIdx >= r.endIdx));
+          if (!conflict) { unitIdx = u; break; }
+        }
+        if (unitIdx == null) unitIdx = 0; // overflow fallback
+      }
+      if (b.status !== 'cancelled') {
+        used[rtId][unitIdx] = used[rtId][unitIdx] || [];
+        used[rtId][unitIdx].push({ startIdx, endIdx });
+      }
+      instances.push({
+        b,
+        roomTypeId: rtId,
+        unitIdx,
+        itemIndex,
+        roomCount: items.length,
+        isPrimary: itemIndex === 0,
+      });
+    });
+  }
+  return instances;
+}
+
+function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi }) {
   const ch = CHANNELS[b.channel];
   const isHold = b.status === 'tentative';
   const isCheckedin = b.status === 'checkedin';
@@ -125,9 +188,21 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown }) {
             color: T.ink,
             letterSpacing: showInitials ? 0.4 : 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2,
+            display: 'flex', alignItems: 'center', gap: 4,
           }}
         >
-          {showVipStar && b.vip && '★ '}{displayName}
+          {showVipStar && b.vip && <span>★</span>}
+          {multi && !showInitials && (
+            <span
+              className="tnum"
+              title={`Room ${multi.current} of ${multi.total}`}
+              style={{
+                fontSize: 9, fontWeight: 800, padding: '1px 4px', borderRadius: 4,
+                background: T.bgSunk, color: T.ink3, flexShrink: 0,
+              }}
+            >{multi.current}/{multi.total}</span>
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
         </div>
         {/* Inner line stays only for confirmed bookings to show payment state,
             and only when there's enough room to read it. */}
@@ -163,14 +238,14 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown }) {
   );
 }
 
-function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart }) {
+function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart }) {
   const tagColor = T[rt.tag];
   // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
-  // booking. Used to decide whether to make the cell clickable for quick-
-  // create.
-  const isOccupied = (ui, dayIdx) => bookings.some(b =>
-    b.unitIdx === ui && b.status !== 'cancelled' &&
-    b.startIdx <= dayIdx && dayIdx < (b.startIdx + (b.nights || 1))
+  // pill instance. Used to decide whether to make the cell clickable for
+  // quick-create.
+  const isOccupied = (ui, dayIdx) => instances.some(inst =>
+    inst.unitIdx === ui && inst.b.status !== 'cancelled' &&
+    inst.b.startIdx <= dayIdx && dayIdx < (inst.b.startIdx + (inst.b.nights || 1))
   );
   const openQuickCreate = (date) => {
     if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
@@ -228,12 +303,15 @@ function RoomTypeBlock({ rt, bookings, collapsed, onToggle, colW, rowH, labelW, 
                 />
               );
             })}
-            {bookings.filter(b => b.unitIdx === ui).map(b => {
-              const dx = drag && drag.id === b.id ? drag.dx : 0;
+            {instances.filter(inst => inst.unitIdx === ui).map(inst => {
+              const dx = drag && drag.id === inst.b.id ? drag.dx : 0;
               return (
                 <BookingPill
-                  key={b.id} b={b} colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
-                  onPointerDown={(e) => onPointerDown(e, b)}
+                  key={inst.b.id + ':' + inst.itemIndex}
+                  b={inst.b}
+                  colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
+                  onPointerDown={(e) => onPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
+                  multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
                 />
               );
             })}
@@ -364,6 +442,11 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
   }, [horizon, colW]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
+  // Expand once per render; downstream RoomTypeBlocks just slice this list.
+  const pillInstances = useMemo(
+    () => expandToPillInstances(visibleBookings, ROOM_TYPES),
+    [visibleBookings, ROOM_TYPES]
+  );
   const counts = {
     confirmed: bookings.filter(b => b.status === 'confirmed').length,
     hold:      bookings.filter(b => b.status === 'tentative').length,
@@ -381,11 +464,15 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
     };
   };
 
-  const onPointerDown = (e, b) => {
+  const onPointerDown = (e, b, opts = {}) => {
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const origStart = b.startIdx;
+    // Multi-room bookings can't be drag-moved yet — we'd need to slot every
+    // roomItem simultaneously. Still allow the tap-to-open behaviour, but
+    // route any attempted drag through to a navigation instead.
+    const isMulti = Array.isArray(b.roomItems) && b.roomItems.length > 1;
     const move = (ev) => {
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
@@ -406,6 +493,12 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
       const slotChanged = target && (target.roomTypeId !== b.roomTypeId || target.unitIdx !== b.unitIdx);
       const dateChanged = dx !== 0;
       if (!slotChanged && !dateChanged) {
+        go('booking', b.id);
+        return;
+      }
+      // Multi-room bookings: ignore the drop entirely and treat as a tap.
+      // Moving them needs us to re-slot every roomItem — TBD chunk.
+      if (isMulti) {
         go('booking', b.id);
         return;
       }
@@ -600,10 +693,12 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>OCCUPANCY</div>
             </div>
             {viewDays.map((d) => {
-              const activeBookings = bookings.filter(b => b.status !== 'cancelled');
-              // Compare against this day's actual idx (which may be negative
-              // for past-context columns), not its position in the array.
-              const occRooms = activeBookings.filter(b => b.startIdx <= d.idx && b.startIdx + b.nights > d.idx).length;
+              // Each pill instance = one occupied unit on this day. So
+              // multi-room bookings correctly count as multiple rooms.
+              const occRooms = pillInstances.filter(inst =>
+                inst.b.status !== 'cancelled' &&
+                inst.b.startIdx <= d.idx && inst.b.startIdx + inst.b.nights > d.idx
+              ).length;
               const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
               const occ = totalRooms > 0 ? Math.round((occRooms / totalRooms) * 100) : 0;
               const isToday = d.iso === todayIso;
@@ -620,7 +715,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               key={rt.id} rt={rt}
               collapsed={collapsed[rt.id]}
               onToggle={() => setCollapsed(c => ({ ...c, [rt.id]: !c[rt.id] }))}
-              bookings={visibleBookings.filter(b => b.roomTypeId === rt.id)}
+              instances={pillInstances.filter(inst => inst.roomTypeId === rt.id)}
               colW={colW} rowH={rowH} labelW={labelW}
               drag={drag}
               onPointerDown={onPointerDown}

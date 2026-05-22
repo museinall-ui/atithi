@@ -37,6 +37,7 @@ function localToCloudProperty(local) {
     website: p.website || '',
     payment_qr_data_url: p.paymentQrDataUrl || '',
     payment_qr_label: p.paymentQrLabel || '',
+    logo_data_url: p.logoDataUrl || '',
     gstin: (local && local.gstin) || '',
     accountant: (local && local.accountant) || { name: '', email: '', firm: '' },
     theme: (local && local.theme) || { hue: 38 },
@@ -68,6 +69,7 @@ function cloudToLocalProperty(row, categories) {
       website: row.website || '',
       paymentQrDataUrl: row.payment_qr_data_url || '',
       paymentQrLabel: row.payment_qr_label || '',
+      logoDataUrl: row.logo_data_url || '',
     },
     categories: (categories || []).map(c => ({
       id: c.code,

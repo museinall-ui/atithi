@@ -37,6 +37,13 @@ alter table properties
 alter table properties
   add column if not exists payment_qr_label text default '';
 
+-- Property logo — same base64 data-URL approach as the payment QR so we
+-- don't need Supabase Storage just to ship logos. 200KB cap at the UI
+-- layer keeps the row small. Renders on the Settings hero and on the
+-- voucher header.
+alter table properties
+  add column if not exists logo_data_url text default '';
+
 -- Per-room-category GST override. NULL means "auto-pick from the
 -- current CBIC slab based on base rate" (≤₹1k exempt / ₹1-7.5k 5% /
 -- ≥₹7.5k 18%). An explicit number wins over the slab — used when a

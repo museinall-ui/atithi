@@ -61,6 +61,10 @@ const DEFAULT_PROPERTY = {
     // reception — this just digitises it onto the voucher.
     paymentQrDataUrl: '',
     paymentQrLabel: '',  // optional helper text (e.g. "Scan via any UPI app")
+    // Property logo — same inline base64 pattern as the payment QR (small
+    // enough to live on the row, no Supabase Storage needed). Renders on
+    // the Settings card hero, and on the voucher header in a follow-up.
+    logoDataUrl: '',
     city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
     landmark: 'Near Sam Sand Dunes, 45km west of Jaisalmer Fort',
     mapUrl: 'https://maps.google.com/?q=Sam+Sand+Dunes,+Jaisalmer',

@@ -190,14 +190,57 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <SectionHead title={t('logo')} />
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 72, height: 72, borderRadius: 14, background: T.card, padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,.08)', border: `1px dashed ${T.border}` }}>
-              <div style={{ width: '100%', height: '100%', borderRadius: 10, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
+            <div style={{ width: 72, height: 72, borderRadius: 14, background: T.card, padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,.08)', border: `1px dashed ${T.border}`, flexShrink: 0 }}>
+              {profile.logoDataUrl ? (
+                <img
+                  src={profile.logoDataUrl}
+                  alt="Property logo"
+                  style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'contain', background: '#fff' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', borderRadius: 10, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
+              )}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Current logo</div>
-              <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 2, lineHeight: 1.4 }}>PNG or SVG · square · min 512px · transparent background</div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                <Btn size="sm" variant="ghost" icon="upload">{t('changeLogo')}</Btn>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>
+                {profile.logoDataUrl ? 'Logo uploaded' : 'Default logo'}
+              </div>
+              <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 2, lineHeight: 1.4 }}>
+                PNG, JPEG or SVG · square works best · under 200 KB
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {/* Inline base64 upload — same pattern as the Payment QR
+                    field. Stored on property.profile.logoDataUrl. Will
+                    render on the voucher header in a follow-up. */}
+                <label
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <Icon name={profile.logoDataUrl ? 'edit' : 'upload'} size={11} stroke={2.2} /> {profile.logoDataUrl ? 'Replace' : t('changeLogo')}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      if (file.size > 200 * 1024) {
+                        alert('Logo is too large. Please use an image under 200 KB.');
+                        return;
+                      }
+                      const r = new FileReader();
+                      r.onload = () => setProfile({ ...profile, logoDataUrl: String(r.result || '') });
+                      r.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+                {profile.logoDataUrl && (
+                  <button
+                    onClick={() => setProfile({ ...profile, logoDataUrl: '' })}
+                    style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           </div>

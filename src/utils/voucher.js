@@ -123,7 +123,9 @@ export function generateVoucher(b, rt, property, invoice) {
 <body>
   <div class="head">
     <div class="brand">
-      <div class="logo">${esc(logoLetter)}</div>
+      <div class="logo">${p.logoDataUrl
+        ? `<img src="${esc(p.logoDataUrl)}" alt="Logo" style="width:100%; height:100%; border-radius:10px; object-fit:contain; background:#fff;" />`
+        : esc(logoLetter)}</div>
       <div>
         <div class="brand-name">${esc(p.name)}</div>
         <div class="brand-sub">${esc(addressLine)}${p.phone ? ' · ' + esc(p.phone) : ''}</div>

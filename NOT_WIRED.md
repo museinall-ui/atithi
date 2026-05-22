@@ -19,11 +19,10 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **Needs:** Meta WhatsApp Business Cloud API + an approved message template ("booking_confirmation"). Send on booking create.
 - **Phase:** 3
 
-### WhatsApp "Send ₹X link" button (FAKE)
-- **At:** `src/screens/BookingDetail.jsx` folio section — green "Send ₹X link" button below the payments ledger when balance > 0.
-- **State:** Visible, does nothing on click. No onClick handler.
-- **Needs:** Razorpay payment link API to mint a short URL + WhatsApp Cloud API to send it. Compose a templated message with `${guest_name}`, `${amount}`, `${booking_id}`.
-- **Phase:** 2 (Razorpay) + 3 (WhatsApp delivery)
+### WhatsApp "Send booking summary" / "Send ₹X reminder" buttons (DONE for the manual loop)
+- **At:** `src/screens/BookingDetail.jsx` folio + `src/screens/BookingConfirmed.jsx`. Composes a wa.me link via `src/utils/share.js` (`bookingShareWaUrl`) with full booking summary + balance + a pointer to the property's uploaded UPI QR. EN/HI based on the app's current language.
+- **State:** Opens WhatsApp Web/app with a pre-filled message the hotelier sends manually. Closes the post-booking share loop.
+- **Still needs (for auto-send):** Meta WhatsApp Business Cloud API + approved booking_confirmation template. Phase 3.
 
 ### WhatsApp activity feed entry (HIDDEN)
 - **Was at:** `src/screens/BookingDetail.jsx` Activity section.
@@ -31,11 +30,9 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **Needs:** Real read-receipts from WhatsApp Cloud API webhook → store status on the payment/booking row → render in feed.
 - **Phase:** 3
 
-### WhatsApp / Call / Email buttons on BookingDetail (FAKE)
-- **At:** `src/screens/BookingDetail.jsx` guest card — three buttons under the guest avatar.
-- **State:** Visible, no onClick handlers.
-- **Needs:** WhatsApp/Call/Email should open `wa.me/${phone}`, `tel:${phone}`, `mailto:${email}` respectively. Free fix, just a wire-up — no external service required. **Do this in the basics pass.**
-- **Phase:** Engine (basics)
+### WhatsApp / Call / Email buttons on BookingDetail (DONE)
+- **At:** `src/screens/BookingDetail.jsx` guest card.
+- **State:** All three open `wa.me/${phone}`, `tel:${phone}`, `mailto:${email}` respectively. Disabled when the field is empty.
 
 ### Razorpay UPI QR code on the NEW BOOKING payment step (DONE)
 - **Was at:** `src/screens/NewBooking.jsx` Step 4 → "UPI / QR" payment method → rendered a `<FakeQR />` SVG with "yatradesert@razorpay".
@@ -136,10 +133,8 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 
 ## Reservation / inventory
 
-### Per-room unit allocation + multi-pill Diary rendering
-- **At:** `src/screens/Diary.jsx`. Multi-room bookings carry `roomItems[]` with mixed types but only the first room shows as a pill in the Diary.
-- **State:** Data model supports multi-room; rendering only shows one pill positioned against `roomTypeId` + `unitIdx`.
-- **Needs:** Iterate every `roomItem`, derive per-room `unitIdx` via the same first-free-unit logic used at create time, render N pills (one per room, with a visual link/colour tying them to the same booking).
+### Per-room unit allocation + multi-pill Diary rendering (DONE)
+- **At:** `src/screens/Diary.jsx` `expandToPillInstances`. Multi-room bookings now render one pill per `roomItem`, with auto-assigned `unitIdx` and a "1/2 · 2/2" badge tying them visually. Drag is gated for multi-room bookings (tap-only) until the multi-slot drop UX lands.
 
 ### Per-night different room type within a booking
 - **At:** Booking data model only has one type per `roomItem`.
@@ -150,22 +145,22 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 
 ## Settings / property
 
-### Property logo upload (FAKE)
+### Property logo upload (DONE)
 - **At:** `src/screens/Settings.jsx` → Property Profile → Logo card.
-- **State:** Shows a "Change" button but doesn't actually accept an upload.
-- **Needs:** Supabase Storage (free 1GB tier) for the file + URL stored on `property.profile.logoUrl`. Voucher PDF already reads property branding, just needs the image URL.
-- **Phase:** 4
+- **State:** Inline base64 data URL on `property.profile.logoDataUrl` (same pattern as the Payment QR), 200 KB cap. Renders on the Settings hero and on the voucher header. No Supabase Storage needed.
 
-### "GSTIN verified" badge in Settings (FAKE)
-- **At:** `src/screens/Settings.jsx` — the GSTIN chip on the property header card.
-- **State:** Cosmetic — shows green "GSTIN verified" whenever a GSTIN is set, no actual verification.
-- **Needs:** A GSTIN-validation API call to confirm the GSTIN is real before showing the badge. Free services exist (e.g. `https://services.gst.gov.in/services/searchtp`).
-- **Phase:** 2 (cheap to add)
+### "GSTIN verified" / "FRRO registered" badges in Settings (REWORKED)
+- **At:** `src/screens/Settings.jsx` — chips on the property header card.
+- **State:** Replaced. The header now shows the actual GSTIN (or a "GSTIN not set" warn chip if empty) and a "X rooms live" chip pulled from real category data. No more cosmetic "verified" claims.
+- **Future:** A real GSTIN validation API call (e.g. `https://services.gst.gov.in/services/searchtp`) could re-introduce a "Verified" chip later. Phase 2.
 
-### "FRRO registered" badge in Settings (FAKE)
-- **At:** `src/screens/Settings.jsx` — chip next to GSTIN.
-- **State:** Cosmetic. No FRRO check.
-- **Needs:** Same as Form C above — no public API. Could be a manual toggle the hotelier sets after they've registered with FRRO.
+### Saved custom extras — edit + reprice (DONE)
+- **At:** Property Profile → Saved extras (new section, next to Meal plans).
+- **State:** Add / rename / reprice / change unit (per stay/night/guest/guest-per-night) / delete. Diff-syncs to cloud via the existing savedExtras path in `App.jsx` (plus a new `updateSavedExtraCloud` in `src/cloud/extras.js`).
+
+### Settings → Integrations status pills (REWORKED)
+- **At:** `src/screens/Settings.jsx` — each integration row had a fake green "Active" pill.
+- **State:** Replaced with honest "Manual" / "Coming soon" pills, plus sub-copy that says what the hotelier does today (Record payments by hand, Buttons open wa.me, Submit foreign-guest details manually).
 
 ---
 

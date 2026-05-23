@@ -547,9 +547,20 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const meal = mealPlanById(property, b.mealPlanId);
               const preTax = withTax ? b.total - tx.gst : b.total;
               const tariff = preTax - mealCost;
+              // Rate plan row — surfaced when the booking used something
+              // other than the default Standard plan, so the hotelier can
+              // see the cancellation terms at a glance.
+              const ratePlans = Array.isArray(property?.ratePlans) ? property.ratePlans : [];
+              const rp = ratePlans.find(p => p.id === b.ratePlanId);
               return (
                 <>
                   <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${tariff.toLocaleString('en-IN')}`} />
+                  {rp && rp.id !== 'standard' && (
+                    <Row
+                      label="Rate plan"
+                      value={`${rp.label} · ${rp.cancellation === 'non-refundable' ? 'No refunds' : `free cancel ${rp.refundHours}h`}`}
+                    />
+                  )}
                   {meal && mealCost > 0 && (
                     <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
                   )}

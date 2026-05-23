@@ -118,6 +118,17 @@ const DEFAULT_PROPERTY = {
   // no channel sync at all). Sync to OTAs themselves waits on the
   // Phase 5 channel-manager integration.
   channelMarkups: { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+  // Rate plans — different price tiers for the same room (e.g. Flexible
+  // refundable, Non-refundable discount, Long-stay 10% off). Each plan
+  // multiplies the per-day rate by multiplierPct. The "standard" plan
+  // is always 0% and always enabled — it's the rate the calendar shows.
+  // When only "standard" is enabled, the booking flow hides the picker
+  // (no choice to make). Adding any second enabled plan surfaces it.
+  ratePlans: [
+    { id: 'standard',       label: 'Standard',       multiplierPct: 0,  cancellation: 'flexible',      refundHours: 48, enabled: true  },
+    { id: 'flexible',       label: 'Flexible',       multiplierPct: 15, cancellation: 'flexible',      refundHours: 24, enabled: false },
+    { id: 'nonrefundable',  label: 'Non-refundable', multiplierPct: -10, cancellation: 'non-refundable', refundHours: 0,  enabled: false },
+  ],
   // Standard hotel meal plans. EP/CP/MAP/AP are the industry shorthand;
   // price is per guest per night, added on top of the room tariff.
   // `enabled` controls whether the plan shows up in the booking flow.
@@ -177,6 +188,20 @@ function migrateProperty(p) {
     out.channelMarkups = { ...DEFAULT_PROPERTY.channelMarkups };
   } else {
     out.channelMarkups = { ...DEFAULT_PROPERTY.channelMarkups, ...out.channelMarkups };
+  }
+  // Rate plans: seed defaults if missing. Older property objects never had
+  // this; they still produce a usable Standard plan via the default seed.
+  if (!Array.isArray(out.ratePlans) || out.ratePlans.length === 0) {
+    out.ratePlans = DEFAULT_PROPERTY.ratePlans.map(p => ({ ...p }));
+  } else {
+    // Ensure the standard plan is present and always enabled at 0%, in
+    // case the hotelier renamed it but kept the id.
+    const hasStandard = out.ratePlans.some(p => p.id === 'standard');
+    if (!hasStandard) {
+      out.ratePlans = [{ ...DEFAULT_PROPERTY.ratePlans[0] }, ...out.ratePlans];
+    } else {
+      out.ratePlans = out.ratePlans.map(p => p.id === 'standard' ? { ...p, multiplierPct: 0, enabled: true } : p);
+    }
   }
   return out;
 }
@@ -744,6 +769,7 @@ export default function App() {
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
+        ratePlanId: data.ratePlanId || 'standard',
         guests: guestsStr,
       };
       if (isHold) {
@@ -783,6 +809,7 @@ export default function App() {
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
+        ratePlanId: data.ratePlanId || 'standard',
         state: data.state || '',
         releaseTs: releaseTs || undefined,
         releaseAt: releaseAt || undefined,

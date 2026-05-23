@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Used to always be 'ep' but the
 // hotelier can now disable EP (e.g. an all-MAP camp). Falls back to 'ep'
@@ -375,7 +375,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
 // roomTypeId, so a single booking can mix Deluxe + Luxury + Pool etc.
 // The booking-level `roomTypeId` (kept for backward-compat with screens
 // that still read it) is auto-derived from the first room.
-function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans }) {
+function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans = [] }) {
   const totalAdults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const totalChildren = data.roomItems.reduce((s, r) => s + r.children, 0);
   const totalGuests = totalAdults + totalChildren;
@@ -405,6 +405,62 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans }) {
           onChange={(patch) => setItem(idx, patch)}
         />
       ))}
+      {/* Rate plan picker — only when more than one is enabled. The
+          Standard plan is the calendar rate; other plans apply their
+          multiplier on top so the picker shows what the guest pays. */}
+      {ratePlans.length > 1 && (() => {
+        const selectedRpId = data.ratePlanId || 'standard';
+        // Sample rate for preview: first room's per-night rate, or its
+        // type's base if no rate yet, or 0.
+        const sampleRoom = data.roomItems[0];
+        const sampleRate = sampleRoom && sampleRoom.rate != null
+          ? sampleRoom.rate
+          : (roomTypes.find(r => r.id === (sampleRoom && sampleRoom.roomTypeId))?.base || 0);
+        return (
+          <Card padding={14}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>RATE PLAN</div>
+              <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>Cancellation terms vary</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {ratePlans.map(rp => {
+                const sel = rp.id === selectedRpId;
+                const m = 1 + ((rp.multiplierPct || 0) / 100);
+                const adjusted = Math.round(sampleRate * m);
+                const diff = adjusted - sampleRate;
+                return (
+                  <button
+                    key={rp.id}
+                    onClick={() => set('ratePlanId', rp.id)}
+                    className="atithi-tap"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 10,
+                      border: sel ? `1.5px solid ${T.primary}` : `1px solid ${T.border}`,
+                      background: sel ? T.primaryLt : T.card,
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{rp.label}</div>
+                      <div style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
+                        {rp.cancellation === 'non-refundable'
+                          ? 'No refunds on cancellation'
+                          : `Free cancel ${rp.refundHours}h before arrival`}
+                      </div>
+                    </div>
+                    {sampleRate > 0 && (
+                      <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: sel ? T.primaryDk : T.ink2, whiteSpace: 'nowrap' }}>
+                        {diff === 0 ? `₹${adjusted.toLocaleString('en-IN')}` : `${diff > 0 ? '+' : ''}₹${Math.abs(diff).toLocaleString('en-IN')}`}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
       {enabledMealPlans.length > 0 && (
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -810,6 +866,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
         mealPlanId: editing.mealPlanId || firstEnabledMealPlanId(property),
+        ratePlanId: editing.ratePlanId || defaultRatePlanId(),
       };
     }
     // New booking. If a Diary cell prefilled the date + room type, seed
@@ -832,6 +889,9 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // hotelier can now disable EP (e.g. an all-MAP camp), so we look up
       // the active default at booking-create time.
       mealPlanId: firstEnabledMealPlanId(property),
+      // Rate plan defaults to "Standard". Hotelier picks a different one
+      // on Step 2 if multiple plans are enabled.
+      ratePlanId: defaultRatePlanId(),
     };
   });
 
@@ -858,7 +918,11 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
   // Per-room subtotal: each item uses its own roomTypeId (with the booking-
   // level data.roomTypeId as a fallback for legacy single-type bookings).
-  const roomsSubtotal = data.roomItems.reduce((sum, r) => {
+  // The rate-plan multiplier (Standard / Flexible / Non-refundable) is
+  // applied to the room subtotal — extras / meal plans / GST land on top.
+  const ratePlanObj = ratePlanById(property, data.ratePlanId) || { multiplierPct: 0 };
+  const ratePlanMult = 1 + ((ratePlanObj.multiplierPct || 0) / 100);
+  const roomsSubtotalRaw = data.roomItems.reduce((sum, r) => {
     const typeId = r.roomTypeId || data.roomTypeId;
     const type = typeId ? ROOM_TYPES.find(rt => rt.id === typeId) : null;
     if (!type) return sum;
@@ -868,6 +932,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     const rate = r.rate != null ? r.rate : rateForNight(type.id, 0);
     return sum + rate * data.nights;
   }, 0);
+  const roomsSubtotal = Math.round(roomsSubtotalRaw * ratePlanMult);
 
   // All rooms must have a type chosen before Step 2 can be completed.
   const roomsValid = data.roomItems.length > 0 && data.roomItems.every(r => !!(r.roomTypeId || data.roomTypeId));
@@ -930,7 +995,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} />}
-        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} />}
+        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
         {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />}
       </div>

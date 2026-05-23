@@ -51,6 +51,9 @@ function localToCloudProperty(local) {
     weekend_rules: (local && local.weekendRules) || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(local && local.seasons) ? local.seasons : [],
     channel_markups: (local && local.channelMarkups) || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+    rate_plans: Array.isArray(local && local.ratePlans) ? local.ratePlans : [
+      { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
+    ],
   };
 }
 
@@ -98,6 +101,9 @@ function cloudToLocalProperty(row, categories) {
     weekendRules: row.weekend_rules || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(row.seasons) ? row.seasons : [],
     channelMarkups: row.channel_markups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+    ratePlans: Array.isArray(row.rate_plans) && row.rate_plans.length ? row.rate_plans : [
+      { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
+    ],
   };
 }
 

@@ -276,6 +276,23 @@ export function mealPlanById(property, id) {
   return effectiveMealPlans(property).find(p => p.id === id) || null;
 }
 
+// Rate plans — different price tiers (Standard / Flexible / Non-refundable)
+// per property. Each plan carries a multiplier that's applied to the
+// underlying day rate at booking time. The Standard plan is always
+// enabled at 0%. Returns enabled plans only.
+export function effectiveRatePlans(property) {
+  const all = Array.isArray(property && property.ratePlans) ? property.ratePlans : [];
+  return all.filter(p => p.enabled);
+}
+export function ratePlanById(property, id) {
+  const all = Array.isArray(property && property.ratePlans) ? property.ratePlans : [];
+  return all.find(p => p.id === id) || null;
+}
+// Default plan: the one a fresh booking gets. Standard plan, always there.
+export function defaultRatePlanId() {
+  return 'standard';
+}
+
 // Total guest-count for cost math. Children count toward meals too by default
 // — most Indian hotels charge full meal rate for kids above ~5. The owner can
 // adjust price points per plan, so we keep the math simple here.

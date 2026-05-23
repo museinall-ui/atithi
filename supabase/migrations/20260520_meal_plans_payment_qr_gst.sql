@@ -75,3 +75,11 @@ alter table properties
 alter table properties
   add column if not exists channel_markups jsonb not null default
     '{"direct":0,"mmt":0,"goibibo":0,"booking":0,"agoda":0,"airbnb":0}'::jsonb;
+
+-- Rate plans (Standard / Flexible / Non-refundable etc). Each plan
+-- multiplies the per-day rate at booking time and carries cancellation
+-- terms surfaced on the booking flow + voucher. Standard plan is
+-- always present and always enabled at 0%.
+alter table properties
+  add column if not exists rate_plans jsonb not null default
+    '[{"id":"standard","label":"Standard","multiplierPct":0,"cancellation":"flexible","refundHours":48,"enabled":true}]'::jsonb;

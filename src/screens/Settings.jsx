@@ -141,6 +141,14 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [channelMarkups, setChannelMarkups] = useState(
     property.channelMarkups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 }
   );
+  // Rate plans: Standard / Flexible / Non-refundable etc. Each plan has
+  // a multiplier and a cancellation tier that the booking flow surfaces
+  // when more than one plan is enabled.
+  const [ratePlans, setRatePlans] = useState(
+    Array.isArray(property.ratePlans) ? property.ratePlans : [
+      { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
+    ]
+  );
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -183,7 +191,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, weekendRules, seasons, channelMarkups,
+      mealPlans, weekendRules, seasons, channelMarkups, ratePlans,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -1059,6 +1067,118 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             </>
           );
         })()}
+
+        <SectionHead title="Rate plans" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Offer different price tiers for the same room — e.g. Standard (flexible cancel), Non-refundable (-10% off), Long-stay discount. Standard is always on at 0% and is the calendar rate. Turn extra plans on to show a plan picker at booking time.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ratePlans.map((p, i) => {
+              const isStd = p.id === 'standard';
+              return (
+                <div key={p.id} style={{
+                  display: 'flex', flexDirection: 'column', gap: 6, padding: 10,
+                  background: p.enabled ? T.bgSoft : T.card,
+                  border: `1px solid ${p.enabled ? T.borderSoft : T.border}`,
+                  borderRadius: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      value={p.label}
+                      placeholder="Plan name"
+                      onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, label: ev.target.value } : x))}
+                      style={{
+                        flex: 1, minWidth: 0,
+                        border: 'none', borderBottom: `1px dashed ${T.border}`, outline: 'none', background: 'transparent',
+                        fontSize: 12, fontWeight: 700, color: T.ink, padding: '2px 0',
+                      }}
+                    />
+                    <Toggle
+                      on={p.enabled}
+                      onChange={(v) => {
+                        if (isStd) return; // Standard always on
+                        setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, enabled: v } : x));
+                      }}
+                    />
+                    {!isStd && (
+                      <button
+                        onClick={() => setRatePlans(arr => arr.filter((_, j) => j !== i))}
+                        title="Remove this plan"
+                        style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                      ><Icon name="x" size={12} /></button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>RATE</span>
+                    <input
+                      type="number"
+                      value={p.multiplierPct ?? 0}
+                      onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(200, parseInt(ev.target.value, 10) || 0)) } : x))}
+                      disabled={isStd}
+                      className="tnum"
+                      style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 12, fontWeight: 700, background: isStd ? T.bgSunk : T.card, color: T.ink, opacity: isStd ? 0.6 : 1 }}
+                    />
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>% on base</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>CANCEL</span>
+                    {[
+                      { id: 'flexible',       label: 'Flexible' },
+                      { id: 'moderate',       label: 'Moderate' },
+                      { id: 'strict',         label: 'Strict' },
+                      { id: 'non-refundable', label: 'Non-refundable' },
+                    ].map(opt => {
+                      const sel = (p.cancellation || 'flexible') === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, cancellation: opt.id } : x))}
+                          style={{
+                            padding: '3px 8px', borderRadius: 999,
+                            border: `1px solid ${sel ? T.indigo : T.border}`,
+                            background: sel ? T.indigoLt : T.card,
+                            color: sel ? T.indigo : T.ink2,
+                            fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                          }}
+                        >{opt.label}</button>
+                      );
+                    })}
+                  </div>
+                  {(p.cancellation || 'flexible') !== 'non-refundable' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>FREE CANCEL UPTO</span>
+                      <input
+                        type="number"
+                        value={p.refundHours ?? 48}
+                        onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, refundHours: Math.max(0, Math.min(720, parseInt(ev.target.value, 10) || 0)) } : x))}
+                        className="tnum"
+                        style={{ width: 60, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
+                      />
+                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>hours before arrival</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => {
+              const id = 'rp_' + Date.now().toString(36);
+              setRatePlans(arr => [...arr, { id, label: '', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            Add rate plan
+          </button>
+        </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
         <Card padding={12}>

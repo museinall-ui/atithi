@@ -67,3 +67,11 @@ alter table properties
 -- Empty array by default.
 alter table properties
   add column if not exists seasons jsonb not null default '[]'::jsonb;
+
+-- Per-channel rate markups (%). Direct is the reference (0); each OTA
+-- gets a markup applied when rates push out via the Channel Manager.
+-- Most OTAs require rate parity contractually, so non-zero values
+-- trigger a Settings warning before save. Default keeps everything at 0.
+alter table properties
+  add column if not exists channel_markups jsonb not null default
+    '{"direct":0,"mmt":0,"goibibo":0,"booking":0,"agoda":0,"airbnb":0}'::jsonb;

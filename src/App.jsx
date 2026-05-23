@@ -109,6 +109,15 @@ const DEFAULT_PROPERTY = {
   // overrides still win over both. Color is just for the calendar
   // stripe so the hotelier can eyeball where seasons land.
   seasons: [],
+  // Channel-specific rate markups, in %. Direct stays at 0 (you set
+  // direct rates in Rates & inventory; each OTA gets a markup applied
+  // before pushing). Most OTAs require rate parity, so any non-zero
+  // value triggers a parity warning in Settings — they're allowed to
+  // be set but the hotelier sees the contractual risk first.
+  // Surface only relevant on Channels / Invoicing plans (Engine has
+  // no channel sync at all). Sync to OTAs themselves waits on the
+  // Phase 5 channel-manager integration.
+  channelMarkups: { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
   // Standard hotel meal plans. EP/CP/MAP/AP are the industry shorthand;
   // price is per guest per night, added on top of the room tariff.
   // `enabled` controls whether the plan shows up in the booking flow.
@@ -164,6 +173,11 @@ function migrateProperty(p) {
     };
   }
   if (!Array.isArray(out.seasons)) out.seasons = [];
+  if (!out.channelMarkups || typeof out.channelMarkups !== 'object') {
+    out.channelMarkups = { ...DEFAULT_PROPERTY.channelMarkups };
+  } else {
+    out.channelMarkups = { ...DEFAULT_PROPERTY.channelMarkups, ...out.channelMarkups };
+  }
   return out;
 }
 

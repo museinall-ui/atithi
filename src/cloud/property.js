@@ -50,6 +50,7 @@ function localToCloudProperty(local) {
       : DEFAULT_MEAL_PLANS,
     weekend_rules: (local && local.weekendRules) || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(local && local.seasons) ? local.seasons : [],
+    channel_markups: (local && local.channelMarkups) || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
   };
 }
 
@@ -96,6 +97,7 @@ function cloudToLocalProperty(row, categories) {
       : DEFAULT_MEAL_PLANS.map(p => ({ ...p })),
     weekendRules: row.weekend_rules || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(row.seasons) ? row.seasons : [],
+    channelMarkups: row.channel_markups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
   };
 }
 

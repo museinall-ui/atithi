@@ -136,6 +136,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // Named seasons. Each: { id, name, startIso, endIso, multiplierPct }.
   // Multiplier stacks with weekend uplift; per-day overrides still win.
   const [seasons, setSeasons] = useState(Array.isArray(property.seasons) ? property.seasons : []);
+  // Per-channel markup % applied over the direct rate. Visible only on
+  // Channels / Invoicing tiers. Non-zero values trigger a parity warning.
+  const [channelMarkups, setChannelMarkups] = useState(
+    property.channelMarkups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 }
+  );
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -178,7 +183,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, weekendRules, seasons,
+      mealPlans, weekendRules, seasons, channelMarkups,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -984,6 +989,76 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             Add season
           </button>
         </Card>
+
+        {plan !== 'engine' && (() => {
+          const channels = [
+            { id: 'mmt',     label: 'MakeMyTrip',   color: '#EB2026' },
+            { id: 'goibibo', label: 'Goibibo',      color: '#F0728F' },
+            { id: 'booking', label: 'Booking.com',  color: '#003580' },
+            { id: 'agoda',   label: 'Agoda',        color: '#5392F9' },
+            { id: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F' },
+          ];
+          const anyNonZero = channels.some(c => (channelMarkups[c.id] || 0) !== 0);
+          return (
+            <>
+              <SectionHead title="Channel pricing" style={{ marginTop: 16 }} />
+              <Card padding={12}>
+                <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                  Markup applied to your direct rate before pushing to each OTA. 0% = parity (same as direct). Negative = discount (most OTAs disallow). Sync to the channels themselves waits on the Channel Manager integration.
+                </div>
+                {anyNonZero && (
+                  <div style={{ padding: '8px 10px', background: 'oklch(96% 0.04 75)', border: `1px solid oklch(72% 0.12 75)`, borderRadius: 7, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <Icon name="info" size={14} color="oklch(48% 0.14 75)" stroke={2} />
+                    <div style={{ fontSize: 11, color: 'oklch(40% 0.10 75)', lineHeight: 1.4 }}>
+                      <strong>Rate parity warning.</strong> MakeMyTrip, Booking.com and most OTAs contractually require rate parity (same rate across all sales channels). Different rates per channel will trigger contract penalties and OTA delisting. Most properties leave all markups at 0%. Only set markup for channels where parity isn't contracted.
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {/* Direct row — always at 0 and read-only, just so the
+                      hotelier sees the relative anchor. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 5, background: T.primary, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Direct</div>
+                      <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>Your reference rate (Rates &amp; inventory)</div>
+                    </div>
+                    <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink2 }}>0%</span>
+                  </div>
+                  {channels.map(c => {
+                    const v = channelMarkups[c.id] ?? 0;
+                    return (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 8 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 5, background: c.color, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{c.label}</div>
+                          {v !== 0 && (
+                            <div className="tnum" style={{ fontSize: 10, color: v > 0 ? T.ink3 : T.danger, fontWeight: 600, marginTop: 1 }}>
+                              Direct ₹4,500 → {c.label} ₹{Math.round(4500 * (1 + v/100)).toLocaleString('en-IN')}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input
+                            type="number"
+                            value={v}
+                            onChange={(e) => setChannelMarkups(prev => ({ ...prev, [c.id]: Math.max(-50, Math.min(100, parseInt(e.target.value, 10) || 0)) }))}
+                            className="tnum"
+                            style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
+                          />
+                          <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ marginTop: 12, padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
+                  <strong>Sync status:</strong> not connected to any channel yet. Once the channel manager partnership lands, rates push automatically with the markup applied. Today, rates are direct-only — these values are saved for later.
+                </div>
+              </Card>
+            </>
+          );
+        })()}
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
         <Card padding={12}>

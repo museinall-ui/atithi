@@ -351,25 +351,18 @@ checkedin / checkout are optional ("Log check-in / Log check-out" buttons in Boo
   - Language toggle (EN/HI).
   - Integrations (Razorpay / WhatsApp / Channel manager / Form C) — all "Manual" / "Coming soon" status pills (no longer fake "Active").
   - **Account section** with signed-in email + Sign-out button (hidden in DEMO_MODE).
-  - **PropertyProfile sheet:** *(known UX debt — 19 sections / ~7,500px scroll; restructure into accordions is queued)*
-    - Logo upload (inline base64, 200KB cap)
-    - Brand colour (7 presets + native colour picker)
-    - Basics (name, type, check-in/out times)
-    - Address (landmark + Google Maps link)
-    - Contact
-    - **Payment QR** upload (data URL, ≤700KB) — rendered on the voucher
-    - **Accountant section:** CA email/name/firm, GSTIN, Invoice number prefix + Last invoice number (Invoicing tier)
-    - **GST slabs card** (Invoicing tier) — post-22-Sep-2025 CBIC rules
-    - **Room categories** — name, units, base rate, per-category GST rate (auto-picks from slab), collapsible amenity picker
-    - **Meal plans** — editable label + per-guest per-night price + on/off toggle for each of EP/CP/MAP/AP. **EP toggle is unlocked** so all-MAP camps can disable Room-only.
-    - **Saved extras** — rename / reprice / unit-toggle / delete
-    - **Weekend rules** (Rates F1)
-    - **Seasons** (Rates F6)
-    - **Channel pricing** (Rates F8 — Channels/Invoicing tiers only)
-    - **Rate plans** (Rates F7)
-    - **Booking link for your website** — editable short-code, copy-to-clipboard URL, iframe + plain-link embed snippets
-    - Property-wide amenities
-    - **House Rules:** "Children counted as below this age" (default 12) + house-rule list
+  - **PropertyProfile sheet:** restructured into 9 collapsible accordion groups (May 2026) — only Branding + Basics are open on first load; the other 7 stay collapsed so the sheet fits roughly 1 phone screen on open instead of ~9. Inline `AccordionGroup` component in `src/screens/Settings.jsx` with `openGroups` state keyed by group id. Each header is a button (`aria-expanded`, chev/chevD icon, full-row tap target) and some carry a quick-glance hint ("Uploaded" / "4 categories"). Groups, in source order:
+    - **Branding** (open by default) — logo upload (inline base64, 200KB cap) + brand colour (7 presets + native colour picker)
+    - **Basics** (open by default) — name + type + check-in/out times, address (landmark + Google Maps link), contact
+    - **Payment QR** — data URL ≤700KB, rendered on the voucher. Hint: Uploaded / Not uploaded.
+    - **Rooms + amenities** — room categories (name, units, base rate, per-category GST rate, collapsible per-category amenity picker) + property-wide amenities. Hint: N categories.
+    - **Meal plans + saved extras** — editable EP/CP/MAP/AP + custom plans (EP toggle unlocked); saved extras (rename / reprice / unit-toggle / delete)
+    - **Pricing rules** — weekend rules (Rates F1), seasons (F6), channel pricing (F8, Channels/Invoicing only), rate plans (F7)
+    - **Accountant + GST** — CA email/name/firm, GSTIN, invoice prefix + last invoice number (Invoicing tier), GST slabs card (Invoicing tier)
+    - **Booking link** — editable short-code, copy-to-clipboard URL, iframe + plain-link embed snippets
+    - **House rules** — "Children counted as below this age" (default 12) + house-rule list
+
+    The internal sub-section `SectionHead`s are preserved inside each accordion so groups with multiple sub-sections (Basics, Pricing, etc.) still have a clear visual hierarchy. Plan-gated bodies (GST slabs on Invoicing, Channel pricing on Channels/Invoicing) still gate inside their accordion — the accordion header is always visible.
 - **MoreMenu.jsx** — 2×2 grid linking to Rates/Channels/Reports/Settings. Tab labelled "Manage" / "प्रबंधन".
 
 ### Components (`src/components/`)
@@ -494,9 +487,9 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 - **GSTIN auto-validation** — the header chip shows the entered GSTIN as-is (or a "GSTIN not set" warning). A real check would call `https://services.gst.gov.in/services/searchtp` before showing a "Verified" chip.
 
 ### High-priority UX work queued (next session)
-- **Property Profile sheet restructure** — has grown to 19 sections, ~7,500px of scroll. Restructure into collapsible accordions so a non-technical hotelier opening it the first time isn't overwhelmed. Group: Branding (logo / brand colour) · Basics (name / type / hours / address / contact) · Payment QR · Rooms + categories · Pricing rules (weekend / seasons / channel markups / rate plans) · Meal plans + saved extras · Accountant + GST · Booking link · House rules. Show only Branding + Basics expanded by default.
 - **First-run onboarding wizard** — new hotelier signs up → 3-step intro (property name + phone + city → 1+ room category → upload payment QR), then dropped into Dashboard. Skip if the relevant fields are already filled.
 - **Per-room close-out enforcement** — Rates F3 sets `closedUnits` on the override but Diary cells are still clickable to book those units, and New Booking's auto-unit picker can land bookings on closed units. Wire Diary + NewBooking to respect closedUnits.
+- **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion ship currently has them swapped (Meals 5, Pricing 6). Trivial source-block swap, deferred to keep the accordion commit small.
 
 ### Polish opportunities (frontend, no backend dependency)
 - Undo for cancellations / auto-releases.

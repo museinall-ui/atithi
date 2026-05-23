@@ -119,6 +119,35 @@ function AmenityPicker({ selected = [], onChange, customAmenities = [], onAddCus
   );
 }
 
+// Collapsible group for the Property Profile sheet. Each group bundles a
+// few related SectionHead+Card blocks behind a single tap, so the sheet
+// fits onto roughly 1 phone screen on first open instead of ~9.
+function AccordionGroup({ title, hint, open, onToggle, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        onClick={onToggle}
+        className="atithi-tap"
+        aria-expanded={open}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 14px', background: open ? T.card : T.bgSoft,
+          border: `1px solid ${open ? T.border : T.borderSoft}`,
+          borderRadius: T.radius, cursor: 'pointer', textAlign: 'left',
+          fontFamily: 'inherit',
+        }}
+      >
+        <Icon name={open ? 'chevD' : 'chev'} size={14} stroke={2.4} color={open ? T.primary : T.ink2} />
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: 0.4, textTransform: 'uppercase' }}>{title}</span>
+        {hint && (
+          <span style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, textAlign: 'right' }}>{hint}</span>
+        )}
+      </button>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
+
 function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
@@ -171,6 +200,21 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     if (property.theme?.color) return { color: property.theme.color };
     return { hue: property.theme?.hue ?? 38 };
   });
+  // Accordion open/closed state for the 9 grouped sections of this sheet.
+  // Branding + Basics start expanded (most-edited on first setup); the
+  // rest stay collapsed so the sheet fits on roughly 1 phone screen.
+  const [openGroups, setOpenGroups] = useState({
+    branding: true,
+    basics: true,
+    paymentQr: false,
+    rooms: false,
+    pricing: false,
+    meals: false,
+    accountant: false,
+    bookingLink: false,
+    houseRules: false,
+  });
+  const toggleGroup = (key) => setOpenGroups(s => ({ ...s, [key]: !s[key] }));
 
   // Live-preview the picked theme colour so the hotelier sees how it'll look,
   // then revert to the saved theme if the sheet is closed without saving.
@@ -209,7 +253,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 80 }}>
 
-        <SectionHead title={t('logo')} />
+        <AccordionGroup title="Branding" open={openGroups.branding} onToggle={() => toggleGroup('branding')}>
+        <SectionHead title={t('logo')} style={{ marginTop: 0 }} />
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 72, height: 72, borderRadius: 14, background: T.card, padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,.08)', border: `1px dashed ${T.border}`, flexShrink: 0 }}>
@@ -338,8 +383,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             </label>
           </div>
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title="Basics" style={{ marginTop: 16 }} />
+        <AccordionGroup title="Basics" open={openGroups.basics} onToggle={() => toggleGroup('basics')}>
+        <SectionHead title="Basics" style={{ marginTop: 0 }} />
         <Card padding={14}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Field label={t('propertyName')} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} />
@@ -399,8 +446,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             <Field label={t('website')} value={profile.website} onChange={e => setProfile({ ...profile, website: e.target.value })} prefix="https://" />
           </div>
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title="Payment QR" style={{ marginTop: 16 }} />
+        <AccordionGroup title="Payment QR" open={openGroups.paymentQr} onToggle={() => toggleGroup('paymentQr')} hint={profile.paymentQrDataUrl ? 'Uploaded' : 'Not uploaded'}>
+        <SectionHead title="Payment QR" style={{ marginTop: 0 }} />
         <Card padding={14}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
             Upload your UPI / payment QR. It'll appear on the reservation voucher under "Scan to pay" so guests can pay directly. PNG or JPEG, square works best.
@@ -478,93 +527,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             </label>
           )}
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title="Accountant (CA)" style={{ marginTop: 16 }} />
-        <Card padding={14}>
-          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
-            We email a sequenced list of issued invoices to your CA each month. They decide what gets filed with GSTN.
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Field
-              label="CA email"
-              value={accountant.email}
-              onChange={e => setAccountant({ ...accountant, email: e.target.value })}
-              placeholder="ca@firm.in (required for export)"
-              prefix={<Icon name="mail" size={12} color={T.ink3} />}
-            />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Field
-                label="CA name (optional)"
-                value={accountant.name}
-                onChange={e => setAccountant({ ...accountant, name: e.target.value })}
-                placeholder="CA Sharma"
-              />
-              <Field
-                label="Firm (optional)"
-                value={accountant.firm}
-                onChange={e => setAccountant({ ...accountant, firm: e.target.value })}
-                placeholder="Sharma & Associates"
-              />
-            </div>
-            <Field
-              label="Your GSTIN (optional)"
-              value={gstin}
-              onChange={e => setGstin(e.target.value.toUpperCase())}
-              placeholder="08AABCY1234M1Z5"
-              hint="If you're GST-registered, this appears on every tax invoice."
-              prefix={<Icon name="tag" size={12} color={T.ink3} />}
-            />
-            {/* Invoice-specific settings: prefix + per-FY counter. Both
-                only relevant on the Invoicing plan, so we gate them. */}
-            {plan === 'invoicing' && (
-              <>
-                <Field
-                  label="Invoice number prefix"
-                  value={accountant.invoicePrefix || ''}
-                  onChange={e => setAccountant({ ...accountant, invoicePrefix: e.target.value.toUpperCase() })}
-                  placeholder="INV"
-                  hint={`Default is INV. The prefix combines with the FY and a running number — e.g. ${effectivePrefix}-${fy}-001.`}
-                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
-                />
-                <Field
-                  label={`Last invoice number issued (FY ${fmtFy(fy)})`}
-                  type="number"
-                  value={currentSeq}
-                  onChange={e => {
-                    const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    setInvoiceCounters({ ...invoiceCounters, [fy]: v });
-                  }}
-                  placeholder="0"
-                  hint={currentSeq > 0
-                    ? `Next invoice will be ${effectivePrefix}-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
-                    : `Leave at 0 to start fresh from ${effectivePrefix}-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
-                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
-                />
-              </>
-            )}
-          </div>
-        </Card>
-
-        {plan === 'invoicing' && (
-          <>
-            <SectionHead title={t('gstSlabsTitle')} style={{ marginTop: 16 }} />
-            <Card padding={12}>
-              <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-                {t('gstSlabsHint')}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {GST_SLABS.map((s, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: T.bgSoft, borderRadius: 7 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 150 }}>{s.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: s.rate === 0 ? T.ok : s.rate === 12 ? T.indigo : T.danger }}>{s.note}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </>
-        )}
-
-        <SectionHead title={t('roomCategories')} style={{ marginTop: 16 }} action={
+        <AccordionGroup title="Rooms + amenities" open={openGroups.rooms} onToggle={() => toggleGroup('rooms')} hint={`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`}>
+        <SectionHead title={t('roomCategories')} style={{ marginTop: 0 }} action={
           <button onClick={() => setCategories(c => [...c, { id: 'new-' + Date.now(), name: 'New category', units: 1, base: 3000, amenityIds: [] }])} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="plus" size={11} stroke={2.2} /> {t('addCategory')}
           </button>
@@ -662,8 +628,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             onRemoveCustom={removeCustomAmenity}
           />
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title={t('mealPlansTitle')} style={{ marginTop: 16 }} />
+        <AccordionGroup title="Meal plans + saved extras" open={openGroups.meals} onToggle={() => toggleGroup('meals')}>
+        <SectionHead title={t('mealPlansTitle')} style={{ marginTop: 0 }} />
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
             {t('mealPlansHint')}
@@ -852,8 +820,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             Add saved extra
           </button>
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title="Weekend rules" style={{ marginTop: 16 }} />
+        <AccordionGroup title="Pricing rules" open={openGroups.pricing} onToggle={() => toggleGroup('pricing')}>
+        <SectionHead title="Weekend rules" style={{ marginTop: 0 }} />
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
             Pick which days count as weekend and how much extra you charge on them. Used in Rates & inventory to compute the default per-day rate. Per-day overrides always win.
@@ -1179,8 +1149,97 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             Add rate plan
           </button>
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title="Booking link for your website" style={{ marginTop: 16 }} />
+        <AccordionGroup title="Accountant + GST" open={openGroups.accountant} onToggle={() => toggleGroup('accountant')}>
+        <SectionHead title="Accountant (CA)" style={{ marginTop: 0 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
+            We email a sequenced list of issued invoices to your CA each month. They decide what gets filed with GSTN.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Field
+              label="CA email"
+              value={accountant.email}
+              onChange={e => setAccountant({ ...accountant, email: e.target.value })}
+              placeholder="ca@firm.in (required for export)"
+              prefix={<Icon name="mail" size={12} color={T.ink3} />}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field
+                label="CA name (optional)"
+                value={accountant.name}
+                onChange={e => setAccountant({ ...accountant, name: e.target.value })}
+                placeholder="CA Sharma"
+              />
+              <Field
+                label="Firm (optional)"
+                value={accountant.firm}
+                onChange={e => setAccountant({ ...accountant, firm: e.target.value })}
+                placeholder="Sharma & Associates"
+              />
+            </div>
+            <Field
+              label="Your GSTIN (optional)"
+              value={gstin}
+              onChange={e => setGstin(e.target.value.toUpperCase())}
+              placeholder="08AABCY1234M1Z5"
+              hint="If you're GST-registered, this appears on every tax invoice."
+              prefix={<Icon name="tag" size={12} color={T.ink3} />}
+            />
+            {/* Invoice-specific settings: prefix + per-FY counter. Both
+                only relevant on the Invoicing plan, so we gate them. */}
+            {plan === 'invoicing' && (
+              <>
+                <Field
+                  label="Invoice number prefix"
+                  value={accountant.invoicePrefix || ''}
+                  onChange={e => setAccountant({ ...accountant, invoicePrefix: e.target.value.toUpperCase() })}
+                  placeholder="INV"
+                  hint={`Default is INV. The prefix combines with the FY and a running number — e.g. ${effectivePrefix}-${fy}-001.`}
+                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
+                />
+                <Field
+                  label={`Last invoice number issued (FY ${fmtFy(fy)})`}
+                  type="number"
+                  value={currentSeq}
+                  onChange={e => {
+                    const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    setInvoiceCounters({ ...invoiceCounters, [fy]: v });
+                  }}
+                  placeholder="0"
+                  hint={currentSeq > 0
+                    ? `Next invoice will be ${effectivePrefix}-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
+                    : `Leave at 0 to start fresh from ${effectivePrefix}-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
+                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
+                />
+              </>
+            )}
+          </div>
+        </Card>
+
+        {plan === 'invoicing' && (
+          <>
+            <SectionHead title={t('gstSlabsTitle')} style={{ marginTop: 16 }} />
+            <Card padding={12}>
+              <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                {t('gstSlabsHint')}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {GST_SLABS.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: T.bgSoft, borderRadius: 7 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 150 }}>{s.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: s.rate === 0 ? T.ok : s.rate === 12 ? T.indigo : T.danger }}>{s.note}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+        </AccordionGroup>
+
+        <AccordionGroup title="Booking link" open={openGroups.bookingLink} onToggle={() => toggleGroup('bookingLink')}>
+        <SectionHead title="Booking link for your website" style={{ marginTop: 0 }} />
         <Card padding={12}>
           {(() => {
             // Build the widget URL off the current origin so the link works
@@ -1283,8 +1342,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             );
           })()}
         </Card>
+        </AccordionGroup>
 
-        <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
+        <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')}>
+        <SectionHead title={t('houseRules')} style={{ marginTop: 0 }} />
         <Card padding={12}>
           {/* Children age cap. Stored on the accountant jsonb to avoid a
               schema migration for what's effectively a small metadata flag.
@@ -1315,6 +1376,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             <button onClick={() => { if (newRule.trim()) { setRules(r => [...r, newRule.trim()]); setNewRule(''); } }} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 7, padding: '0 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('addRule')}</button>
           </div>
         </Card>
+        </AccordionGroup>
       </div>
     </div>
   );

@@ -24,6 +24,66 @@ function isoToIdx(iso) {
   return Math.round(ms / (24 * 60 * 60 * 1000));
 }
 
+// Small native-date input styled as a tappable pill. The whole pill is
+// clickable; the real input lives at opacity 0 covering the surface so
+// the OS date picker pops on tap. Same overlay-input pattern used in
+// Diary and NewBooking.
+function DatePill({ value, onChange, placeholder, flex = 1 }) {
+  const inputRef = useRef(null);
+  const open = () => {
+    if (inputRef.current && typeof inputRef.current.showPicker === 'function') {
+      try { inputRef.current.showPicker(); } catch {}
+    }
+  };
+  const filled = !!value;
+  return (
+    <div
+      onClick={open}
+      style={{ flex, position: 'relative', height: 38, background: filled ? T.primaryLt : T.bgSoft, border: `1px solid ${filled ? T.primary : T.border}`, borderRadius: 8, cursor: 'pointer', minWidth: 0 }}
+    >
+      <input
+        ref={inputRef}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
+      />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, pointerEvents: 'none', fontSize: 11, fontWeight: 700, color: filled ? T.primaryDk : T.ink2, padding: '0 8px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Icon name="cal" size={12} color={filled ? T.primaryDk : T.ink2} />
+        {filled
+          ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+          : placeholder}
+      </div>
+    </div>
+  );
+}
+
+// From → To bar with prev/next month chevrons and a Today reset. Picking
+// From alone jumps the visible window; picking both From and To adds the
+// inclusive day range to the rate-editor's selection set.
+function RangeBar({ rangeStart, rangeEnd, onRangeStartChange, onRangeEndChange, viewStartIdx, goPrevMonth, goNextMonth, goToday, t }) {
+  const chevBtn = { width: 36, height: 38, borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
+      <button onClick={goPrevMonth} title="Previous 4 weeks" style={chevBtn}>
+        <Icon name="arrowL" size={14} stroke={2.2} color={T.ink2} />
+      </button>
+      <DatePill value={rangeStart} onChange={onRangeStartChange} placeholder={t('rangeFrom')} />
+      <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>→</span>
+      <DatePill value={rangeEnd} onChange={onRangeEndChange} placeholder={t('rangeTo')} />
+      {viewStartIdx !== 0 && (
+        <button
+          onClick={goToday}
+          style={{ padding: '0 10px', height: 38, borderRadius: 8, border: `1px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+        >{t('today')}</button>
+      )}
+      <button onClick={goNextMonth} title="Next 4 weeks" style={chevBtn}>
+        <Icon name="chev" size={14} stroke={2.2} color={T.ink2} />
+      </button>
+    </div>
+  );
+}
+
 export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp, property, plan = 'engine', bookings = [] }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const [selectedType, setSelectedType] = useState(() => ROOM_TYPES[0]?.id || 'dlx');
@@ -39,8 +99,13 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   // Anchor for the visible window. 0 = today; jumping forward via the
   // date picker shifts the start of the calendar grid.
   const [viewStartIdx, setViewStartIdx] = useState(0);
-  const [jumpDate, setJumpDate] = useState('');
-  const dateRef = useRef(null);
+  // Range picker — replaces the single jump-to-date input. When "From"
+  // is set we jump the view; when both "From" and "To" are set we add
+  // the day range to selection so the hotelier can immediately apply a
+  // rate or close-out from the bottom bar. Empty strings = "not picked".
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [rangeToast, setRangeToast] = useState('');
 
   const rt = ROOM_TYPES.find(r => r.id === selectedType);
 
@@ -210,25 +275,55 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   // first row's start-of-week. Works for past or future dates: the
   // calendar handles negative idx values fine since getRate just uses
   // the day's modifier and overrides are keyed by idx.
-  const handleJumpDate = (iso) => {
-    setJumpDate(iso);
+  // Jump the visible window so a picked date appears in the grid. Same
+  // anchoring rule used everywhere: align to the start of the date's
+  // week (Monday) so dates fall under their real weekday column.
+  const jumpViewTo = (iso) => {
     const idx = isoToIdx(iso);
     if (idx == null) return;
-    // Anchor the picked date to the start of its week (Monday) so it
-    // appears under its weekday column without leading blanks. Equivalent
-    // to: subtract dowMonFirst days from the picked date.
     const d = new Date(iso + 'T00:00:00');
     const dowMonFirst = (d.getDay() + 6) % 7;
     setViewStartIdx(idx - dowMonFirst);
   };
-  const openDatePicker = () => {
-    if (dateRef.current && typeof dateRef.current.showPicker === 'function') {
-      try { dateRef.current.showPicker(); } catch {}
-    }
+  // Bulk-add every day from startIso to endIso into the selection set.
+  // Inclusive on both ends; tolerates From > To by swapping. Surfaces
+  // a brief toast so the hotelier sees confirmation that "12 dates were
+  // added" even when the range straddles months that aren't on screen.
+  const applyRangeSelect = (startIso, endIso) => {
+    const a = isoToIdx(startIso);
+    const b = isoToIdx(endIso);
+    if (a == null || b == null) return;
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    const count = hi - lo + 1;
+    setSelected(prev => {
+      const next = new Set(prev);
+      for (let i = lo; i <= hi; i++) next.add(i);
+      return next;
+    });
+    setRangeToast(t('rangeAddedNDates').replace('{n}', String(count)));
+    setTimeout(() => setRangeToast(''), 2500);
+  };
+  const onRangeStartChange = (iso) => {
+    setRangeStart(iso);
+    if (iso) jumpViewTo(iso);
+    if (iso && rangeEnd) applyRangeSelect(iso, rangeEnd);
+  };
+  const onRangeEndChange = (iso) => {
+    setRangeEnd(iso);
+    if (iso && rangeStart) applyRangeSelect(rangeStart, iso);
   };
   const goPrevMonth = () => setViewStartIdx(i => i - 28);
   const goNextMonth = () => setViewStartIdx(i => i + 28);
-  const goToday = () => { setViewStartIdx(0); setJumpDate(''); };
+  const goToday = () => {
+    setViewStartIdx(0);
+    setRangeStart('');
+    setRangeEnd('');
+    // Also drop any in-flight selection so the bottom action bar resets.
+    // Today is the hotelier's "fresh start" — keeping a stale selection
+    // visible after it surprised testers in the audit.
+    setSelected(new Set());
+    setRangeToast('');
+  };
 
   // Bulk-select pattern picker. The "Select…" button opens a sheet with
   // one-tap presets: all of a given weekday, all weekend days, or all
@@ -375,45 +470,32 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           </div>
         </Card>
 
-        {/* Jump to date / month nav. Whole bar is clickable; the native
-            input fills it with opacity 0 so the OS date picker pops on
-            tap. Same overlay-input pattern as the Diary jump bar. */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
-          <button
-            onClick={goPrevMonth}
-            title="Previous 4 weeks"
-            style={{ width: 36, height: 38, borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          ><Icon name="arrowL" size={14} stroke={2.2} color={T.ink2} /></button>
-          <div
-            onClick={openDatePicker}
-            style={{ flex: 1, position: 'relative', height: 38, background: jumpDate ? T.primaryLt : T.bgSoft, border: `1px solid ${jumpDate ? T.primary : T.border}`, borderRadius: 8, cursor: 'pointer' }}
-          >
-            <input
-              ref={dateRef}
-              type="date"
-              value={jumpDate}
-              onChange={(e) => handleJumpDate(e.target.value)}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
-            />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, pointerEvents: 'none', fontSize: 12, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2 }}>
-              <Icon name="cal" size={13} color={jumpDate ? T.primaryDk : T.ink2} />
-              {jumpDate
-                ? new Date(jumpDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                : 'Jump to date — tap to pick'}
-            </div>
+        {/* Range bar — two date pickers (From → To). Setting From jumps
+            the visible window. Setting both adds the day range to the
+            selection so the bottom action bar lights up with Set rate /
+            Close-out. Replaces the older single jump-to-date input. */}
+        <RangeBar
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          onRangeStartChange={onRangeStartChange}
+          onRangeEndChange={onRangeEndChange}
+          viewStartIdx={viewStartIdx}
+          goPrevMonth={goPrevMonth}
+          goNextMonth={goNextMonth}
+          goToday={goToday}
+          t={t}
+        />
+        {rangeToast && (
+          <div style={{
+            marginBottom: 10, padding: '8px 12px', borderRadius: 8,
+            background: T.primaryLt, border: `1px solid ${T.primary}`,
+            color: T.primaryDk, fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Icon name="check" size={12} color={T.primaryDk} stroke={2.4} />
+            {rangeToast}
           </div>
-          {viewStartIdx !== 0 && (
-            <button
-              onClick={goToday}
-              style={{ padding: '0 10px', height: 38, borderRadius: 8, border: `1px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
-            >Today</button>
-          )}
-          <button
-            onClick={goNextMonth}
-            title="Next 4 weeks"
-            style={{ width: 36, height: 38, borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          ><Icon name="chev" size={14} stroke={2.2} color={T.ink2} /></button>
-        </div>
+        )}
 
         <SectionHead title={t('dailyRate')} action={
           <div style={{ display: 'inline-flex', gap: 12 }}>

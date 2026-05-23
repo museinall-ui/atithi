@@ -147,20 +147,30 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     if (!rt) return 0;
     return Math.max(0, rt.units - closedUnitsFor(i).length);
   };
-  const occupancyPctFor = (i) => {
-    const avail = availableUnitsFor(i);
-    if (avail === 0) return 0;
-    return Math.min(100, Math.round((occupiedCountFor(i) / avail) * 100));
+  // Rooms genuinely free to sell on a given day = total − maintenance
+  // close-outs − bookings already taking that room. This is what we
+  // surface on each calendar cell so the hotelier can scan inventory
+  // at a glance without doing arithmetic.
+  const freeUnitsFor = (i) => {
+    if (!rt) return 0;
+    return Math.max(0, availableUnitsFor(i) - occupiedCountFor(i));
   };
-  // Cell tint based on occupancy. Returns null for low-occupancy
-  // (no tint), or { bg, border } for higher bands. Auto-surge banner
-  // triggers separately when pct >= 70 and the cell isn't overridden.
-  const occupancyTint = (pct) => {
-    if (pct >= 85) return { bg: 'oklch(92% 0.08 30)', border: 'oklch(70% 0.16 30)' };
-    if (pct >= 60) return { bg: 'oklch(95% 0.06 60)', border: 'oklch(80% 0.13 60)' };
-    if (pct >= 30) return { bg: 'oklch(97% 0.04 90)', border: 'oklch(88% 0.08 90)' };
-    return null;
+  // Three-tier classification of how tight inventory is for a given
+  // day, based on free rooms vs total. Replaces the older percentage
+  // heatmap — hoteliers think in absolute counts ("2 left"), not %.
+  //   open    → plenty (>50% free), gray bed icon
+  //   tight   → ≤50% free OR ≤2 rooms left, orange
+  //   soldOut → 0 free, red
+  const availabilityTier = (i) => {
+    if (!rt) return 'open';
+    const free = freeUnitsFor(i);
+    if (free === 0) return 'soldOut';
+    const total = rt.units || 1;
+    const ratio = free / total;
+    if (free <= 2 || ratio <= 0.5) return 'tight';
+    return 'open';
   };
+  const tierColor = (tier) => tier === 'soldOut' ? T.danger : tier === 'tight' ? 'oklch(60% 0.16 65)' : T.ink3;
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
   const onCellEnter = (i) => {
@@ -236,7 +246,14 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     if (!v) return;
     setOverrides(o => {
       const next = { ...o };
-      selected.forEach(i => { next[`${selectedType}:${i}`] = { rate: v, closed: false }; });
+      selected.forEach(i => {
+        const key = `${selectedType}:${i}`;
+        // Spread the prior override so partial close-outs (closedUnits)
+        // survive a rate change — earlier we replaced the whole object
+        // and silently wiped maintenance blocks.
+        const prev = next[key] || {};
+        next[key] = { ...prev, rate: v, closed: false };
+      });
       return next;
     });
     setBulkVal(''); setShowBulkSheet(null);
@@ -349,7 +366,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               ) : (
                 <Chip color="ok" icon="sync" style={{ fontSize: 9 }}>{t('synced')}</Chip>
               )}
-              <span className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{Object.keys(overrides).filter(k => k.startsWith(selectedType)).length} overrides</span>
+              {(() => {
+                const n = Object.keys(overrides).filter(k => k.startsWith(selectedType + ':')).length;
+                if (n === 0) return null;
+                return <span className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{n} custom {n === 1 ? 'price' : 'prices'}</span>;
+              })()}
             </div>
           </div>
         </Card>
@@ -433,22 +454,24 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               const inDrag = inDragRange(i);
               const isOverride = !!overrides[cellKey(i)];
               const isFirstOfMonth = d.dom === 1;
-              // Occupancy heatmap — only tint when the cell isn't already
-              // sel / closed / overridden so the other states stay readable.
-              const occPct = occupancyPctFor(i);
-              const tint = !closed && !isSel && !inDrag && !isOverride ? occupancyTint(occPct) : null;
-              const showSurge = !closed && !isSel && !inDrag && !isOverride && occPct >= 70 && i >= 0;
+              const free = freeUnitsFor(i);
+              const tier = availabilityTier(i);
+              const showSurge = !closed && !isSel && !inDrag && !isOverride && tier === 'tight' && i >= 0 && free > 0;
+              const titleParts = [];
+              if (!closed) titleParts.push(`${free} of ${rt.units} rooms free`);
+              if (partialClosed.length > 0) titleParts.push(`Units #${partialClosed.map(u => u + 1).join(', #')} blocked`);
+              if (occupiedCountFor(i) > 0) titleParts.push(`${occupiedCountFor(i)} booked`);
               return (
                 <div
                   key={i}
                   onMouseDown={(e) => { e.preventDefault(); onCellDown(i); }}
                   onMouseEnter={() => onCellEnter(i)}
                   onTouchStart={() => onCellDown(i)}
-                  title={occPct > 0 ? `${occPct}% booked (${occupiedCountFor(i)} of ${availableUnitsFor(i)})` : undefined}
+                  title={titleParts.length ? titleParts.join(' · ') : undefined}
                   style={{
                     aspectRatio: '1 / 1.1', borderRadius: 7, padding: 3,
-                    background: closed ? 'oklch(94% 0.04 25)' : (isSel || inDrag) ? T.primaryLt : (tint ? tint.bg : d.isToday ? `color-mix(in oklch, ${T.primary} 7%, white)` : T.card),
-                    border: `1.5px solid ${(isSel || inDrag) ? T.primary : closed ? T.danger : isOverride ? T.indigo : tint ? tint.border : d.isToday ? T.primary : T.borderSoft}`,
+                    background: closed ? 'oklch(94% 0.04 25)' : (isSel || inDrag) ? T.primaryLt : d.isToday ? `color-mix(in oklch, ${T.primary} 7%, white)` : T.card,
+                    border: `1.5px solid ${(isSel || inDrag) ? T.primary : closed ? T.danger : isOverride ? T.indigo : d.isToday ? T.primary : T.borderSoft}`,
                     cursor: 'pointer', position: 'relative', userSelect: 'none',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
                   }}
@@ -459,14 +482,28 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   {d.isToday && (
                     <div style={{ position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)', background: T.primary, color: '#fff', fontSize: 7, fontWeight: 800, letterSpacing: 0.4, padding: '1px 5px', borderRadius: 4, lineHeight: 1.3, whiteSpace: 'nowrap' }}>TODAY</div>
                   )}
-                  <div className="tnum" style={{ fontSize: 11, fontWeight: 700, color: d.isWknd ? T.primary : T.ink, lineHeight: 1 }}>
+                  <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: d.isWknd ? T.primary : T.ink, lineHeight: 1 }}>
                     {d.dom}
                     {isFirstOfMonth && <span style={{ fontSize: 7, fontWeight: 700, color: T.ink3, marginLeft: 2 }}>{d.monthShort}</span>}
                   </div>
+                  {/* Rooms-free middle row: bed icon + count, color-tinted
+                      by tier. Sits between day (top) and rate (bottom) so
+                      hoteliers don't confuse the free count with the day
+                      number. Hidden when the whole type is closed. */}
+                  {!closed && (
+                    <div
+                      className="tnum"
+                      title={`${free} of ${rt.units} rooms free`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: tierColor(tier), lineHeight: 1 }}
+                    >
+                      <Icon name="bed" size={12} color={tierColor(tier)} stroke={2.2} />
+                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.1 }}>{free}</span>
+                    </div>
+                  )}
                   {closed ? (
-                    <div style={{ fontSize: 8, fontWeight: 800, color: T.danger, letterSpacing: 0.3, lineHeight: 1 }}>X</div>
+                    <div style={{ fontSize: 8, fontWeight: 800, color: T.danger, letterSpacing: 0.3, lineHeight: 1, textTransform: 'uppercase' }}>{t('closed')}</div>
                   ) : (
-                    <div className="tnum" style={{ fontSize: 8, fontWeight: 700, color: isOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
+                    <div className="tnum" style={{ fontSize: 9, fontWeight: 700, color: isOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
                       ₹{Math.round(rate/100)/10}k
                     </div>
                   )}
@@ -480,16 +517,6 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                       background: '#fff', border: `1px solid ${T.danger}`,
                       borderRadius: 4, padding: '0 3px', lineHeight: 1.3, letterSpacing: 0.2,
                     }}>−{partialClosed.length}</div>
-                  )}
-                  {/* Occupancy % badge — top-left when there's any booking
-                      for this date / type. Tooltip on the cell has the
-                      full breakdown. */}
-                  {!closed && occPct > 0 && (
-                    <div className="tnum" style={{
-                      position: 'absolute', top: 2, left: 2,
-                      fontSize: 7, fontWeight: 800, color: occPct >= 85 ? T.danger : occPct >= 60 ? 'oklch(48% 0.14 65)' : T.ink3,
-                      lineHeight: 1, letterSpacing: 0.2,
-                    }}>{occPct}%</div>
                   )}
                   {/* Auto-surge suggestion — small ↑ icon top-right when
                       occupancy is tight and the rate hasn't been bumped. */}
@@ -532,15 +559,80 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               );
             })}
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.borderSoft}`, fontSize: 9, color: T.ink3, fontWeight: 600, flexWrap: 'wrap' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.indigo}`, borderRadius: 2 }} /> {t('overrideRate')}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.danger}`, borderRadius: 2 }} /> {t('closed')}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, border: `1.5px solid ${T.primary}`, borderRadius: 2, background: `color-mix(in oklch, ${T.primary} 7%, white)` }} /> Today</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(97% 0.04 90)', border: '1.5px solid oklch(88% 0.08 90)', borderRadius: 2 }} /> 30%+</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(95% 0.06 60)', border: '1.5px solid oklch(80% 0.13 60)', borderRadius: 2 }} /> 60%+</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: 'oklch(92% 0.08 30)', border: '1.5px solid oklch(70% 0.16 30)', borderRadius: 2 }} /> 85%+</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ background: T.primary, color: '#fff', fontWeight: 800, fontSize: 8, padding: '0 3px', borderRadius: 3, lineHeight: 1.3 }}>↑</span> Suggest surge</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 7, height: 7, background: T.primary, borderRadius: 4 }} /> Holiday</span>
+          {/* Legend grouped into 3 visual categories — STATE (border styles
+              you'll see on cells), ROOMS AVAILABLE (the bed-icon counts
+              shown in the top-left of each cell), HINTS (extra markers).
+              The old flat legend ran 8 near-identical coloured squares
+              that hoteliers couldn't tell apart at a glance. */}
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.borderSoft}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, rowGap: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>{t('cellState')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 18, height: 18, border: `1.5px solid ${T.indigo}`, borderRadius: 4, background: T.card, flexShrink: 0 }} />
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('customPrice')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 18, height: 18, border: `1.5px solid ${T.danger}`, borderRadius: 4, background: 'oklch(94% 0.04 25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 9, fontWeight: 800, color: T.danger }}>X</span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('closed')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 18, height: 18, border: `1.5px solid ${T.primary}`, borderRadius: 4, background: `color-mix(in oklch, ${T.primary} 7%, white)`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 7, fontWeight: 800, color: T.primary, letterSpacing: 0.2 }}>NOW</span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('today')}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>{t('roomsFree')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: T.ink3, width: 22, justifyContent: 'flex-start' }}>
+                      <Icon name="bed" size={11} color={T.ink3} stroke={2.2} />
+                      <span className="tnum" style={{ fontSize: 9, fontWeight: 800 }}>4</span>
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('roomsFreeMany')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'oklch(60% 0.16 65)', width: 22, justifyContent: 'flex-start' }}>
+                      <Icon name="bed" size={11} color="oklch(60% 0.16 65)" stroke={2.2} />
+                      <span className="tnum" style={{ fontSize: 9, fontWeight: 800 }}>1</span>
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('roomsFreeTight')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: T.danger, width: 22, justifyContent: 'flex-start' }}>
+                      <Icon name="bed" size={11} color={T.danger} stroke={2.2} />
+                      <span className="tnum" style={{ fontSize: 9, fontWeight: 800 }}>0</span>
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('roomsFreeNone')}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>{t('extraMarkers')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 22, display: 'inline-flex', justifyContent: 'flex-start' }}>
+                      <span style={{ background: T.primary, color: '#fff', fontWeight: 800, fontSize: 10, padding: '1px 4px', borderRadius: 3, lineHeight: 1 }}>↑</span>
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('considerRaising')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 22, display: 'inline-flex', justifyContent: 'flex-start' }}>
+                      <span style={{ width: 9, height: 9, background: T.primary, borderRadius: 5, border: '1.5px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.06)' }} />
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('indianHoliday')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 22, display: 'inline-flex', justifyContent: 'flex-start' }}>
+                      <span style={{ width: 14, height: 3, background: T.indigo, borderRadius: 1 }} />
+                    </span>
+                    <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>{t('season')}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
 
@@ -680,7 +772,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 <>
                   <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Copy rates from another type</div>
                   <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>
-                    Copies {visibleDays.length} days of rates from the source to <strong>{rt.name}</strong> with a multiplier. Closed days propagate as closed. Per-day overrides on the target are replaced.
+                    Copies {visibleDays.length} days of rates from the source to <strong>{rt.name}</strong> with a multiplier. Closed days propagate as closed. Any existing custom prices on the target are replaced.
                   </div>
                   <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SOURCE ROOM TYPE</div>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>

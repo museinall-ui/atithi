@@ -162,16 +162,24 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **At:** `src/screens/Settings.jsx` — each integration row had a fake green "Active" pill.
 - **State:** Replaced with honest "Manual" / "Coming soon" pills, plus sub-copy that says what the hotelier does today (Record payments by hand, Buttons open wa.me, Submit foreign-guest details manually).
 
+### Public booking engine widget (SHIPPED, partial)
+- **At:** `src/screens/PublicBookingWidget.jsx`. Customer-facing 3-step booking flow rendered when URL is `/book/<short-code>` or `?book=1`. Logo + brand colour + payment QR pulled from property. Mini calendar preview + voucher download + "Email a copy" mailto on confirmation.
+- **State:** Works fully against the property's localStorage in DEMO_MODE. Bookings land with `channel:'website'` + `status:'tentative'` + 24h auto-release.
+- **Needs (for production):**
+  - Supabase anon RLS policy allowing INSERT into bookings where `status='tentative'` AND `channel='website'` AND `property_id` matches the URL slug.
+  - `properties.short_code` column + a `loadPropertyBySlug` Supabase RPC so the widget can render against the right property in cloud mode.
+  - Rate-limiting on the anon insert (token bucket or trivial sliding window in an Edge Function) to spam-protect.
+- **Phase:** 1 close-out, after DEMO_MODE flips.
+
 ---
 
 ## Future features (owner-flagged, not yet started)
 
 Per the owner's note: "for new features, remember [these]... we will explore these later."
 
-1. **Day close-out** — expand the existing daily cash close into a real reconciliation snapshot (cash + digital + expenses).
+1. **Day close-out expansion** — open balance + custom payment accounts (one person's UPI, another's UPI, cash, card, bank). End-of-day shows how much went into each account. New schema needed.
 2. **Daily expense tracker** — log property running costs (groceries, salaries, utilities). New schema needed.
 3. **Team member profiles with role-based access** — owner / reception / manager logins with varied permissions. `memberships(user_id, property_id, role)` table already exists; UI + RLS enforcement is the work.
-4. **Public booking engine widget for the hotel's own website** — a `<script>`-embeddable booking form that pulls live rates (read-only — guests can't edit), accepts a reservation, posts to the property's Supabase via a special anon endpoint.
 
 Don't build these until basics are stable.
 

@@ -96,6 +96,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const setOverrides = setOverridesProp || setLocalOverrides;
   const [showBulkSheet, setShowBulkSheet] = useState(null);
   const [bulkVal, setBulkVal] = useState('');
+  // "Set inventory" stepper value — the target number of rooms the
+  // hotelier wants sellable on each selected date. Compared against
+  // the category's total units (rt.units) to derive how many should
+  // be blocked (= total - target).
+  const [bulkInv, setBulkInv] = useState(null);
   // Anchor for the visible window. 0 = today; jumping forward via the
   // date picker shifts the start of the calendar grid.
   const [viewStartIdx, setViewStartIdx] = useState(0);
@@ -392,6 +397,48 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       selected.forEach(i => { delete next[`${selectedType}:${i}`]; });
       return next;
     });
+    setShowBulkSheet(null);
+  };
+
+  // "Set inventory to N" — the aggregate counterpart to per-unit close-out.
+  // Translates a target count of sellable rooms into closedUnits indices by
+  // blocking the highest-indexed units first (an arbitrary but stable
+  // convention so re-applying the same N is idempotent). If target == total
+  // the override is cleared (back to fully open); if target == 0 we close
+  // the whole type so the cell renders the "Closed" state and the booking
+  // flow can short-circuit before checking units.
+  const applyBulkInventory = () => {
+    if (!rt || bulkInv == null) return;
+    const total = rt.units;
+    const target = Math.max(0, Math.min(total, bulkInv));
+    const toBlock = total - target;
+    setOverrides(o => {
+      const next = { ...o };
+      selected.forEach(i => {
+        const key = `${selectedType}:${i}`;
+        const prev = next[key] || {};
+        if (target === total) {
+          // Fully open: drop closedUnits + closed but keep any rate override
+          // so the hotelier's prior custom price survives a "reopen all".
+          const { closedUnits: _drop, closed: _drop2, ...rest } = prev;
+          if (Object.keys(rest).length === 0) {
+            delete next[key];
+          } else {
+            next[key] = rest;
+          }
+        } else if (target === 0) {
+          const { closedUnits: _drop, ...rest } = prev;
+          next[key] = { ...rest, closed: true };
+        } else {
+          // Convention: block the last `toBlock` units (units numbered
+          // (target+1) ... total in 1-indexed display, indices target..total-1).
+          const closedUnits = Array.from({ length: toBlock }, (_, k) => total - 1 - k).reverse();
+          next[key] = { ...prev, closed: false, closedUnits };
+        }
+      });
+      return next;
+    });
+    setBulkInv(null);
     setShowBulkSheet(null);
   };
 
@@ -732,6 +779,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             <div style={{ fontSize: 10, opacity: 0.7 }}>{rt.name}</div>
           </div>
           <button onClick={() => setShowBulkSheet('rate')} style={bulkBtn(T.primary)}><Icon name="inr" size={12} stroke={2.4}/> {t('setRate')}</button>
+          <button onClick={() => { setBulkInv(rt.units); setShowBulkSheet('inventory'); }} style={bulkBtn(T.indigo)}><Icon name="bed" size={12} stroke={2.4}/> {t('setInventory')}</button>
           <button onClick={() => setShowBulkSheet('block')} style={bulkBtn(T.danger)}><Icon name="x" size={12} stroke={2.4}/> {t('closeOut')}</button>
         </div>
       )}
@@ -808,6 +856,61 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 </div>
               </>
             )}
+            {showBulkSheet === 'inventory' && (() => {
+              const total = rt.units;
+              const N = bulkInv == null ? total : Math.max(0, Math.min(total, bulkInv));
+              const blocked = total - N;
+              const stepBtn = (disabled) => ({
+                width: 48, height: 48, borderRadius: 24,
+                border: `1.5px solid ${disabled ? T.borderSoft : T.indigo}`,
+                background: disabled ? T.bgSunk : T.indigoLt,
+                color: disabled ? T.ink3 : T.indigo,
+                fontSize: 22, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              });
+              const dPlural = selCount === 1 ? '' : 's';
+              const hintTpl = N === total ? t('inventoryAllOpen')
+                : N === 0 ? t('inventoryAllClosed')
+                : t('inventoryHint');
+              const hint = hintTpl
+                .replaceAll('{n}', String(N))
+                .replaceAll('{total}', String(total))
+                .replaceAll('{name}', rt.name)
+                .replaceAll('{dCount}', String(selCount))
+                .replaceAll('{dPlural}', dPlural)
+                .replaceAll('{blocked}', String(blocked));
+              return (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('setInventory')}</div>
+                  <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14 }}>{selCount} {selCount === 1 ? t('date') : t('dates')} · {rt.name}</div>
+                  <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('roomsAvailable').toUpperCase()}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, padding: '14px 12px', background: T.bgSoft, border: `1.5px solid ${T.indigo}`, borderRadius: 10 }}>
+                    <button
+                      onClick={() => setBulkInv(v => Math.max(0, (v == null ? total : v) - 1))}
+                      disabled={N === 0}
+                      style={stepBtn(N === 0)}
+                    >−</button>
+                    <div className="tnum" style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+                      <div style={{ fontSize: 34, fontWeight: 800, color: T.ink, lineHeight: 1.05, letterSpacing: -0.5 }}>{N}</div>
+                      <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2 }}>of {total} {rt.name}</div>
+                    </div>
+                    <button
+                      onClick={() => setBulkInv(v => Math.min(total, (v == null ? total : v) + 1))}
+                      disabled={N === total}
+                      style={stepBtn(N === total)}
+                    >+</button>
+                  </div>
+                  <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink2, lineHeight: 1.4, marginBottom: 14 }}>
+                    {hint}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Btn variant="ghost" full onClick={() => setShowBulkSheet(null)}>{t('cancel')}</Btn>
+                    <Btn full onClick={applyBulkInventory}>{t('apply')}</Btn>
+                  </div>
+                </>
+              );
+            })()}
             {showBulkSheet === 'block' && (
               <>
                 <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('closeOut')}</div>

@@ -113,10 +113,16 @@ export const STATUS = {
 
 export const CHANNELS = {
   direct:  { label: 'Direct',      color: 'oklch(60% 0.16 38)', short: 'D' },
+  // 'website' = booking arrived through the embeddable booking widget on
+  // the property's own website. Customer-direct but visually distinct
+  // from manually-created direct bookings so the hotelier can spot what
+  // came in autonomously vs what they typed in.
+  website: { label: 'Website',     color: 'oklch(58% 0.16 200)', short: 'W' },
   mmt:     { label: 'MakeMyTrip',  color: '#EB2026',  short: 'M' },
   goibibo: { label: 'Goibibo',     color: '#F0728F',  short: 'G' },
   booking: { label: 'Booking.com', color: '#003580',  short: 'B' },
-  airbnb:  { label: 'Airbnb',      color: '#FF5A5F',  short: 'A' },
+  agoda:   { label: 'Agoda',       color: '#5392F9',  short: 'A' },
+  airbnb:  { label: 'Airbnb',      color: '#FF5A5F',  short: 'B&B' },
 };
 
 // Whether GST should be treated as applicable for this booking.

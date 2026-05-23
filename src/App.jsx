@@ -18,6 +18,7 @@ import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
 import Icon from './components/Icon.jsx';
+import PublicBookingWidget from './screens/PublicBookingWidget.jsx';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -38,6 +39,14 @@ import SignIn from './screens/SignIn.jsx';
 // not exercised while DEMO_MODE is true. Flip this back to false once
 // auth is being added back into the productionised flow.
 const DEMO_MODE = true;
+
+// Public-widget mode: when the URL has ?book=1 the app renders the
+// customer-facing booking widget instead of the hotelier dashboard.
+// Detected at module load so the hotelier UI never even mounts on
+// public URLs — keeps the widget honest (no leaked admin controls).
+const IS_PUBLIC_WIDGET = typeof window !== 'undefined' &&
+  (new URLSearchParams(window.location.search).get('book') === '1' ||
+   window.location.pathname.includes('/book'));
 
 const LS_KEYS = {
   bookings: 'atithi.bookings.v1',
@@ -887,6 +896,27 @@ export default function App() {
   // DEMO_MODE — the app trusts localStorage and never asks for credentials.
   if (!DEMO_MODE && !session) {
     return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
+  }
+
+  // Public booking widget — customer-facing UI. URL has ?book=1 or /book.
+  // Doesn't render the hotelier dashboard at all. Submit creates a booking
+  // in the same property's diary with channel='website' + status='tentative'
+  // so the hotelier can review before confirming.
+  if (IS_PUBLIC_WIDGET) {
+    return (
+      <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{ height: '100%', background: T.bg, overflow: 'hidden' }}>
+        <PublicBookingWidget
+          property={property}
+          bookings={bookings}
+          onSubmit={(newBk) => {
+            const id = 'BK-' + (2854 + bookings.length);
+            const enriched = { ...newBk, id };
+            setBookings(arr => [...arr, enriched]);
+            return id;
+          }}
+        />
+      </div>
+    );
   }
 
   return (

@@ -1180,6 +1180,94 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </button>
         </Card>
 
+        <SectionHead title="Booking link for your website" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          {(() => {
+            // Build the widget URL off the current origin so the link works
+            // whether the user opens it on Vercel, GitHub Pages, or local
+            // dev. The widget renders on the same app via the ?book=1
+            // query param (App.jsx branches on IS_PUBLIC_WIDGET).
+            const origin = typeof window !== 'undefined' ? window.location.origin : 'https://atithi-seven.vercel.app';
+            const basePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/atithi/') ? '/atithi/' : '/';
+            const widgetUrl = `${origin}${basePath}?book=1`;
+            const iframeSnippet = `<iframe src="${widgetUrl}" style="width:100%; max-width:480px; height:780px; border:0; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,0.08);"></iframe>`;
+            const linkSnippet = `<a href="${widgetUrl}" target="_blank" rel="noopener">Book your stay →</a>`;
+            const copyToClipboard = (text) => {
+              if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                navigator.clipboard.writeText(text).catch(() => {});
+              }
+            };
+            return (
+              <>
+                <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                  Share this link, or paste the embed code into your hotel website. Customers fill in dates and contact details; the booking lands in your Diary marked <strong>tentative</strong> via the Website channel for you to review before confirming.
+                </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>BOOKING LINK</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                  <input
+                    readOnly
+                    value={widgetUrl}
+                    onFocus={(e) => e.target.select()}
+                    style={{ flex: 1, minWidth: 0, fontSize: 11, color: T.ink, padding: '7px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.bgSoft, fontFamily: 'JetBrains Mono, monospace' }}
+                  />
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyToClipboard(widgetUrl)}
+                  >Copy</Btn>
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => window.open(widgetUrl, '_blank', 'noopener')}
+                  >Open</Btn>
+                </div>
+
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>
+                  EMBED ON YOUR WEBSITE
+                </div>
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <textarea
+                    readOnly
+                    value={iframeSnippet}
+                    onFocus={(e) => e.target.select()}
+                    rows={3}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 10.5, color: T.ink, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.bgSoft, fontFamily: 'JetBrains Mono, monospace', resize: 'vertical' }}
+                  />
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyToClipboard(iframeSnippet)}
+                    style={{ position: 'absolute', top: 6, right: 6 }}
+                  >Copy</Btn>
+                </div>
+
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>
+                  OR JUST A LINK (NO IFRAME)
+                </div>
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <textarea
+                    readOnly
+                    value={linkSnippet}
+                    onFocus={(e) => e.target.select()}
+                    rows={2}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 10.5, color: T.ink, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.bgSoft, fontFamily: 'JetBrains Mono, monospace', resize: 'vertical' }}
+                  />
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyToClipboard(linkSnippet)}
+                    style={{ position: 'absolute', top: 6, right: 6 }}
+                  >Copy</Btn>
+                </div>
+
+                <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
+                  <strong>How it works:</strong> Customer picks dates + room, fills in name + WhatsApp, taps Confirm. Booking saves to your Diary as <strong>tentative</strong> with a 24-hour hold so you can verify by phone. You then confirm or release in the booking detail.
+                </div>
+              </>
+            );
+          })()}
+        </Card>
+
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
         <Card padding={12}>
           {/* Children age cap. Stored on the accountant jsonb to avoid a

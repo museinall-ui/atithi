@@ -3,6 +3,7 @@ import { T } from '../tokens.js';
 import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
+import { generateVoucher } from '../utils/voucher.js';
 
 // Public booking widget. Customer-facing — the URL is meant for the
 // hotelier to drop on their own website. Looks visually distinct from
@@ -41,6 +42,7 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
     notes: '',
   });
   const [createdBookingId, setCreatedBookingId] = useState(null);
+  const [createdBooking, setCreatedBooking] = useState(null);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
 
@@ -152,7 +154,9 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
       holdHours: 24,
     };
     const id = onSubmit(newBooking);
-    setCreatedBookingId(id || ('BK-' + Date.now().toString(36)));
+    const finalId = id || ('BK-' + Date.now().toString(36));
+    setCreatedBookingId(finalId);
+    setCreatedBooking({ ...newBooking, id: finalId });
     setStep(4);
   };
 
@@ -222,6 +226,10 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
                   Check-out: <strong style={{ color: T.ink2 }}>{new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</strong>
                 </div>
               )}
+              {/* Mini calendar preview — gives the customer a visual sense
+                  of which nights they're booking (handy if their stay
+                  spans a weekend or month boundary). */}
+              {data.checkIn && <MiniCalendar checkInIso={data.checkIn} nights={data.nights} />}
             </Card>
 
             <SectionTitle style={{ marginTop: 18 }}>How many guests?</SectionTitle>
@@ -370,6 +378,10 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
               <div style={{ fontSize: 10, color: T.ink3, fontStyle: 'italic', marginTop: 4 }}>
                 Taxes (CGST/SGST as applicable) will be added on your final bill at check-in.
               </div>
+              {/* Stay calendar — same mini-calendar from step 1, repeated
+                  here so the customer can visually confirm the nights
+                  they're committing to before tapping Confirm. */}
+              <MiniCalendar checkInIso={data.checkIn} nights={data.nights} />
             </Card>
 
             <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>
@@ -398,6 +410,63 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
             {createdBookingId && (
               <div style={{ fontSize: 11, color: T.ink3, marginTop: 8 }}>
                 Reference: <strong className="tnum" style={{ color: T.primaryDk }}>{createdBookingId}</strong>
+              </div>
+            )}
+
+            {/* Voucher actions — customer can save / print the voucher
+                themselves, and (if they gave us an email) compose a
+                mailto with the summary pre-filled. Auto-send via Resend
+                is queued for Phase 3 once the property owner connects
+                an SMTP API key in Settings → Integrations. */}
+            {createdBooking && (
+              <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button
+                  onClick={() => {
+                    const rt = ROOM_TYPES.find(r => r.id === createdBooking.roomTypeId);
+                    generateVoucher(createdBooking, rt, property, undefined, 'en');
+                  }}
+                  style={{
+                    padding: '10px 16px', borderRadius: 8,
+                    border: `1.5px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk,
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <Icon name="download" size={13} stroke={2.2} color={T.primaryDk} /> Download voucher
+                </button>
+                {data.email && (() => {
+                  const checkInLabel = new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+                  const checkOutLabel = new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+                  const body = [
+                    `Hi ${data.name},`,
+                    ``,
+                    `Your booking at ${propName} is in our diary.`,
+                    ``,
+                    `Reference: ${createdBookingId}`,
+                    `Check-in:  ${checkInLabel}`,
+                    `Check-out: ${checkOutLabel} (${data.nights} night${data.nights > 1 ? 's' : ''})`,
+                    `Room:      ${selectedRT?.name || ''}`,
+                    `Total:     ₹${total.toLocaleString('en-IN')}`,
+                    ``,
+                    `We'll WhatsApp you shortly to confirm.`,
+                    ``,
+                    `— ${propName}${property?.profile?.phone ? `\n${property.profile.phone}` : ''}`,
+                  ].join('\n');
+                  const mailto = `mailto:${data.email}?subject=${encodeURIComponent(`Booking ${createdBookingId} at ${propName}`)}&body=${encodeURIComponent(body)}`;
+                  return (
+                    <a
+                      href={mailto}
+                      style={{
+                        padding: '10px 16px', borderRadius: 8,
+                        border: `1.5px solid ${T.border}`, background: T.card, color: T.ink2,
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Icon name="mail" size={13} stroke={2.2} color={T.ink2} /> Email a copy
+                    </a>
+                  );
+                })()}
               </div>
             )}
 
@@ -430,6 +499,91 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
       {/* Footer — small, honest Atithi credit. Helps trust ("real product, not a scam"). */}
       <div style={{ padding: '10px 16px', borderTop: `1px solid ${T.borderSoft}`, background: T.card, fontSize: 10, color: T.ink3, textAlign: 'center', flexShrink: 0 }}>
         Booking powered by <strong>Atithi</strong>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Mini calendar — read-only 5-week grid anchored on the month containing
+// the check-in date. Highlights every night of the stay so the customer
+// can see at a glance how many nights they're booking and whether they
+// cross into a different month / weekend.
+// ============================================================================
+
+function MiniCalendar({ checkInIso, nights }) {
+  if (!checkInIso) return null;
+  const checkIn = new Date(checkInIso + 'T00:00:00');
+  if (isNaN(checkIn.getTime())) return null;
+  const checkOutMs = new Date(checkIn).setDate(checkIn.getDate() + (nights || 1));
+
+  // Anchor the grid at the first Monday on/before the 1st of the
+  // check-in month. 5 weeks usually covers the month + a day or two
+  // either side; if the stay spills into the next month and we'd miss
+  // the check-out, extend to 6 weeks.
+  const monthStart = new Date(checkIn);
+  monthStart.setDate(1);
+  const monthStartDow = (monthStart.getDay() + 6) % 7; // Mon=0..Sun=6
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(1 - monthStartDow);
+  // Pick 5 or 6 rows depending on whether the check-out is still in the
+  // 5-row window.
+  const fiveRowEnd = new Date(gridStart);
+  fiveRowEnd.setDate(gridStart.getDate() + 35);
+  const rows = fiveRowEnd.getTime() <= checkOutMs ? 6 : 5;
+
+  const cells = [];
+  for (let i = 0; i < rows * 7; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    const inStay = d.getTime() >= checkIn.getTime() && d.getTime() < checkOutMs;
+    const isCheckIn = d.toDateString() === checkIn.toDateString();
+    const isCheckOut = d.getTime() === checkOutMs;
+    const inMonth = d.getMonth() === checkIn.getMonth();
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const today = new Date(ANCHOR);
+    today.setHours(0, 0, 0, 0);
+    const isToday = d.getTime() === today.getTime();
+    cells.push({ d, inStay, isCheckIn, isCheckOut, inMonth, isWeekend, isToday });
+  }
+
+  return (
+    <div style={{ background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: 12, marginTop: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: T.ink2, letterSpacing: 0.6, marginBottom: 8, textAlign: 'center', textTransform: 'uppercase' }}>
+        {checkIn.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map((d, i) => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: i >= 5 ? T.primary : T.ink3, letterSpacing: 0.3 }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+        {cells.map((c, i) => (
+          <div
+            key={i}
+            style={{
+              aspectRatio: '1 / 1', borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: c.inStay ? 800 : 600,
+              color: c.inStay ? '#fff' : c.inMonth ? (c.isWeekend ? T.primary : T.ink) : T.ink3,
+              opacity: c.inMonth || c.inStay ? 1 : 0.4,
+              background: c.inStay ? T.primary : c.isToday ? T.primaryLt : 'transparent',
+              border: c.isToday && !c.inStay ? `1.5px solid ${T.primary}` : 'none',
+              position: 'relative',
+            }}
+            title={c.d.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' })}
+            className="tnum"
+          >
+            {c.d.getDate()}
+            {c.isCheckIn && (
+              <span style={{ position: 'absolute', top: 1, right: 2, fontSize: 6, fontWeight: 800, color: '#fff', letterSpacing: 0.2 }}>IN</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, fontSize: 10, color: T.ink3, fontWeight: 600 }}>
+        <span><strong style={{ color: T.ink2 }}>{checkIn.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</strong> → <strong style={{ color: T.ink2 }}>{new Date(checkOutMs).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</strong></span>
+        <span style={{ color: T.primaryDk, fontWeight: 700 }}>{nights} night{nights > 1 ? 's' : ''}</span>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
-import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory } from '../data.js';
+import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
 
 // Format the FY code stored in invoiceCounters ('2627') as a human-readable
 // label ('2026-27') for use on labels and hints.
@@ -1189,7 +1189,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             // query param (App.jsx branches on IS_PUBLIC_WIDGET).
             const origin = typeof window !== 'undefined' ? window.location.origin : 'https://atithi-seven.vercel.app';
             const basePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/atithi/') ? '/atithi/' : '/';
-            const widgetUrl = `${origin}${basePath}?book=1`;
+            const slug = propertyShortCode({ profile });
+            // Pretty URL with the property's slug — atithi.app/book/yatra-desert-camp.
+            // Falls back to ?book=1 query if the hotelier prefers a flat URL.
+            const widgetUrl = `${origin}${basePath}book/${slug}`;
             const iframeSnippet = `<iframe src="${widgetUrl}" style="width:100%; max-width:480px; height:780px; border:0; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,0.08);"></iframe>`;
             const linkSnippet = `<a href="${widgetUrl}" target="_blank" rel="noopener">Book your stay →</a>`;
             const copyToClipboard = (text) => {
@@ -1201,6 +1204,19 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               <>
                 <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
                   Share this link, or paste the embed code into your hotel website. Customers fill in dates and contact details; the booking lands in your Diary marked <strong>tentative</strong> via the Website channel for you to review before confirming.
+                </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SHORT CODE (PRETTY URL ENDING)</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600, whiteSpace: 'nowrap' }}>{origin}{basePath}book/</span>
+                  <input
+                    value={profile.shortCode || ''}
+                    onChange={(e) => setProfile({ ...profile, shortCode: slugify(e.target.value) })}
+                    placeholder={slugify(profile.name)}
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: T.ink, padding: '7px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, fontFamily: 'JetBrains Mono, monospace' }}
+                  />
+                </div>
+                <div style={{ fontSize: 10, color: T.ink3, fontStyle: 'italic', marginBottom: 12, lineHeight: 1.4 }}>
+                  Leave empty to use your property name. Letters / numbers / dashes only; we'll clean up anything else.
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>BOOKING LINK</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>

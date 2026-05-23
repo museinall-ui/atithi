@@ -40,13 +40,30 @@ import SignIn from './screens/SignIn.jsx';
 // auth is being added back into the productionised flow.
 const DEMO_MODE = true;
 
-// Public-widget mode: when the URL has ?book=1 the app renders the
-// customer-facing booking widget instead of the hotelier dashboard.
-// Detected at module load so the hotelier UI never even mounts on
-// public URLs — keeps the widget honest (no leaked admin controls).
-const IS_PUBLIC_WIDGET = typeof window !== 'undefined' &&
-  (new URLSearchParams(window.location.search).get('book') === '1' ||
-   window.location.pathname.includes('/book'));
+// Public-widget mode: when the URL has /book/<slug> (pretty URL) or
+// the legacy ?book=1 query param the app renders the customer-facing
+// booking widget instead of the hotelier dashboard. Detected at
+// module load so the hotelier UI never even mounts on public URLs —
+// keeps the widget honest (no leaked admin controls).
+//
+// `widgetSlug` is the part after /book/ if present. We use it to
+// match the property by shortCode (or just trust it in DEMO_MODE
+// where there's only one property anyway).
+let IS_PUBLIC_WIDGET = false;
+let WIDGET_SLUG = null;
+if (typeof window !== 'undefined') {
+  const path = window.location.pathname;
+  const query = new URLSearchParams(window.location.search);
+  // Path-based: /atithi/book/yatra OR /book/yatra
+  const m = path.match(/\/book(?:\/([^\/]+))?\/?$/);
+  if (m) {
+    IS_PUBLIC_WIDGET = true;
+    WIDGET_SLUG = m[1] || null;
+  } else if (query.get('book') === '1') {
+    IS_PUBLIC_WIDGET = true;
+    WIDGET_SLUG = query.get('p') || null; // optional ?p=<slug> for legacy URLs
+  }
+}
 
 const LS_KEYS = {
   bookings: 'atithi.bookings.v1',
@@ -76,6 +93,10 @@ const DEFAULT_PROPERTY = {
     // enough to live on the row, no Supabase Storage needed). Renders on
     // the Settings card hero, and on the voucher header in a follow-up.
     logoDataUrl: '',
+    // Pretty-URL slug for the public booking widget. atithi.app/book/<slug>.
+    // Defaults to slugify(name) at first load; hotelier can edit it in
+    // Settings → Property profile → Booking link.
+    shortCode: '',
     city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
     landmark: 'Near Sam Sand Dunes, 45km west of Jaisalmer Fort',
     mapUrl: 'https://maps.google.com/?q=Sam+Sand+Dunes,+Jaisalmer',

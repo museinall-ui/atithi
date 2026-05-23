@@ -282,6 +282,28 @@ export function mealPlanById(property, id) {
   return effectiveMealPlans(property).find(p => p.id === id) || null;
 }
 
+// Slugify a property name to a URL-safe short code. Lowercase, dashes
+// only, no punctuation, max 40 chars. Used as the public-booking
+// widget URL — atithi.app/book/yatra-desert-camp.
+export function slugify(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')   // strip diacritics
+    .replace(/[^a-z0-9]+/g, '-')        // collapse non-alphanum to dashes
+    .replace(/^-+|-+$/g, '')            // trim leading/trailing dashes
+    .slice(0, 40);
+}
+
+// Effective short-code for the property's booking widget URL. Falls back
+// to a slug of the property name when shortCode isn't explicitly set so
+// every property has a useful default.
+export function propertyShortCode(property) {
+  const explicit = property?.profile?.shortCode || property?.shortCode;
+  if (explicit) return slugify(explicit);
+  return slugify(property?.profile?.name) || 'book';
+}
+
 // Rate plans — different price tiers (Standard / Flexible / Non-refundable)
 // per property. Each plan carries a multiplier that's applied to the
 // underlying day rate at booking time. The Standard plan is always

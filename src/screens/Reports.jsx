@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate } from '../data.js';
+import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount } from '../data.js';
 import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -9,6 +9,18 @@ import Card from '../components/Card.jsx';
 import Row from '../components/Row.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+
+// Two-column label / value row used inside the Take-home breakdown card.
+// Lets us colour the subtractive lines (tax + commission) muted and the
+// "Net to you" line in the brand colour for emphasis — Row.jsx is fixed.
+function BreakdownRow({ label, value, color, bold }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+      <span style={{ fontSize: bold ? 13 : 11.5, color, fontWeight: bold ? 700 : 600 }}>{label}</span>
+      <span className="tnum" style={{ fontSize: bold ? 16 : 12, color, fontWeight: bold ? 800 : 700, letterSpacing: bold ? -0.3 : 0 }}>{value}</span>
+    </div>
+  );
+}
 
 function KPI({ label, value, sub, icon, color }) {
   return (
@@ -76,6 +88,20 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     }, 0);
     const unreported = revenue - reportedRevenue;
 
+    // Net to the hotelier after tax + commission removed from every active
+    // booking. This is the cash the property actually keeps — the number
+    // the owner asked to see alongside gross so they can judge real profit.
+    // Surfaced only on Channels / Invoicing tiers (Engine has no OTA
+    // commissions to subtract — direct rate IS the take-home).
+    let totalTax = 0;
+    let totalCommission = 0;
+    for (const b of active) {
+      const { tax, commission } = bookingNetAmount(b, property);
+      totalTax += tax;
+      totalCommission += commission;
+    }
+    const netRevenue = Math.max(0, billed - totalTax - totalCommission);
+
     // Occupancy is computed across the 14-day diary window. For each day, count
     // every booking whose [startIdx, startIdx+nights) range covers that day.
     const dailyOccupied = DAYS.map((_, dayIdx) =>
@@ -116,7 +142,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const gapCount = reconciliationGaps.length + overdueArrivals.length;
     const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
 
-    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount };
+    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission };
   }, [bookings, ROOM_TYPES]);
 
   return (
@@ -131,6 +157,35 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           <KPI label="Per room / night" value={fmtINR(stats.adr)} sub="when room is booked" icon="tag" color={T.teal} />
           <KPI label="Per room / day" value={fmtINR(stats.revpar)} sub="across all rooms" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
+
+        {/* Take-home breakdown (Channels / Invoicing tiers only). Engine
+            properties only sell direct, so gross == net minus tax; no need
+            to surface OTA commissions. */}
+        {plan !== 'engine' && (
+          <Card padding={14} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'color-mix(in oklch, oklch(60% 0.14 175) 14%, white)', color: 'oklch(45% 0.14 175)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="inr" size={14} stroke={2} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'oklch(45% 0.14 175)', letterSpacing: 0.2 }}>TAKE-HOME · AFTER TAX + OTA</span>
+            </div>
+            <div className="tnum" style={{ fontSize: 26, fontWeight: 700, color: T.ink, letterSpacing: -0.5, marginBottom: 2 }}>{fmtINR(stats.netRevenue)}</div>
+            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 12 }}>actually kept by your property</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', background: T.bgSoft, borderRadius: 7 }}>
+              <BreakdownRow label="Total billed" value={fmtINR(stats.billed)} color={T.ink2} />
+              <BreakdownRow label="GST collected (to government)" value={`− ${fmtINR(stats.totalTax)}`} color={T.ink3} />
+              <BreakdownRow label="OTA commissions" value={`− ${fmtINR(stats.totalCommission)}`} color={T.ink3} />
+              <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
+                <BreakdownRow label="Net to you" value={fmtINR(stats.netRevenue)} color={T.primaryDk} bold />
+              </div>
+            </div>
+            {stats.totalCommission === 0 && (
+              <div style={{ marginTop: 10, fontSize: 10.5, color: T.ink3, lineHeight: 1.4 }}>
+                No OTA bookings in this window — commissions are zero. Defaults are 18% MMT, 15% Booking.com, etc. Edit in Settings → Property profile → Channel commissions if your contract differs.
+              </div>
+            )}
+          </Card>
+        )}
 
         <Card padding={14} style={{ marginBottom: 16, borderColor: stats.gapCount > 0 ? 'oklch(85% 0.10 75)' : 'oklch(85% 0.06 175)', background: stats.gapCount > 0 ? 'oklch(98% 0.018 75)' : 'oklch(98% 0.014 175)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>

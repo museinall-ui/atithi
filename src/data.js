@@ -240,6 +240,65 @@ export function bookingInvoiceInclude(b) {
   return bookingGstApplies(b);
 }
 
+// Industry-standard OTA commission rates as of May 2026. Each hotelier
+// can override these via Settings → Property profile → Channel commissions.
+// Stored on property.channelCommissions, with the same channel ids used
+// for channel markups + bookings.
+//
+// Sources (broad approximation — actual rates vary by contract):
+//   - MakeMyTrip / Goibibo: 15–22% (taking 18 / 15 as midpoint)
+//   - Booking.com: 15% standard, often 18–20% with visibility boost
+//   - Agoda: 17–20%
+//   - Airbnb: 3% (host service fee) + 14% guest fee (not the hotelier's cost)
+//   - direct / website: 0% (no intermediary)
+export const DEFAULT_CHANNEL_COMMISSIONS = {
+  direct: 0,
+  website: 0,
+  mmt: 18,
+  goibibo: 15,
+  booking: 15,
+  agoda: 18,
+  airbnb: 3,
+};
+
+// Effective commission rate (%) for a booking, honouring per-property
+// overrides on property.channelCommissions before falling back to the
+// industry default. Returns 0 for unknown channels / direct bookings.
+export function bookingCommissionRate(booking, property) {
+  const ch = booking?.channel || 'direct';
+  const overrides = (property && property.channelCommissions) || {};
+  if (typeof overrides[ch] === 'number') return Math.max(0, overrides[ch]);
+  if (typeof DEFAULT_CHANNEL_COMMISSIONS[ch] === 'number') return DEFAULT_CHANNEL_COMMISSIONS[ch];
+  return 0;
+}
+
+// What the hotelier actually keeps from a booking after the government
+// takes GST and the OTA takes its commission. The math:
+//   tax        = GST portion of the booking total (treats total as inclusive)
+//   preTaxBase = total − tax   (what's left after the government cut)
+//   commission = preTaxBase × commissionRate / 100
+//   net        = total − tax − commission
+//
+// Commission is applied to the pre-tax base because that's the industry
+// norm for Indian OTAs (MMT, Goibibo); some channels charge on the gross
+// instead but the difference is small and the hotelier can adjust their
+// configured commission % up if their contract works on gross.
+export function bookingNetAmount(booking, property) {
+  if (!booking) return 0;
+  const total = booking.total || 0;
+  const tax = bookingGstApplies(booking) ? getTaxBreakdown(booking, property).gst : 0;
+  const commissionRate = bookingCommissionRate(booking, property);
+  const preTaxBase = Math.max(0, total - tax);
+  const commission = Math.round(preTaxBase * commissionRate / 100);
+  return {
+    gross: total,
+    tax,
+    commission,
+    commissionRate,
+    net: Math.max(0, total - tax - commission),
+  };
+}
+
 // Indian financial year for the current calendar date. April 1 to March 31.
 // Returned as a two-digit-pair string like "2627" for FY 2026-27. Used as the
 // stable bucket key for invoice number counters per FY.

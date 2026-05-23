@@ -170,6 +170,12 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [channelMarkups, setChannelMarkups] = useState(
     property.channelMarkups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 }
   );
+  // Per-OTA commission % the hotelier loses to each channel. Defaults
+  // mirror DEFAULT_CHANNEL_COMMISSIONS from data.js; hoteliers override
+  // to match their actual contract. Powers the Take-home card in Reports.
+  const [channelCommissions, setChannelCommissions] = useState(
+    property.channelCommissions || { direct: 0, mmt: 18, goibibo: 15, booking: 15, agoda: 18, airbnb: 3 }
+  );
   // Rate plans: Standard / Flexible / Non-refundable etc. Each plan has
   // a multiplier and a cancellation tier that the booking flow surfaces
   // when more than one plan is enabled.
@@ -235,7 +241,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, weekendRules, seasons, channelMarkups, ratePlans,
+      mealPlans, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -1032,6 +1038,45 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
                 <div style={{ marginTop: 12, padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
                   <strong>Sync status:</strong> not connected to any channel yet. Once the channel manager partnership lands, rates push automatically with the markup applied. Today, rates are direct-only — these values are saved for later.
+                </div>
+              </Card>
+
+              {/* Channel commissions — what each OTA takes off your top
+                  line. Powers the "Take-home" card in Reports. Independent
+                  of channel markups above; defaults to industry standard
+                  rates but the hotelier should match to their contract. */}
+              <SectionHead title="Channel commissions" style={{ marginTop: 16 }} />
+              <Card padding={12}>
+                <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                  What each OTA deducts before paying you out. Used in Reports → Take-home to show your real take-home after tax + commissions. Set to 0% if the channel charges the guest a separate fee instead of you.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {channels.map(c => {
+                    const v = channelCommissions[c.id] ?? 0;
+                    return (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 8 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 5, background: c.color, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{c.label}</div>
+                          {v > 0 && (
+                            <div className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
+                              Bill ₹4,500 → you keep ₹{Math.round(4500 * (1 - v/100)).toLocaleString('en-IN')} (before GST)
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input
+                            type="number"
+                            value={v}
+                            onChange={(e) => setChannelCommissions(prev => ({ ...prev, [c.id]: Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)) }))}
+                            className="tnum"
+                            style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
+                          />
+                          <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             </>

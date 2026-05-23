@@ -21,10 +21,10 @@ function KPI({ label, value, sub, icon, color }) {
         <Icon name={icon} size={14} stroke={2} />
       </div>
       <div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: T.ink, letterSpacing: -0.4 }}>{value}</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>{label}</span>
-        {sub && <span className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{sub}</span>}
-      </div>
+      <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2 }}>{label}</div>
+      {sub && (
+        <div className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 2 }}>{sub}</div>
+      )}
     </Card>
   );
 }

@@ -876,7 +876,7 @@ export default function App() {
   let screen;
   switch (route.name) {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />; break;
-    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} property={property} />; break;
+    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
       // { prefill: { date, roomTypeId } } from a Diary cell quick-create.

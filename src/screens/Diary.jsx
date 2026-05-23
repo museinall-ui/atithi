@@ -338,11 +338,11 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
 }
 
 const FILTERS = [
-  { id: 'all',       label: 'All bookings', icon: 'filter' },
-  { id: 'confirmed', label: 'Confirmed' },
-  { id: 'hold',      label: 'On-hold' },
-  { id: 'formC',     label: 'Form C' },
-  { id: 'ota',       label: 'OTA' },
+  { id: 'all',       en: 'All bookings', hi: 'सभी बुकिंग', icon: 'filter' },
+  { id: 'confirmed', en: 'Confirmed',    hi: 'पुष्टि' },
+  { id: 'hold',      en: 'On-hold',      hi: 'होल्ड पर' },
+  { id: 'formC',     en: 'Form C',       hi: 'फ़ॉर्म C' },
+  { id: 'ota',       en: 'OTA',          hi: 'OTA' },
 ];
 
 const matchesFilter = (b, filter) => {
@@ -384,7 +384,7 @@ function isoToDayIdx(iso) {
   return dateToIdx(iso);
 }
 
-export default function Diary({ go, bookings, setBookings, moveBooking, t, property }) {
+export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property }) {
   const [zoom, setZoom] = useState(58);
   // Default to a 30-day forward window. The 14-day default was too short
   // — hoteliers scrolled to the right edge of the grid and the calendar
@@ -611,8 +611,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
             <Icon name="cal" size={16} color={jumpDate ? T.primaryDk : T.ink2} stroke={2} />
             <span style={{ fontSize: 13, fontWeight: 700, color: jumpDate ? T.primaryDk : T.ink2 }}>
               {jumpDate
-                ? new Date(jumpDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
-                : 'Jump to date — tap to pick a day'}
+                ? new Date(jumpDate + 'T00:00:00').toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+                : (lang === 'hi' ? 'तारीख़ पर जाएँ — टैप करके चुनें' : 'Jump to date — tap to pick a day')}
             </span>
             <div style={{ flex: 1 }} />
           </div>
@@ -676,7 +676,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
               }}
             >
               {f.icon && <Icon name={f.icon} size={11} stroke={2} />}
-              <span>{f.label}</span>
+              <span>{lang === 'hi' ? f.hi : f.en}</span>
               {count > 0 && f.id !== 'all' && (
                 <span className="tnum" style={{ fontSize: 10, fontWeight: 700, opacity: 0.7 }}>· {count}</span>
               )}
@@ -690,7 +690,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${new Date(ANCHOR).getFullYear()}` : ''}</div>
-              <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} stays</div>
+              <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} {lang === 'hi' ? (visibleBookings.length === 1 ? 'ठहराव' : 'ठहराव') : (visibleBookings.length === 1 ? 'stay' : 'stays')}</div>
             </div>
             {viewDays.map((d) => {
               const isToday = d.iso === todayIso;
@@ -705,7 +705,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, prope
                       lineHeight: 1.3,
                     }}>{t('today').toUpperCase()}</div>
                   ) : (
-                    <div style={{ fontSize: 9, fontWeight: 600, color: d.isWknd ? T.primary : T.ink3, letterSpacing: 0.4 }}>{d.dow.toUpperCase()}</div>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: d.isWknd ? T.primary : T.ink3, letterSpacing: 0.4 }}>{lang === 'hi' ? ({'Sun':'रवि','Mon':'सोम','Tue':'मंगल','Wed':'बुध','Thu':'गुरु','Fri':'शुक्र','Sat':'शनि'}[d.dow] || d.dow.toUpperCase()) : d.dow.toUpperCase()}</div>
                   )}
                   <div className="tnum" style={{ fontSize: 16, fontWeight: 700, color: isToday ? T.primary : T.ink, letterSpacing: -0.3, marginTop: 1 }}>{d.dom}</div>
                 </div>

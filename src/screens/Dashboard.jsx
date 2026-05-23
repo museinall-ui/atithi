@@ -152,21 +152,26 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
 // property-profile fields are filled and nudges the hotelier to finish setup.
 // Hides itself completely once everything's filled. The most useful nudge —
 // CA email — unlocks the monthly invoice export to the accountant.
-function SetupNudge({ property, go }) {
+function SetupNudge({ property, go, isHi }) {
+  // English + Hindi label pairs. Non-technical hoteliers may set their app
+  // to Hindi from day one — this is the first screen they see, so leaving
+  // it English-only would be off-putting.
   const items = [
-    { id: 'name',    label: 'Property name',        done: !!(property?.profile?.name?.trim()) },
-    { id: 'phone',   label: 'Property phone',       done: !!(property?.profile?.phone?.trim()) },
-    { id: 'address', label: 'Address',              done: !!(property?.profile?.address?.trim()) },
-    { id: 'ca',      label: "CA's email (for monthly export)", done: !!(property?.accountant?.email?.trim()) },
-    { id: 'rooms',   label: 'At least one room category',      done: Array.isArray(property?.categories) && property.categories.length > 0 },
+    { id: 'name',    en: 'Property name',                       hi: 'प्रॉपर्टी का नाम',            done: !!(property?.profile?.name?.trim()) },
+    { id: 'phone',   en: 'Property phone',                      hi: 'फ़ोन नंबर',                  done: !!(property?.profile?.phone?.trim()) },
+    { id: 'address', en: 'Address',                             hi: 'पता',                          done: !!(property?.profile?.address?.trim()) },
+    { id: 'ca',      en: "CA's email (for monthly export)",     hi: 'CA का ईमेल (मासिक एक्सपोर्ट)', done: !!(property?.accountant?.email?.trim()) },
+    { id: 'rooms',   en: 'At least one room category',          hi: 'कम-से-कम एक कमरा श्रेणी',     done: Array.isArray(property?.categories) && property.categories.length > 0 },
   ];
   const done = items.filter(i => i.done).length;
   const total = items.length;
   if (done === total) return null;
   const pct = Math.round((done / total) * 100);
+  const title = isHi ? 'सेटअप पूरा करें' : 'Finish setting up';
+  const cta   = isHi ? 'सेटिंग्स में सेटअप पूरा करें →' : 'Finish setup in Settings →';
   return (
     <div style={{ padding: '0 16px 14px' }}>
-      <SectionHead title="Finish setting up" action={
+      <SectionHead title={title} action={
         <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.ink3 }}>{done}/{total}</span>
       } />
       <Card padding={14}>
@@ -186,7 +191,7 @@ function SetupNudge({ property, go }) {
                 {it.done && <Icon name="check" size={10} stroke={2.6} />}
               </div>
               <span style={{ fontSize: 12, color: it.done ? T.ink3 : T.ink2, fontWeight: 600, textDecoration: it.done ? 'line-through' : 'none' }}>
-                {it.label}
+                {isHi ? it.hi : it.en}
               </span>
             </div>
           ))}
@@ -195,7 +200,7 @@ function SetupNudge({ property, go }) {
           onClick={() => go('settings')}
           className="atithi-tap"
           style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-        >Finish setup in Settings →</button>
+        >{cta}</button>
       </Card>
     </div>
   );
@@ -519,7 +524,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} />
       </div>
 
-      <SetupNudge property={property} go={go} />
+      <SetupNudge property={property} go={go} isHi={isHi} />
 
       {nudges.length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>

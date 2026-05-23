@@ -508,11 +508,6 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               ) : (
                 <Chip color="ok" icon="sync" style={{ fontSize: 9 }}>{t('synced')}</Chip>
               )}
-              {(() => {
-                const n = Object.keys(overrides).filter(k => k.startsWith(selectedType + ':')).length;
-                if (n === 0) return null;
-                return <span className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{n} custom {n === 1 ? 'price' : 'prices'}</span>;
-              })()}
             </div>
           </div>
         </Card>

@@ -354,7 +354,11 @@ const matchesFilter = (b, filter) => {
   return true;
 };
 
-const HORIZONS = [14, 30, 60, 90, 180];
+// Fixed 180-day forward window. The earlier 14/30/60/90/180 picker was
+// retired — too many options + most hoteliers never touched it. To see
+// further out, the hotelier uses the date picker at the top which jumps
+// the view (and extends the horizon further if needed).
+const DEFAULT_HORIZON = 180;
 
 // Generate a contiguous day-meta array running from `-pastN` to `futureN - 1`
 // relative to ANCHOR (today). Negative idx values represent past dates,
@@ -387,15 +391,10 @@ function isoToDayIdx(iso) {
 export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property }) {
   const [zoom, setZoom] = useState(58);
   // Default to a 30-day forward window. The 14-day default was too short
-  // — hoteliers scrolled to the right edge of the grid and the calendar
-  // appeared to "stop" because there were no more columns. 30 days gives
-  // a month of forward visibility; the auto-extend below bumps higher
-  // when the user keeps scrolling past the rightmost column.
-  // 180-day default — gives the hotelier a six-month forward view from
-  // today / the jumped-to date out of the box. Auto-scroll-right doesn't
-  // do much from here since 180 is the top of HORIZONS; the picker still
-  // lets them dial back to a tighter view.
-  const [horizon, setHorizon] = useState(180);
+  // Fixed 180-day forward window — see DEFAULT_HORIZON. Jumping to a date
+  // beyond 180 days extends horizon to fit (handled in the jump effect
+  // below); otherwise the hotelier scrolls within the six-month grid.
+  const [horizon, setHorizon] = useState(DEFAULT_HORIZON);
   const [collapsed, setCollapsed] = useState({});
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
@@ -431,8 +430,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
       // Picked a date further into the past than we currently show.
       setPastDays(Math.min(60, Math.abs(idx) + 3));
     } else if (idx >= horizon) {
-      const next = HORIZONS.find(h => h > idx) || HORIZONS[HORIZONS.length - 1];
-      if (next !== horizon) setHorizon(next);
+      // Jumping past the visible 180-day window — extend horizon to a
+      // round month past the picked date so it lands with breathing room.
+      setHorizon(idx + 30);
     }
     // Scroll on the next frame so the grid has re-rendered.
     const tid = setTimeout(() => {
@@ -446,22 +446,20 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   }, [jumpDate, horizon, pastDays, colW, labelW, viewDaysStart]);
 
   // Auto-extend the horizon when the user scrolls within ~1 column of the
-  // right edge. Previously the grid would just stop at the chosen horizon
-  // and the owner would see a hard "wall" — feels like the calendar
-  // disappears. Now we bump to the next horizon step transparently.
+  // right edge so the grid never feels like it ends abruptly. Adds an
+  // extra month each time the scroll edge gets close.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onScroll = () => {
       const distanceToEnd = el.scrollWidth - (el.scrollLeft + el.clientWidth);
       if (distanceToEnd <= colW * 1.5) {
-        const next = HORIZONS.find(h => h > horizon);
-        if (next) setHorizon(next);
+        setHorizon(h => h + 30);
       }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [horizon, colW]);
+  }, [colW]);
 
   const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
   // Expand once per render; downstream RoomTypeBlocks just slice this list.
@@ -632,28 +630,6 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
         </div>
       </div>
 
-      {/* Horizon picker — how many days forward the Diary shows. The
-          preceding date bar handles past dates via auto-extension. */}
-      <div style={{ padding: '10px 16px 6px', display: 'flex', gap: 8, borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center', overflowX: 'auto' }}>
-        {HORIZONS.map(h => {
-          const active = horizon === h;
-          return (
-            <button
-              key={h}
-              onClick={() => setHorizon(h)}
-              className="atithi-tap"
-              style={{
-                padding: '5px 11px', borderRadius: 999,
-                background: active ? T.indigoLt : T.bgSoft,
-                color: active ? T.indigo : T.ink2,
-                border: `1px solid ${active ? T.indigo : T.borderSoft}`,
-                fontSize: 11, fontWeight: 700, letterSpacing: 0.1,
-                whiteSpace: 'nowrap', cursor: 'pointer',
-              }}
-            >{h}d</button>
-          );
-        })}
-      </div>
       {/* Filter chips on their own row so they're discoverable without
           horizontal scroll. Counts surface how many bookings match. */}
       <div style={{ padding: '6px 16px 10px', display: 'flex', gap: 6, borderBottom: `1px solid ${T.borderSoft}`, background: T.card, alignItems: 'center', overflowX: 'auto' }}>

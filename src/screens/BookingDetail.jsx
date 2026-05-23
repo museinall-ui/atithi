@@ -354,6 +354,18 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const [payOpen, setPayOpen] = useState(false);
   const [payKind, setPayKind] = useState('payment');
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  // Voucher download — the hotelier may use the app in one language but
+  // hand the voucher to a guest who reads the other (e.g. Hindi UI, EN
+  // voucher for an OTA guest). On tap we open a small sheet so the
+  // hotelier picks per download. null = closed; { invoice } = open with
+  // an optional invoice to render in tax-invoice mode.
+  const [voucherLangSheet, setVoucherLangSheet] = useState(null);
+  const openVoucherSheet = (invoice = null) => setVoucherLangSheet({ invoice });
+  const downloadVoucherIn = (voucherLang) => {
+    if (!voucherLangSheet) return;
+    generateVoucher(b, rt, property, voucherLangSheet.invoice || undefined, voucherLang);
+    setVoucherLangSheet(null);
+  };
   const invoices = b.invoices || [];
   const activeInvoices = invoices.filter(inv => !inv.voided);
   const invoicedAmount = activeInvoices.reduce((s, inv) => s + (inv.amount || 0), 0);
@@ -380,7 +392,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <ScreenHeader title={b.id} subtitle={rt.name} onBack={() => go('diary')}
         right={
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <button onClick={() => generateVoucher(b, rt, property, undefined, lang)} className="atithi-tap" title="Download voucher PDF" style={{
+            <button onClick={() => openVoucherSheet()} className="atithi-tap" title="Download voucher PDF" style={{
               height: 36, width: 36, borderRadius: 10, border: `1px solid ${T.border}`,
               background: T.card, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: T.ink2,
@@ -669,6 +681,64 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           />
         )}
 
+        {voucherLangSheet && (
+          <div
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'flex-end' }}
+            onClick={() => setVoucherLangSheet(null)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32 }}
+            >
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>
+                {voucherLangSheet.invoice ? 'Download invoice in…' : 'Download voucher in…'}
+              </div>
+              <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>
+                Pick the language for this PDF. Your app language stays unchanged.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  onClick={() => downloadVoucherIn('en')}
+                  className="atithi-tap"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 10, cursor: 'pointer',
+                    border: `1.5px solid ${T.primary}`, background: T.card, color: T.ink,
+                    fontSize: 13, fontWeight: 700, textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 18, color: T.primary, fontWeight: 800, width: 32, textAlign: 'center' }}>EN</span>
+                  <span style={{ flex: 1 }}>English</span>
+                  <Icon name="download" size={14} color={T.primary} stroke={2.2} />
+                </button>
+                <button
+                  onClick={() => downloadVoucherIn('hi')}
+                  className="atithi-tap"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 10, cursor: 'pointer',
+                    border: `1.5px solid ${T.primary}`, background: T.card, color: T.ink,
+                    fontSize: 13, fontWeight: 700, textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 16, color: T.primary, fontWeight: 800, width: 32, textAlign: 'center' }}>हि</span>
+                  <span style={{ flex: 1 }}>हिन्दी</span>
+                  <Icon name="download" size={14} color={T.primary} stroke={2.2} />
+                </button>
+                <button
+                  onClick={() => setVoucherLangSheet(null)}
+                  className="atithi-tap"
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: 10, cursor: 'pointer',
+                    border: 'none', background: 'transparent', color: T.ink3,
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >{t('cancel')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isInvoicingPlan && (
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title="Invoices" action={
@@ -702,7 +772,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   {!inv.voided && (
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                       <button
-                        onClick={() => generateVoucher(b, rt, property, inv, lang)}
+                        onClick={() => openVoucherSheet(inv)}
                         className="atithi-tap"
                         style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >

@@ -152,15 +152,20 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
 // property-profile fields are filled and nudges the hotelier to finish setup.
 // Hides itself completely once everything's filled. The most useful nudge —
 // CA email — unlocks the monthly invoice export to the accountant.
-function SetupNudge({ property, go, isHi }) {
+function SetupNudge({ property, plan = 'engine', go, isHi }) {
   // English + Hindi label pairs. Non-technical hoteliers may set their app
   // to Hindi from day one — this is the first screen they see, so leaving
   // it English-only would be off-putting.
+  // CA email is only required on the Invoicing plan (the plan that enables
+  // the monthly invoice export). For Engine + Channels, listing it pushes a
+  // task they don't actually need and made the nudge feel stuck at 4/5.
   const items = [
     { id: 'name',    en: 'Property name',                       hi: 'प्रॉपर्टी का नाम',            done: !!(property?.profile?.name?.trim()) },
     { id: 'phone',   en: 'Property phone',                      hi: 'फ़ोन नंबर',                  done: !!(property?.profile?.phone?.trim()) },
     { id: 'address', en: 'Address',                             hi: 'पता',                          done: !!(property?.profile?.address?.trim()) },
-    { id: 'ca',      en: "CA's email (for monthly export)",     hi: 'CA का ईमेल (मासिक एक्सपोर्ट)', done: !!(property?.accountant?.email?.trim()) },
+    ...(plan === 'invoicing' ? [
+      { id: 'ca',    en: "CA's email (for monthly export)",     hi: 'CA का ईमेल (मासिक एक्सपोर्ट)', done: !!(property?.accountant?.email?.trim()) },
+    ] : []),
     { id: 'rooms',   en: 'At least one room category',          hi: 'कम-से-कम एक कमरा श्रेणी',     done: Array.isArray(property?.categories) && property.categories.length > 0 },
   ];
   const done = items.filter(i => i.done).length;
@@ -524,7 +529,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} />
       </div>
 
-      <SetupNudge property={property} go={go} isHi={isHi} />
+      <SetupNudge property={property} plan={plan} go={go} isHi={isHi} />
 
       {nudges.length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>

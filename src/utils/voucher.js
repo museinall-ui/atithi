@@ -71,6 +71,11 @@ const VSTR = {
     scanToPay: 'Scan to pay',
     scanBalance: 'Balance due — scan this QR with any UPI app to pay.',
     scanFull: "Pay using any UPI app — scan with PhonePe, GPay, Paytm, or your bank's app.",
+    roomsHeader: 'Rooms reserved',
+    adultsLabel: 'Adults', adultLabel: 'Adult',
+    childrenLabel: 'Children', childLabel: 'Child',
+    guestsTotal: 'Total guests',
+    childAgeNote: (age) => `Children under ${age} stay free; ${age}+ count as adults.`,
     termsLabel: 'Terms:',
     termsBody: (p, id) =>
       `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance. GST will be charged as applicable. For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
@@ -130,6 +135,11 @@ const VSTR = {
     scanToPay: 'भुगतान हेतु स्कैन करें',
     scanBalance: 'बकाया भुगतान — इस QR को किसी भी UPI ऐप से स्कैन करें।',
     scanFull: 'किसी भी UPI ऐप से भुगतान — PhonePe, GPay, Paytm या अपने बैंक की ऐप से स्कैन करें।',
+    roomsHeader: 'आरक्षित कमरे',
+    adultsLabel: 'वयस्क', adultLabel: 'वयस्क',
+    childrenLabel: 'बच्चे', childLabel: 'बच्चा',
+    guestsTotal: 'कुल मेहमान',
+    childAgeNote: (age) => `${age} साल से कम उम्र के बच्चे मुफ्त; ${age}+ वयस्क के रूप में गिने जाते हैं।`,
     termsLabel: 'शर्तें:',
     termsBody: (p, id) =>
       `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी। रद्द: आगमन से 48 घंटे पहले मुफ़्त; उसके बाद 50% शुल्क; नो-शो पर पूरा अग्रिम राशि ज़ब्त। GST लागू होने पर लिया जाएगा। किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
@@ -224,6 +234,17 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   .stay .nights { text-align: center; }
   .stay .nights-num { font-size: 22pt; font-weight: 800; color: ${BRAND}; line-height: 1; }
   .stay .nights-lbl { font-size: 8pt; color: #999; letter-spacing: 1px; margin-top: 2px; text-transform: uppercase; }
+  .rooms-card { padding: 14px 16px; background: #fff; border: 1px solid #E8E0D8; border-radius: 12px; margin-bottom: 18px; }
+  .rooms-card-head { font-size: 8pt; font-weight: 700; letter-spacing: 1.2px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+  .rooms-table { width: 100%; border-collapse: collapse; font-size: 11pt; }
+  .rooms-table td { padding: 6px 0; border-bottom: 1px dashed #F0E8E0; }
+  .rooms-table td.r { text-align: right; }
+  .rooms-table tfoot td { border-bottom: none; padding-top: 10px; font-weight: 700; color: #1a1a1a; }
+  .rooms-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; background: #FBF7F3; color: #5a4a3a; font-size: 10pt; font-weight: 700; margin-left: 6px; border: 1px solid #E8E0D8; }
+  .rooms-pill.rooms-pill-c { background: ${BRAND_LITE}; color: ${BRAND}; border-color: ${BRAND_LITE}; }
+  .rooms-pill.rooms-pill-total { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+  .rooms-pill.rooms-pill-total.rooms-pill-c { background: ${BRAND_LITE}; color: ${BRAND}; border-color: ${BRAND}; }
+  .rooms-note { margin-top: 8px; font-size: 9pt; color: #888; font-style: italic; }
   .meal-chip { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: ${BRAND_LITE}; border-radius: 10px; margin-bottom: 22px; border: 1px solid ${BRAND}; }
   .meal-chip .meal-code { font-size: 18pt; font-weight: 800; color: ${BRAND}; letter-spacing: 1px; min-width: 56px; text-align: center; padding: 4px 10px; background: #fff; border-radius: 6px; }
   .meal-chip .meal-body { flex: 1; }
@@ -311,6 +332,48 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     <div class="lbl">${L.holdTitle}</div>
     <div class="msg">${L.holdMsg1} <span class="when">${releaseLabel}</span>. ${L.holdMsg2} ${fmtINR(balance)} ${L.holdMsg3} <strong>${L.holdMsg4}</strong> ${L.holdMsg5}</div>
   </div>` : ''}
+
+  ${(() => {
+    // Rooms reserved card — one row per roomItem with explicit
+    // adults + children. The folio sometimes muddles this (e.g. when
+    // the booking has two rooms of different types). This card makes
+    // it unambiguous + sums totals for the front-desk pre-check.
+    const items = Array.isArray(b.roomItems) && b.roomItems.length > 0
+      ? b.roomItems
+      : [{ roomTypeId: b.roomTypeId, adults: 2, children: 0 }];
+    let totalA = 0, totalC = 0;
+    const cats = Array.isArray(prop?.categories) ? prop.categories : [];
+    const findCat = (id) => cats.find(c => c.id === id);
+    const rows = items.map((it, i) => {
+      const cat = findCat(it.roomTypeId || b.roomTypeId);
+      const name = (cat && cat.name) || (rt && rt.name) || '—';
+      const a = it.adults || 0;
+      const c = it.children || 0;
+      totalA += a; totalC += c;
+      const aLabel = a === 1 ? L.adultLabel : L.adultsLabel;
+      const cLabel = c === 1 ? L.childLabel : L.childrenLabel;
+      return `<tr>
+        <td><strong>${esc(name)}</strong></td>
+        <td class="r"><span class="rooms-pill">${a} ${aLabel}</span>${c > 0 ? `<span class="rooms-pill rooms-pill-c">${c} ${cLabel}</span>` : ''}</td>
+      </tr>`;
+    }).join('');
+    const totalALabel = totalA === 1 ? L.adultLabel : L.adultsLabel;
+    const totalCLabel = totalC === 1 ? L.childLabel : L.childrenLabel;
+    const childAge = (prop?.accountant?.childAgeBelow != null) ? prop.accountant.childAgeBelow : 12;
+    return `<div class="rooms-card">
+      <div class="rooms-card-head">${L.roomsHeader}</div>
+      <table class="rooms-table">
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td>${L.guestsTotal}</td>
+            <td class="r"><span class="rooms-pill rooms-pill-total">${totalA} ${totalALabel}</span>${totalC > 0 ? `<span class="rooms-pill rooms-pill-total rooms-pill-c">${totalC} ${totalCLabel}</span>` : ''}</td>
+          </tr>
+        </tfoot>
+      </table>
+      ${totalC > 0 ? `<div class="rooms-note">${L.childAgeNote(childAge)}</div>` : ''}
+    </div>`;
+  })()}
 
   ${mealPlan && !isInvoice ? `<div class="meal-chip">
     <div class="meal-code">${esc(mealPlan.code)}</div>

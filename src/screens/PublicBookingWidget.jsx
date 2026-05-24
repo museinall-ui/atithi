@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -277,6 +277,21 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 const soldOut = avail === 0;
                 const rate = computePerNightRate(rt.id);
                 const sel = data.roomTypeId === rt.id;
+                // Resolve amenity chip labels — combine per-category +
+                // property-wide ids, drop duplicates, look up the label
+                // (custom amenities are stored on property.customAmenities
+                // with { id, label } shape). Cap at 8 chips so the room
+                // tile doesn't grow taller than the screen.
+                const catIds = Array.isArray(rt.amenityIds) ? rt.amenityIds : [];
+                const propIds = Array.isArray(property?.amenityIds) ? property.amenityIds : [];
+                const all = Array.from(new Set([...catIds, ...propIds]));
+                const customMap = new Map((property?.customAmenities || []).map(a => [a.id, a.label]));
+                const amenityChips = all.map(id => {
+                  const std = AMENITIES.find(a => a.id === id);
+                  if (std) return { id, label: std.label };
+                  if (customMap.has(id)) return { id, label: customMap.get(id) };
+                  return null;
+                }).filter(Boolean).slice(0, 8);
                 return (
                   <button
                     key={rt.id}
@@ -289,21 +304,43 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                       border: `2px solid ${sel ? T.primary : T.borderSoft}`,
                       cursor: soldOut ? 'not-allowed' : 'pointer',
                       opacity: soldOut ? 0.55 : 1,
-                      display: 'flex', alignItems: 'center', gap: 12,
+                      display: 'flex', flexDirection: 'column', gap: 10,
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{rt.name}</div>
-                      <div style={{ fontSize: 11, color: T.ink3, marginTop: 3 }}>
-                        {soldOut ? 'Sold out for these dates' : `${avail} of ${rt.units} available`}
-                      </div>
-                    </div>
-                    {!soldOut && rate != null && (
-                      <div style={{ textAlign: 'right' }}>
-                        <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: sel ? T.primaryDk : T.ink, letterSpacing: -0.3 }}>
-                          ₹{rate.toLocaleString('en-IN')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{rt.name}</div>
+                        <div style={{ fontSize: 11, color: T.ink3, marginTop: 3 }}>
+                          {soldOut ? 'Sold out for these dates' : `${avail} of ${rt.units} available`}
                         </div>
-                        <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600, marginTop: 2 }}>per night</div>
+                      </div>
+                      {!soldOut && rate != null && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: sel ? T.primaryDk : T.ink, letterSpacing: -0.3 }}>
+                            ₹{rate.toLocaleString('en-IN')}
+                          </div>
+                          <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600, marginTop: 2 }}>per night</div>
+                        </div>
+                      )}
+                    </div>
+                    {amenityChips.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, width: '100%' }}>
+                        {amenityChips.map(a => (
+                          <span
+                            key={a.id}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '3px 8px', borderRadius: 999,
+                              background: sel ? 'rgba(255,255,255,0.7)' : T.bgSoft,
+                              color: sel ? T.primaryDk : T.ink2,
+                              border: `1px solid ${sel ? T.primaryDk : T.borderSoft}`,
+                              fontSize: 10, fontWeight: 600, letterSpacing: 0.1,
+                            }}
+                          >
+                            <span style={{ width: 3, height: 3, borderRadius: 2, background: sel ? T.primaryDk : T.ink3 }} />
+                            {a.label}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </button>

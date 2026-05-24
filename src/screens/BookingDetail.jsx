@@ -640,34 +640,44 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               </span>
             } bold />
 
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-              <Btn variant="primary" icon="plus" size="sm" onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Payment</Btn>
+            {/* Primary action: Add payment / Refund payment whenever there's
+                a balance to settle (or an overpayment to refund). The
+                three-column grid earlier crammed Payment/Refund/Credit-note
+                side-by-side on every booking; most of the time the hotelier
+                just wants to record a payment, so make THAT the big button. */}
+            {balance !== 0 && (
+              <div style={{ marginTop: 12 }}>
+                {balance > 0 ? (
+                  <Btn variant="primary" icon="plus" full onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Add payment · ₹{balance.toLocaleString('en-IN')}</Btn>
+                ) : (
+                  <Btn variant="ghost" icon="arrow" full onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund overpayment · ₹{Math.abs(balance).toLocaleString('en-IN')}</Btn>
+                )}
+              </div>
+            )}
+            {/* Secondary actions — compact icon row. Send-via-WhatsApp lives
+                here too rather than as full-width buttons; it kept stealing
+                attention from the primary payment action. */}
+            <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {balance === 0 && (
+                <Btn variant="ghost" icon="plus" size="sm" onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Payment</Btn>
+              )}
               <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund</Btn>
-              <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit note</Btn>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {/* Send booking confirmation summary via WhatsApp. Always
-                  available when there's a phone — covers both the post-create
-                  share and re-sending later if the guest loses the message. */}
+              <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit</Btn>
               <Btn
                 variant="wa"
                 icon="wa"
                 size="sm"
-                style={{ flex: 1, minWidth: 0 }}
                 disabled={!b.phone}
                 onClick={() => {
                   const url = bookingShareWaUrl(b, property, t('home') === 'होम' ? 'hi' : 'en');
                   if (url) window.open(url, '_blank', 'noopener');
                 }}
-              >
-                Send booking summary
-              </Btn>
+              >Share booking</Btn>
               {balance > 0 && (
                 <Btn
                   variant="ghost"
                   icon="wa"
                   size="sm"
-                  style={{ flex: 1, minWidth: 0 }}
                   disabled={!b.phone}
                   onClick={() => {
                     const digits = String(b.phone || '').replace(/\D/g, '');
@@ -676,7 +686,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
                   }}
                 >
-                  Send ₹{balance.toLocaleString('en-IN')} reminder
+                  Remind ₹{balance.toLocaleString('en-IN')}
                 </Btn>
               )}
             </div>
@@ -858,6 +868,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               (b.invoices || []).filter(inv => !inv.voided).forEach(inv => {
                 items.push({ icon: 'download', tone: T.teal, text: `Invoice ${inv.number} issued · ₹${(inv.amount || 0).toLocaleString('en-IN')}`, time: fmtIssued(inv.date) });
               });
+              if (b.status === 'tentative' && (b.releaseAt || b.releaseTs)) {
+                items.push({ icon: 'clock', tone: 'oklch(48% 0.14 75)', text: `On hold · auto-releases ${fmtRelease(b)}` });
+              }
+              if (b.vip) items.push({ icon: 'star', tone: T.primary, text: 'Marked VIP' });
+              if (b.formC) items.push({ icon: 'flag', tone: 'oklch(48% 0.14 75)', text: 'Foreign guest · Form C filing required' });
               if (b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: 'Checked in' });
               if (b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: 'Checked out · stay complete' });
               if (b.status === 'cancelled') items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? 'Auto-released (hold expired)' : 'Booking cancelled' });

@@ -77,8 +77,8 @@ const VSTR = {
     guestsTotal: 'Total guests',
     childAgeNote: (age) => `Children under ${age} stay free; ${age}+ count as adults.`,
     termsLabel: 'Terms:',
-    termsBody: (p, id) =>
-      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance. GST will be charged as applicable. For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
+    termsBody: (p, id, withTax) =>
+      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
     thanksLine: (name, city) => `Thank you for choosing ${esc(name)}.${city ? ' We look forward to hosting you in ' + esc(city) + '.' : ' We look forward to hosting you.'}`,
     printBtn: 'Save as PDF / Print',
     closeBtn: 'Close',
@@ -141,8 +141,8 @@ const VSTR = {
     guestsTotal: 'कुल मेहमान',
     childAgeNote: (age) => `${age} साल से कम उम्र के बच्चे मुफ्त; ${age}+ वयस्क के रूप में गिने जाते हैं।`,
     termsLabel: 'शर्तें:',
-    termsBody: (p, id) =>
-      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी। रद्द: आगमन से 48 घंटे पहले मुफ़्त; उसके बाद 50% शुल्क; नो-शो पर पूरा अग्रिम राशि ज़ब्त। GST लागू होने पर लिया जाएगा। किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
+    termsBody: (p, id, withTax) =>
+      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी। रद्द: आगमन से 48 घंटे पहले मुफ़्त; उसके बाद 50% शुल्क; नो-शो पर पूरा अग्रिम राशि ज़ब्त।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
     thanksLine: (name, city) => `${esc(name)} चुनने के लिए धन्यवाद।${city ? ' हम ' + esc(city) + ' में आपकी मेज़बानी का इंतज़ार कर रहे हैं।' : ' हम आपकी मेज़बानी का इंतज़ार कर रहे हैं।'}`,
     printBtn: 'PDF सहेजें / प्रिंट करें',
     closeBtn: 'बंद करें',
@@ -455,7 +455,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   </div>` : ''}
 
   <div class="terms">
-    <strong>${L.termsLabel}</strong> ${L.termsBody(p, b.id)}
+    <strong>${L.termsLabel}</strong> ${L.termsBody(p, b.id, withTax)}
     <br/><br/>
     <strong>${L.thanksLine(p.name, p.city)}</strong>
   </div>

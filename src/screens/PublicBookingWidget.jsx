@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
 import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
@@ -45,6 +45,25 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const [createdBooking, setCreatedBooking] = useState(null);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
+
+  // Native date input ref — used to programmatically open the picker on
+  // tap. The .atithi global CSS makes the input's own text transparent
+  // (so the custom overlay below renders the formatted label cleanly),
+  // so we MUST overlay a label or the cell looks empty after picking.
+  const checkInDateRef = useRef(null);
+  const openCheckInPicker = () => {
+    const el = checkInDateRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      try { el.showPicker(); } catch {}
+    }
+  };
+  const checkInLabel = (() => {
+    if (!data.checkIn) return '';
+    const d = new Date(data.checkIn + 'T00:00:00');
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  })();
 
   const checkOutIso = useMemo(() => {
     if (!data.checkIn) return '';
@@ -144,9 +163,28 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // Submit gate.
   const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length >= 7;
 
+  // Dynamic hold window: how many hours the booking stays tentative
+  // before auto-release. Tighter when the check-in is close so we don't
+  // tie up inventory the hotelier can still sell.
+  //   >48h to check-in →  hold 12h (gives the hotelier a comfortable
+  //                       window to verify + chase payment by WhatsApp)
+  //   ≤48h to check-in → hold  4h (every hour matters; release fast
+  //                       if the guest doesn't lock it in)
+  const computeHoldHours = () => {
+    if (!data.checkIn) return 12;
+    const checkInTime = (property?.profile?.checkIn || '14:00');
+    const checkInTs = new Date(data.checkIn + 'T' + checkInTime + ':00').getTime();
+    const hoursAway = (checkInTs - Date.now()) / (60 * 60 * 1000);
+    return hoursAway > 48 ? 12 : 4;
+  };
+
   const handleSubmit = () => {
     if (!guestValid || !roomValid) return;
     const startIdx = dateToIdx(data.checkIn);
+    const holdHours = computeHoldHours();
+    const releaseTs = Date.now() + holdHours * 60 * 60 * 1000;
+    const releaseDate = new Date(releaseTs);
+    const releaseAt = releaseDate.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
     const newBooking = {
       // Server (or local fallback) assigns the actual id.
       guest: data.name.trim(),
@@ -163,11 +201,14 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       channel: 'website',
       mealPlanId: 'ep',
       ratePlanId: data.ratePlanId,
-      // Hold for 24h so the hotelier has a window to confirm + chase
-      // payment without auto-cancelling on the customer.
-      releaseTs: Date.now() + 24 * 60 * 60 * 1000,
-      releaseAt: 'within 24h',
-      holdHours: 24,
+      // GST is not auto-applied for widget bookings — the hotelier
+      // decides at folio time whether this booking goes on the GST
+      // invoice register (some don't run their bookings through GST,
+      // and the customer-facing voucher must not claim taxes apply).
+      gstApplies: false,
+      releaseTs,
+      releaseAt,
+      holdHours,
     };
     const id = onSubmit(newBooking);
     const finalId = id || ('BK-' + Date.now().toString(36));
@@ -218,13 +259,49 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
             <SectionTitle>When are you staying?</SectionTitle>
             <Card>
               <Field label="Check-in date">
-                <input
-                  type="date"
-                  value={data.checkIn}
-                  min={ymd(new Date(ANCHOR))}
-                  onChange={(e) => set('checkIn', e.target.value)}
-                  style={inputStyle}
-                />
+                {/* Overlay-input pattern — see Diary.jsx / NewBooking.jsx.
+                    The real native date input is full-size with its text
+                    hidden by global CSS (.atithi rules in tokens.js).
+                    A custom label + icon overlays on top via
+                    pointer-events:none so taps pass through to the
+                    input, opening the native picker reliably on every
+                    browser. Without this overlay the cell looked empty
+                    after picking — that's the bug we're closing. */}
+                <div style={{
+                  position: 'relative',
+                  background: data.checkIn ? T.primaryLt : T.card,
+                  border: `1px solid ${data.checkIn ? T.primary : T.border}`,
+                  borderRadius: 8, height: 42, overflow: 'hidden',
+                }}>
+                  <input
+                    ref={checkInDateRef}
+                    type="date"
+                    value={data.checkIn}
+                    min={ymd(new Date(ANCHOR))}
+                    onChange={(e) => set('checkIn', e.target.value)}
+                    onClick={openCheckInPicker}
+                    aria-label="Check-in date"
+                    style={{
+                      width: '100%', height: '100%',
+                      border: 'none', outline: 'none', background: 'transparent',
+                      padding: '0 12px', cursor: 'pointer', font: 'inherit',
+                    }}
+                  />
+                  <div style={{
+                    position: 'absolute', inset: 0, padding: '0 12px',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    pointerEvents: 'none',
+                  }}>
+                    <Icon name="cal" size={16} color={data.checkIn ? T.primaryDk : T.ink3} />
+                    <span style={{
+                      flex: 1, fontSize: 14, fontWeight: 600,
+                      color: data.checkIn ? T.ink : T.ink3,
+                      minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {checkInLabel || 'Tap to choose date'}
+                    </span>
+                  </div>
+                </div>
                 {data.checkIn && (() => {
                   const h = holidayFor(data.checkIn);
                   return h && (
@@ -428,18 +505,24 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Total</span>
                 <span className="tnum" style={{ fontSize: 18, fontWeight: 800, color: T.primaryDk, letterSpacing: -0.4 }}>₹{total.toLocaleString('en-IN')}</span>
               </div>
-              <div style={{ fontSize: 10, color: T.ink3, fontStyle: 'italic', marginTop: 4 }}>
-                Taxes (CGST/SGST as applicable) will be added on your final bill at check-in.
-              </div>
+              {/* No tax / GST mention here — some hoteliers don't run
+                  their bookings through GST, and the guest-facing total
+                  must be what the guest actually pays. The hotelier
+                  decides at folio time whether to issue a tax invoice. */}
               {/* Stay calendar — same mini-calendar from step 1, repeated
                   here so the customer can visually confirm the nights
                   they're committing to before tapping Confirm. */}
               <MiniCalendar checkInIso={data.checkIn} nights={data.nights} />
             </Card>
 
-            <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>
-              <Icon name="info" size={11} /> Your booking will be held for 24h while we confirm via WhatsApp / phone. No payment needed right now.
-            </div>
+            {(() => {
+              const h = computeHoldHours();
+              return (
+                <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>
+                  <Icon name="info" size={11} /> Your booking will be held for {h}h while we confirm via WhatsApp / phone. No payment needed right now.
+                </div>
+              );
+            })()}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
               <SecondaryBtn onClick={() => setStep(2)}>← Back</SecondaryBtn>

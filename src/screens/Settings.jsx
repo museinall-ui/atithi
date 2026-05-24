@@ -701,231 +701,6 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         </Card>
         </AccordionGroup>
 
-        <AccordionGroup title="Meal plans + saved extras" open={openGroups.meals} onToggle={() => toggleGroup('meals')}>
-        <SectionHead title={t('mealPlansTitle')} style={{ marginTop: 0 }} />
-        <Card padding={12}>
-          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-            {t('mealPlansHint')}
-          </div>
-          {/* Default meal plan: the one the calendar rate is treated as
-              already including. Picking a different plan on a booking
-              adds (or subtracts) the per-guest-per-night delta. Set to
-              EP for hotels that quote room-only and sell breakfast on
-              top; set to MAP/AP for camps that quote all-inclusive. */}
-          <div style={{ padding: '10px 12px', background: T.primaryLt, border: `1px solid ${T.primary}`, borderRadius: 8, marginBottom: 12 }}>
-            <div style={{ fontSize: 10, color: T.primaryDk, fontWeight: 700, letterSpacing: 0.3, marginBottom: 6, textTransform: 'uppercase' }}>Default meal plan</div>
-            <div style={{ fontSize: 10.5, color: T.primaryDk, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
-              Your calendar rate is treated as already including this plan. Other plans add (or subtract) the per-guest-per-night difference.
-            </div>
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-              {mealPlans.filter(mp => mp.enabled).map(mp => {
-                const sel = defaultMealPlan === mp.id;
-                return (
-                  <button
-                    key={mp.id}
-                    onClick={() => setDefaultMealPlan(mp.id)}
-                    style={{
-                      padding: '6px 11px', borderRadius: 999, cursor: 'pointer',
-                      border: `1.5px solid ${sel ? T.primary : T.border}`,
-                      background: sel ? T.card : 'transparent',
-                      color: sel ? T.primaryDk : T.ink2,
-                      fontSize: 11, fontWeight: 700,
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                    }}
-                  >
-                    {sel && <Icon name="check" size={11} stroke={2.4} color={T.primary} />}
-                    <strong>{mp.code}</strong> · {mp.label || ''}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {mealPlans.map((mp, i) => {
-              const isEP = mp.id === 'ep';
-              const isStandard = ['ep', 'cp', 'map', 'ap'].includes(mp.id);
-              return (
-                <div key={mp.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: 10,
-                  background: mp.enabled ? T.bgSoft : T.card,
-                  border: `1px solid ${mp.enabled ? T.borderSoft : T.border}`,
-                  borderRadius: 8,
-                }}>
-                  {isStandard ? (
-                    <span style={{
-                      width: 42, fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
-                      color: mp.enabled ? T.primaryDk : T.ink3,
-                      flexShrink: 0,
-                    }}>{mp.code}</span>
-                  ) : (
-                    <input
-                      value={mp.code}
-                      onChange={e => {
-                        const code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, code } : p));
-                      }}
-                      maxLength={4}
-                      title="Short code (max 4 letters)"
-                      style={{
-                        width: 50, flexShrink: 0,
-                        fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
-                        color: mp.enabled ? T.primaryDk : T.ink3,
-                        textAlign: 'center',
-                        border: `1px solid ${T.border}`, borderRadius: 5,
-                        background: T.card, outline: 'none', padding: '3px 4px',
-                      }}
-                    />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <input
-                      value={mp.label}
-                      placeholder={t('mealPlanNamePlaceholder')}
-                      onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, label: e.target.value } : p))}
-                      style={{
-                        width: '100%', boxSizing: 'border-box',
-                        border: 'none', borderBottom: `1px dashed ${T.border}`,
-                        outline: 'none', background: 'transparent',
-                        fontSize: 12, fontWeight: 700, color: T.ink,
-                        padding: '2px 0',
-                      }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                      <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                      <input
-                        type="number"
-                        value={mp.price}
-                        onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
-                        className="tnum"
-                        style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
-                      />
-                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>{t('perGuestPerNight')}</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <Toggle
-                      on={mp.enabled}
-                      onChange={(v) => {
-                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
-                      }}
-                    />
-                    {!isStandard && (
-                      <button
-                        onClick={() => setMealPlans(arr => arr.filter((_, j) => j !== i))}
-                        title={t('removeMealPlan')}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: T.ink3, padding: 0, fontSize: 10,
-                        }}
-                      ><Icon name="x" size={11} /></button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <button
-            onClick={() => {
-              const id = 'mp_' + Date.now().toString(36);
-              setMealPlans(arr => [...arr, { id, code: 'NEW', label: '', price: 0, enabled: true }]);
-            }}
-            style={{
-              marginTop: 10, width: '100%',
-              padding: '9px 12px', borderRadius: 8,
-              border: `1.5px dashed ${T.border}`, background: T.card,
-              color: T.ink2, fontSize: 12, fontWeight: 700,
-              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}
-          >
-            <Icon name="plus" size={12} color={T.ink2} />
-            {t('addCustomMealPlan')}
-          </button>
-        </Card>
-
-        <SectionHead title="Saved extras" style={{ marginTop: 16 }} />
-        <Card padding={12}>
-          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-            Reusable add-ons that show up in the New Booking extras list (e.g. Bonfire dinner, Airport pickup, Late check-out). Rename and reprice freely; old bookings that used the previous values aren't changed.
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {extras.length === 0 && (
-              <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>
-                None yet. Add one below, or save extras from inside a New Booking — they'll appear here.
-              </div>
-            )}
-            {extras.map((e, i) => (
-              <div key={e.id} style={{
-                display: 'flex', flexDirection: 'column', gap: 8, padding: 10,
-                background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    value={e.name}
-                    placeholder="Extra name (e.g. Bonfire dinner)"
-                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, name: ev.target.value } : x))}
-                    style={{
-                      flex: 1, minWidth: 0, boxSizing: 'border-box',
-                      border: 'none', borderBottom: `1px dashed ${T.border}`, outline: 'none', background: 'transparent',
-                      fontSize: 12, fontWeight: 700, color: T.ink, padding: '2px 0',
-                    }}
-                  />
-                  <button
-                    onClick={() => setExtras(arr => arr.filter((_, j) => j !== i))}
-                    title="Remove this extra"
-                    style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                  >
-                    <Icon name="x" size={12} />
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                  <input
-                    type="number"
-                    value={e.price}
-                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: Math.max(0, +ev.target.value || 0) } : x))}
-                    className="tnum"
-                    style={{
-                      width: 90, border: `1px solid ${T.border}`, outline: 'none',
-                      borderRadius: 5, padding: '3px 6px',
-                      fontSize: 11, fontWeight: 700, background: T.card, color: T.ink,
-                    }}
-                  />
-                  <select
-                    value={e.unit || 'per stay'}
-                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, unit: ev.target.value } : x))}
-                    style={{
-                      flex: 1, fontSize: 11, fontWeight: 700, color: T.ink2, background: T.card,
-                      border: `1px solid ${T.border}`, borderRadius: 5, padding: '3px 6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="per stay">per stay</option>
-                    <option value="per night">per night</option>
-                    <option value="per guest">per guest</option>
-                    <option value="per guest per night">per guest / night</option>
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => {
-              const id = 'sx_' + Date.now().toString(36);
-              setExtras(arr => [...arr, { id, name: '', price: 0, unit: 'per stay' }]);
-            }}
-            style={{
-              marginTop: 10, width: '100%',
-              padding: '9px 12px', borderRadius: 8,
-              border: `1.5px dashed ${T.border}`, background: T.card,
-              color: T.ink2, fontSize: 12, fontWeight: 700,
-              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}
-          >
-            <Icon name="plus" size={12} color={T.ink2} />
-            Add saved extra
-          </button>
-        </Card>
-        </AccordionGroup>
-
         <AccordionGroup title="Pricing rules" open={openGroups.pricing} onToggle={() => toggleGroup('pricing')}>
         <SectionHead title="Weekend rules" style={{ marginTop: 0 }} />
         <Card padding={12}>
@@ -1290,6 +1065,231 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           >
             <Icon name="plus" size={12} color={T.ink2} />
             Add rate plan
+          </button>
+        </Card>
+        </AccordionGroup>
+
+        <AccordionGroup title="Meal plans + saved extras" open={openGroups.meals} onToggle={() => toggleGroup('meals')}>
+        <SectionHead title={t('mealPlansTitle')} style={{ marginTop: 0 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            {t('mealPlansHint')}
+          </div>
+          {/* Default meal plan: the one the calendar rate is treated as
+              already including. Picking a different plan on a booking
+              adds (or subtracts) the per-guest-per-night delta. Set to
+              EP for hotels that quote room-only and sell breakfast on
+              top; set to MAP/AP for camps that quote all-inclusive. */}
+          <div style={{ padding: '10px 12px', background: T.primaryLt, border: `1px solid ${T.primary}`, borderRadius: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: T.primaryDk, fontWeight: 700, letterSpacing: 0.3, marginBottom: 6, textTransform: 'uppercase' }}>Default meal plan</div>
+            <div style={{ fontSize: 10.5, color: T.primaryDk, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
+              Your calendar rate is treated as already including this plan. Other plans add (or subtract) the per-guest-per-night difference.
+            </div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {mealPlans.filter(mp => mp.enabled).map(mp => {
+                const sel = defaultMealPlan === mp.id;
+                return (
+                  <button
+                    key={mp.id}
+                    onClick={() => setDefaultMealPlan(mp.id)}
+                    style={{
+                      padding: '6px 11px', borderRadius: 999, cursor: 'pointer',
+                      border: `1.5px solid ${sel ? T.primary : T.border}`,
+                      background: sel ? T.card : 'transparent',
+                      color: sel ? T.primaryDk : T.ink2,
+                      fontSize: 11, fontWeight: 700,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    {sel && <Icon name="check" size={11} stroke={2.4} color={T.primary} />}
+                    <strong>{mp.code}</strong> · {mp.label || ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {mealPlans.map((mp, i) => {
+              const isEP = mp.id === 'ep';
+              const isStandard = ['ep', 'cp', 'map', 'ap'].includes(mp.id);
+              return (
+                <div key={mp.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: 10,
+                  background: mp.enabled ? T.bgSoft : T.card,
+                  border: `1px solid ${mp.enabled ? T.borderSoft : T.border}`,
+                  borderRadius: 8,
+                }}>
+                  {isStandard ? (
+                    <span style={{
+                      width: 42, fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                      color: mp.enabled ? T.primaryDk : T.ink3,
+                      flexShrink: 0,
+                    }}>{mp.code}</span>
+                  ) : (
+                    <input
+                      value={mp.code}
+                      onChange={e => {
+                        const code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, code } : p));
+                      }}
+                      maxLength={4}
+                      title="Short code (max 4 letters)"
+                      style={{
+                        width: 50, flexShrink: 0,
+                        fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                        color: mp.enabled ? T.primaryDk : T.ink3,
+                        textAlign: 'center',
+                        border: `1px solid ${T.border}`, borderRadius: 5,
+                        background: T.card, outline: 'none', padding: '3px 4px',
+                      }}
+                    />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <input
+                      value={mp.label}
+                      placeholder={t('mealPlanNamePlaceholder')}
+                      onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, label: e.target.value } : p))}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        border: 'none', borderBottom: `1px dashed ${T.border}`,
+                        outline: 'none', background: 'transparent',
+                        fontSize: 12, fontWeight: 700, color: T.ink,
+                        padding: '2px 0',
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                      <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                      <input
+                        type="number"
+                        value={mp.price}
+                        onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
+                        className="tnum"
+                        style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
+                      />
+                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 500 }}>{t('perGuestPerNight')}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <Toggle
+                      on={mp.enabled}
+                      onChange={(v) => {
+                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
+                      }}
+                    />
+                    {!isStandard && (
+                      <button
+                        onClick={() => setMealPlans(arr => arr.filter((_, j) => j !== i))}
+                        title={t('removeMealPlan')}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: T.ink3, padding: 0, fontSize: 10,
+                        }}
+                      ><Icon name="x" size={11} /></button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => {
+              const id = 'mp_' + Date.now().toString(36);
+              setMealPlans(arr => [...arr, { id, code: 'NEW', label: '', price: 0, enabled: true }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            {t('addCustomMealPlan')}
+          </button>
+        </Card>
+
+        <SectionHead title="Saved extras" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Reusable add-ons that show up in the New Booking extras list (e.g. Bonfire dinner, Airport pickup, Late check-out). Rename and reprice freely; old bookings that used the previous values aren't changed.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {extras.length === 0 && (
+              <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>
+                None yet. Add one below, or save extras from inside a New Booking — they'll appear here.
+              </div>
+            )}
+            {extras.map((e, i) => (
+              <div key={e.id} style={{
+                display: 'flex', flexDirection: 'column', gap: 8, padding: 10,
+                background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={e.name}
+                    placeholder="Extra name (e.g. Bonfire dinner)"
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, name: ev.target.value } : x))}
+                    style={{
+                      flex: 1, minWidth: 0, boxSizing: 'border-box',
+                      border: 'none', borderBottom: `1px dashed ${T.border}`, outline: 'none', background: 'transparent',
+                      fontSize: 12, fontWeight: 700, color: T.ink, padding: '2px 0',
+                    }}
+                  />
+                  <button
+                    onClick={() => setExtras(arr => arr.filter((_, j) => j !== i))}
+                    title="Remove this extra"
+                    style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                  <input
+                    type="number"
+                    value={e.price}
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: Math.max(0, +ev.target.value || 0) } : x))}
+                    className="tnum"
+                    style={{
+                      width: 90, border: `1px solid ${T.border}`, outline: 'none',
+                      borderRadius: 5, padding: '3px 6px',
+                      fontSize: 11, fontWeight: 700, background: T.card, color: T.ink,
+                    }}
+                  />
+                  <select
+                    value={e.unit || 'per stay'}
+                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, unit: ev.target.value } : x))}
+                    style={{
+                      flex: 1, fontSize: 11, fontWeight: 700, color: T.ink2, background: T.card,
+                      border: `1px solid ${T.border}`, borderRadius: 5, padding: '3px 6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="per stay">per stay</option>
+                    <option value="per night">per night</option>
+                    <option value="per guest">per guest</option>
+                    <option value="per guest per night">per guest / night</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              const id = 'sx_' + Date.now().toString(36);
+              setExtras(arr => [...arr, { id, name: '', price: 0, unit: 'per stay' }]);
+            }}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '9px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={T.ink2} />
+            Add saved extra
           </button>
         </Card>
         </AccordionGroup>

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -82,7 +82,7 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
   );
 }
 
-function StepDates({ data, set, t, childAgeBelow }) {
+function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
   const dateRef = useRef(null);
   // The native date picker needs to anchor to the input's rendered box, so
   // we keep the input full-size inside the bar with opacity:0 (same pattern
@@ -189,9 +189,12 @@ function StepDates({ data, set, t, childAgeBelow }) {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <MiniStep label={t('adults')} value={r.adults} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, adults: Math.max(1, v) } : x))} />
-                <MiniStep label={`${t('children')}${childAgeBelow ? ` <${childAgeBelow}y` : ''}`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
+                <MiniStep label={`${t('children')} ${childFreeAge}–${childHalfAge - 1}y`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
+                {(r.children > 0 || r.childrenFree > 0) && (
+                  <MiniStep label={`Free <${childFreeAge}y`} value={r.childrenFree || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFree: Math.max(0, v) } : x))} />
+                )}
               </div>
             </div>
           ))}
@@ -987,7 +990,15 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const defaultMealPlan = mealPlans.find(p => p.id === defaultMpId);
   const mealDeltaPrice = (selectedMealPlan?.price || 0) - (defaultMealPlan?.price || 0);
   const mealCost = selectedMealPlan ? mealDeltaPrice * totalGuests * data.nights : 0;
-  const subtotal = roomsSubtotal + extrasTotal + mealCost;
+  // Extra-adult / extra-child surcharge based on per-category rules. The
+  // booking object is shaped like a saved booking so extraGuestCostFor()
+  // can compute against it the same way the cloud-side / voucher does.
+  const extraGuestCost = extraGuestCostFor({
+    roomItems: data.roomItems,
+    nights: data.nights,
+    roomTypeId: data.roomTypeId,
+  }, property);
+  const subtotal = roomsSubtotal + extrasTotal + mealCost + extraGuestCost;
   // Blended GST rate across rooms — different categories sit in different
   // Indian GST slabs (≤₹1k exempt, ₹1k-7.5k = 12%, >₹7.5k = 18%).
   let blendedRate = 12;
@@ -1114,7 +1125,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
-        {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} />}
+        {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
         {step === 4 && (

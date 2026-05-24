@@ -196,6 +196,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [openCatAmenities, setOpenCatAmenities] = useState({});
   const [gstin, setGstin] = useState(property.gstin || '');
   const [accountant, setAccountant] = useState(property.accountant || { name: '', email: '', firm: '' });
+  // Base adult capacity included in every room rate (typical: 2). Extra
+  // adults above this count are charged at the per-category extraAdult
+  // rate. Stored on property root for easy access in booking math.
+  const [baseCapacityAdults, setBaseCapacityAdults] = useState(property.baseCapacityAdults ?? 2);
   // Per-FY invoice counter. We surface the current FY's counter as
   // "last invoice number issued" so a hotelier migrating from another
   // system can seed Atithi to continue from their existing sequence.
@@ -246,7 +250,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans,
+      mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -598,6 +602,62 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           Reset
                         </button>
                       )}
+                    </div>
+                  );
+                })()}
+                {/* Per-category extra-adult / extra-child rates. The owner
+                    chose a "per category, ₹ flat or % of base" model so
+                    different room types can have different surcharges
+                    (e.g. luxury tents charge more for an extra adult). */}
+                {(() => {
+                  const ea = c.extraAdult || { mode: 'flat', value: 0 };
+                  const ec = c.extraChild || { mode: 'flat', value: 0 };
+                  const updateRule = (key, patch) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, [key]: { ...(x[key] || { mode: 'flat', value: 0 }), ...patch } } : x));
+                  const modeBtn = (rule, mode, label) => (
+                    <button
+                      onClick={() => updateRule(rule, { mode })}
+                      style={{
+                        padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                        border: `1px solid ${(c[rule]?.mode || 'flat') === mode ? T.indigo : T.border}`,
+                        background: (c[rule]?.mode || 'flat') === mode ? T.indigoLt : T.card,
+                        color: (c[rule]?.mode || 'flat') === mode ? T.indigo : T.ink3,
+                        fontSize: 10, fontWeight: 700,
+                      }}
+                    >{label}</button>
+                  );
+                  const previewFor = (rule) => {
+                    const r = c[rule];
+                    if (!r || !r.value) return null;
+                    if (r.mode === 'pct') return `₹${Math.round((c.base || 0) * (+r.value) / 100).toLocaleString('en-IN')}`;
+                    return `₹${(+r.value).toLocaleString('en-IN')}`;
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, padding: '8px 10px', background: T.bgSoft, borderRadius: 7, border: `1px solid ${T.borderSoft}` }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>Extra-guest pricing</div>
+                      {[
+                        { rule: 'extraAdult', label: 'Extra adult', val: ea },
+                        { rule: 'extraChild', label: 'Extra child', val: ec },
+                      ].map(({ rule, label, val }) => (
+                        <div key={rule} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76 }}>{label}</span>
+                          <div style={{ display: 'inline-flex', gap: 3 }}>
+                            {modeBtn(rule, 'flat', '₹')}
+                            {modeBtn(rule, 'pct', '% of base')}
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            value={val.value || 0}
+                            onChange={(e) => updateRule(rule, { value: Math.max(0, +e.target.value || 0) })}
+                            className="tnum"
+                            style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }}
+                          />
+                          <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>per night</span>
+                          {previewFor(rule) && (
+                            <span style={{ marginLeft: 'auto', fontSize: 9, color: T.indigo, fontWeight: 700 }}>≈ {previewFor(rule)}/night</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   );
                 })()}
@@ -1430,20 +1490,38 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')}>
         <SectionHead title={t('houseRules')} style={{ marginTop: 0 }} />
         <Card padding={12}>
-          {/* Children age cap. Stored on the accountant jsonb to avoid a
-              schema migration for what's effectively a small metadata flag.
-              Used by New Booking to label the children stepper (e.g.
-              "Children · below 12 years"). */}
-          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${T.borderSoft}` }}>
+          {/* Capacity + child-age tiers that drive extra-guest pricing.
+              The category-level "Extra adult" + "Extra child" rates
+              (inside Rooms + amenities) reference these. */}
+          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${T.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Field
-              label="Children counted as below this age"
+              label="Adults included in the base rate"
               type="number"
-              value={accountant.childAgeBelow ?? 12}
-              onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-              placeholder="12"
-              hint="Used on the New Booking screen so the children stepper shows your age cap. Doesn't enforce pricing — that's a future feature."
+              value={baseCapacityAdults}
+              onChange={e => setBaseCapacityAdults(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              placeholder="2"
+              hint="Standard occupancy. Extra adults above this count are charged the per-category extra-adult rate."
               prefix={<Icon name="users" size={12} color={T.ink3} />}
             />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Field
+                label="Children FREE below age"
+                type="number"
+                value={accountant.childFreeBelowAge ?? 5}
+                onChange={e => setAccountant({ ...accountant, childFreeBelowAge: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                placeholder="5"
+              />
+              <Field
+                label="Half rate up to age"
+                type="number"
+                value={accountant.childAgeBelow ?? 12}
+                onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                placeholder="12"
+              />
+            </div>
+            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
+              Under {accountant.childFreeBelowAge ?? 5}: free. {accountant.childFreeBelowAge ?? 5}–{(accountant.childAgeBelow ?? 12) - 1}: half the extra-child rate. {accountant.childAgeBelow ?? 12}+: full extra-child rate.
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {rules.map((r, i) => (

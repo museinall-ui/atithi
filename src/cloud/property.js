@@ -58,6 +58,9 @@ function localToCloudProperty(local) {
     // Meal plan the calendar rate is treated as already including. Default
     // 'ep' keeps math equivalent to the older "always add on top" model.
     default_meal_plan_id: (local && local.defaultMealPlanId) || 'ep',
+    // Adults included in every room rate (typical: 2). Extra adults are
+    // charged the per-category extraAdult rate.
+    base_capacity_adults: (local && local.baseCapacityAdults) || 2,
     rate_plans: Array.isArray(local && local.ratePlans) ? local.ratePlans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
@@ -92,6 +95,9 @@ function cloudToLocalProperty(row, categories) {
       amenityIds: c.amenity_ids || [],
       // null = auto-pick from CBIC slab; explicit number = override
       gstRate: (c.gst_rate == null) ? null : c.gst_rate,
+      // Extra-adult / extra-child surcharge rules: { mode: 'flat'|'pct', value }
+      extraAdult: c.extra_adult || null,
+      extraChild: c.extra_child || null,
     })),
     rules: row.rules || [],
     amenityIds: row.amenity_ids || [],
@@ -110,6 +116,7 @@ function cloudToLocalProperty(row, categories) {
     channelMarkups: row.channel_markups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
     channelCommissions: row.channel_commissions || { direct: 0, mmt: 18, goibibo: 15, booking: 15, agoda: 18, airbnb: 3 },
     defaultMealPlanId: row.default_meal_plan_id || 'ep',
+    baseCapacityAdults: row.base_capacity_adults || 2,
     ratePlans: Array.isArray(row.rate_plans) && row.rate_plans.length ? row.rate_plans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
@@ -196,6 +203,8 @@ export async function bootstrapProperty(user, seedLocalProperty) {
         base_rate: c.base || 0,
         amenity_ids: c.amenityIds || [],
         gst_rate: (c.gstRate == null) ? null : c.gstRate,
+        extra_adult: c.extraAdult || null,
+        extra_child: c.extraChild || null,
         sort_order: i,
       })));
     if (cErr) throw cErr;
@@ -249,6 +258,8 @@ export async function saveCloudProperty(propertyId, localProperty) {
         base_rate: c.base || 0,
         amenity_ids: c.amenityIds || [],
         gst_rate: (c.gstRate == null) ? null : c.gstRate,
+        extra_adult: c.extraAdult || null,
+        extra_child: c.extraChild || null,
         sort_order: i,
       })), { onConflict: 'property_id,code' });
     if (uErr) throw uErr;

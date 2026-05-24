@@ -406,6 +406,69 @@ export function defaultMealPlanId(property) {
   return property?.defaultMealPlanId || 'ep';
 }
 
+// ─── Extra adult / extra child pricing ──────────────────────────────────
+// Two-tier model agreed with the owner:
+//   - property.baseCapacityAdults = how many adults are included in the
+//     room rate by default (typically 2).
+//   - property.childFreeBelowAge   = free below this age (e.g. < 5).
+//   - property.childHalfBelowAge   = half rate between Free and this age
+//     (e.g. 5–11). At and above this age, charged at the full extra-child
+//     rate (effectively "counted as an adult" for billing).
+//   - per category: extraAdult and extraChild each have { mode: 'flat'|'pct',
+//     value: number }. 'flat' = ₹ per guest per night. 'pct' = % of the
+//     category's base rate, applied per guest per night.
+//
+// Booking roomItems carry:
+//   - adults
+//   - children       (half-rate count by default for back-compat)
+//   - childrenFree   (optional; free, no charge)
+//   - childrenFull   (optional; full extra-child rate, no half discount)
+
+export function baseCapacityAdults(property) {
+  return Math.max(1, property?.baseCapacityAdults ?? 2);
+}
+
+function resolveExtraRate(rule, baseRate) {
+  if (!rule || typeof rule !== 'object') return 0;
+  const v = +rule.value || 0;
+  if (v <= 0) return 0;
+  if (rule.mode === 'pct') return Math.max(0, Math.round((baseRate || 0) * v / 100));
+  return Math.round(v);
+}
+
+export function extraGuestCostForItem(item, property, category, nights) {
+  if (!item || !category) return 0;
+  const cap = baseCapacityAdults(property);
+  const adults = +item.adults || 0;
+  const childrenHalf = +item.children || 0;
+  const childrenFree = +item.childrenFree || 0;
+  const childrenFull = +item.childrenFull || 0;
+  const baseRate = (item.rate != null ? item.rate : (category.base || 0)) || 0;
+  const adultPer = resolveExtraRate(category.extraAdult, baseRate);
+  const childPer = resolveExtraRate(category.extraChild, baseRate);
+  const extraAdults = Math.max(0, adults - cap);
+  const adultCost = extraAdults * adultPer * (nights || 1);
+  const halfCost = Math.round(childrenHalf * childPer * 0.5 * (nights || 1));
+  const fullCost = childrenFull * childPer * (nights || 1);
+  void childrenFree;
+  return adultCost + halfCost + fullCost;
+}
+
+export function extraGuestCostFor(booking, property) {
+  if (!booking) return 0;
+  const cats = effectiveRoomTypes(property);
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId, adults: 2, children: 0, rate: null }];
+  const nights = booking.nights || 1;
+  let total = 0;
+  for (const it of items) {
+    const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+    if (cat) total += extraGuestCostForItem(it, property, cat, nights);
+  }
+  return total;
+}
+
 // Cost of the meal plan add-on for this booking. Returns the delta from
 // the property's default plan × guests × nights. Returns 0 when:
 //   - booking has no mealPlanId

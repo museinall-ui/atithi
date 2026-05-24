@@ -1,4 +1,4 @@
-import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById } from '../data.js';
+import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 const FALLBACK_PROPERTY = {
@@ -204,7 +204,10 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   const extrasSum = isInvoice ? 0 : extrasList.reduce((s, e) => s + e.total, 0);
   const mealPlan = mealPlanById(prop, b.mealPlanId);
   const mealCost = isInvoice ? 0 : mealCostFor(b, prop);
-  const tariffLine = preTax - extrasSum - mealCost;
+  // Extra-adult / extra-child surcharge — surfaced as a separate folio
+  // row so the guest sees why their bill exceeded the published rate.
+  const extraGuests = isInvoice ? 0 : extraGuestCostFor(b, prop);
+  const tariffLine = preTax - extrasSum - mealCost - extraGuests;
   const docNumber = isInvoice ? invoice.number : b.id;
 
   const html = `<!DOCTYPE html>
@@ -395,6 +398,8 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
         <td class="r">—</td>
         <td class="r">${fmtINR(tariffLine)}</td>
       </tr>
+      ${extraGuests > 0 ? `
+      <tr><td>${lang === 'hi' ? 'अतिरिक्त मेहमान शुल्क' : 'Extra-guest charges'}</td><td class="r">—</td><td class="r">—</td><td class="r">${fmtINR(extraGuests)}</td></tr>` : ''}
       ${(() => {
         if (!mealPlan) return '';
         const defaultId = prop?.defaultMealPlanId || 'ep';

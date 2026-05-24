@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById } from '../data.js';
+import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
 import { bookingShareWaUrl } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -558,8 +558,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const mealCost = mealCostFor(b, property);
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
+              const extraGuests = extraGuestCostFor(b, property);
               const preTax = withTax ? b.total - tx.gst : b.total;
-              const tariff = preTax - mealCost;
+              const tariff = preTax - mealCost - extraGuests;
               // Rate plan row — surfaced when the booking used something
               // other than the default Standard plan, so the hotelier can
               // see the cancellation terms at a glance.
@@ -590,6 +591,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       label="Rate plan"
                       value={`${rp.label} · ${rp.cancellation === 'non-refundable' ? 'No refunds' : `free cancel ${rp.refundHours}h`}`}
                     />
+                  )}
+                  {extraGuests > 0 && (
+                    <Row label="Extra-guest charges" value={`₹${extraGuests.toLocaleString('en-IN')}`} />
                   )}
                   {mealRow}
                 </>

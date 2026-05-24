@@ -349,6 +349,12 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     let totalA = 0, totalC = 0;
     const cats = Array.isArray(prop?.categories) ? prop.categories : [];
     const findCat = (id) => cats.find(c => c.id === id);
+    // Booked-room photo — use the first roomItem's category photo as
+    // the hero. Only one image even with multi-category bookings to
+    // keep the voucher tight; the per-row text still calls out each
+    // type by name.
+    const heroCat = findCat((items[0] && items[0].roomTypeId) || b.roomTypeId);
+    const heroPhoto = heroCat && heroCat.photoDataUrl ? heroCat.photoDataUrl : null;
     const rows = items.map((it, i) => {
       const cat = findCat(it.roomTypeId || b.roomTypeId);
       const name = (cat && cat.name) || (rt && rt.name) || '—';
@@ -367,6 +373,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     const childAge = (prop?.accountant?.childAgeBelow != null) ? prop.accountant.childAgeBelow : 12;
     return `<div class="rooms-card">
       <div class="rooms-card-head">${L.roomsHeader}</div>
+      ${heroPhoto ? `<img src="${esc(heroPhoto)}" alt="${esc((heroCat && heroCat.name) || 'Room')}" style="width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; display: block;" />` : ''}
       <table class="rooms-table">
         <tbody>${rows}</tbody>
         <tfoot>

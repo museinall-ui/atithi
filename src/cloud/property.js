@@ -38,6 +38,8 @@ function localToCloudProperty(local) {
     payment_qr_data_url: p.paymentQrDataUrl || '',
     payment_qr_label: p.paymentQrLabel || '',
     logo_data_url: p.logoDataUrl || '',
+    photo_gallery: Array.isArray(p.photoGallery) ? p.photoGallery : [],
+    tagline: p.tagline || '',
     gstin: (local && local.gstin) || '',
     accountant: (local && local.accountant) || { name: '', email: '', firm: '' },
     theme: (local && local.theme) || { hue: 38 },
@@ -86,6 +88,8 @@ function cloudToLocalProperty(row, categories) {
       paymentQrDataUrl: row.payment_qr_data_url || '',
       paymentQrLabel: row.payment_qr_label || '',
       logoDataUrl: row.logo_data_url || '',
+      tagline: row.tagline || '',
+      photoGallery: Array.isArray(row.photo_gallery) ? row.photo_gallery : [],
     },
     categories: (categories || []).map(c => ({
       id: c.code,
@@ -98,6 +102,9 @@ function cloudToLocalProperty(row, categories) {
       // Extra-adult / extra-child surcharge rules: { mode: 'flat'|'pct', value }
       extraAdult: c.extra_adult || null,
       extraChild: c.extra_child || null,
+      // Hero image (base64 data URL) shown on the widget room tile +
+      // booking voucher. Null when the hotelier hasn't uploaded one.
+      photoDataUrl: c.photo_data_url || null,
     })),
     rules: row.rules || [],
     amenityIds: row.amenity_ids || [],
@@ -205,6 +212,7 @@ export async function bootstrapProperty(user, seedLocalProperty) {
         gst_rate: (c.gstRate == null) ? null : c.gstRate,
         extra_adult: c.extraAdult || null,
         extra_child: c.extraChild || null,
+        photo_data_url: c.photoDataUrl || null,
         sort_order: i,
       })));
     if (cErr) throw cErr;
@@ -260,6 +268,7 @@ export async function saveCloudProperty(propertyId, localProperty) {
         gst_rate: (c.gstRate == null) ? null : c.gstRate,
         extra_adult: c.extraAdult || null,
         extra_child: c.extraChild || null,
+        photo_data_url: c.photoDataUrl || null,
         sort_order: i,
       })), { onConflict: 'property_id,code' });
     if (uErr) throw uErr;

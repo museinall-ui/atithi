@@ -422,6 +422,69 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             </div>
           )}
         </Card>
+
+        <SectionHead title="Property photo gallery" style={{ marginTop: 16 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 10 }}>
+            Up to 5 photos of your property — grounds, common areas, sunset views. Shown on the widget's first screen so guests get a feel before picking a room. JPG / PNG, up to 2 MB each.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(profile.photoGallery || []).map((url, i) => (
+              <div key={i} style={{
+                position: 'relative', width: 88, height: 88, borderRadius: 8,
+                background: T.card, border: `1px solid ${T.borderSoft}`,
+                overflow: 'hidden', flexShrink: 0,
+              }}>
+                <img src={url} alt="Property" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button
+                  onClick={() => setProfile({ ...profile, photoGallery: (profile.photoGallery || []).filter((_, j) => j !== i) })}
+                  title="Remove this photo"
+                  style={{
+                    position: 'absolute', top: 4, right: 4,
+                    width: 22, height: 22, borderRadius: '50%',
+                    border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff',
+                    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >×</button>
+              </div>
+            ))}
+            {(profile.photoGallery || []).length < 5 && (
+              <label style={{
+                width: 88, height: 88, borderRadius: 8,
+                border: `1.5px dashed ${T.border}`, background: T.bgSoft,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: T.ink3,
+                flexDirection: 'column', gap: 4, fontSize: 10, fontWeight: 700,
+              }}>
+                <Icon name="plus" size={18} color={T.ink3} />
+                Add photo
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    // 2 MB cap — gives room for a high-quality JPEG
+                    // (~4000×3000 at quality 0.85) while keeping the
+                    // property row + localStorage within sane bounds.
+                    if (file.size > 2 * 1024 * 1024) {
+                      alert('Photo is too large. Please use an image under 2 MB. Tip: compress at imagecompressor.com or use a phone photo.');
+                      return;
+                    }
+                    const r = new FileReader();
+                    r.onload = () => {
+                      const next = [...(profile.photoGallery || []), String(r.result || '')];
+                      setProfile({ ...profile, photoGallery: next });
+                    };
+                    r.readAsDataURL(file);
+                  }}
+                />
+              </label>
+            )}
+          </div>
+        </Card>
         </AccordionGroup>
 
         <AccordionGroup title="Basics" open={openGroups.basics} onToggle={() => toggleGroup('basics')}>
@@ -685,6 +748,65 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     </div>
                   );
                 })()}
+                {/* Room hero image — single high-quality photo per
+                    category shown on the public widget room tile and
+                    on the booking voucher. 2 MB cap to leave headroom
+                    for a quality JPEG without blowing past localStorage
+                    when DEMO_MODE is on. */}
+                <div style={{ marginTop: 8, padding: '8px 10px', background: T.bgSoft, borderRadius: 7, border: `1px solid ${T.borderSoft}` }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 6 }}>Room photo</div>
+                  {c.photoDataUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <img src={c.photoDataUrl} alt={c.name} style={{ width: 90, height: 64, borderRadius: 6, objectFit: 'cover', background: T.card, border: `1px solid ${T.borderSoft}`, flexShrink: 0 }} />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                          <Icon name="edit" size={11} stroke={2.2} /> Replace
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files && e.target.files[0];
+                              if (!file) return;
+                              if (file.size > 2 * 1024 * 1024) {
+                                alert('Photo is too large. Please use an image under 2 MB.');
+                                return;
+                              }
+                              const r = new FileReader();
+                              r.onload = () => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: String(r.result || '') } : x));
+                              r.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: null } : x))}
+                          style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                        >Remove</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 12px', border: `1.5px dashed ${T.border}`, borderRadius: 7, background: T.card, color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      <Icon name="plus" size={12} color={T.primary} stroke={2.2} />
+                      Upload room photo · up to 2 MB
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files && e.target.files[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            alert('Photo is too large. Please use an image under 2 MB.');
+                            return;
+                          }
+                          const r = new FileReader();
+                          r.onload = () => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: String(r.result || '') } : x));
+                          r.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
                 <button
                   onClick={() => setOpenCatAmenities(s => ({ ...s, [c.id]: !s[c.id] }))}
                   style={{ marginTop: 8, background: 'none', border: 'none', color: T.primary, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0 }}

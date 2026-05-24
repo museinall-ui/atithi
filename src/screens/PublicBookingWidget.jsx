@@ -369,6 +369,32 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
         {/* ---------- STEP 1: dates + guests ---------- */}
         {step === 1 && (
           <>
+            {/* Property photo gallery — first thing the guest sees,
+                anchors the "is this place worth my money" decision.
+                Horizontal scroller; each photo is a fixed-height tile
+                that maintains aspect ratio. Hidden when no photos
+                uploaded so the layout doesn't show an empty band. */}
+            {Array.isArray(property?.profile?.photoGallery) && property.profile.photoGallery.length > 0 && (
+              <div style={{
+                display: 'flex', gap: 8, overflowX: 'auto',
+                marginBottom: 16, paddingBottom: 4,
+                scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+              }}>
+                {property.profile.photoGallery.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt={`${propName} ${i + 1}`}
+                    style={{
+                      height: 160, width: 'auto', borderRadius: 10,
+                      objectFit: 'cover', flexShrink: 0,
+                      border: `1px solid ${T.borderSoft}`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+
             <SectionTitle>When are you staying?</SectionTitle>
             <Card>
               <Field label="Check-in date">
@@ -500,14 +526,31 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     disabled={soldOut}
                     style={{
                       textAlign: 'left',
-                      padding: 14, borderRadius: 12,
+                      padding: rt.photoDataUrl ? 0 : 14,
+                      borderRadius: 12,
                       background: sel ? T.primaryLt : T.card,
                       border: `2px solid ${sel ? T.primary : T.borderSoft}`,
                       cursor: soldOut ? 'not-allowed' : 'pointer',
                       opacity: soldOut ? 0.55 : 1,
-                      display: 'flex', flexDirection: 'column', gap: 10,
+                      display: 'flex', flexDirection: 'column', gap: rt.photoDataUrl ? 0 : 10,
+                      overflow: 'hidden',
                     }}
                   >
+                    {/* Hero photo — the buy decision often happens here
+                        before the guest reads anything else. Full-width
+                        on top of the tile, fixed 180px height so all
+                        tiles stay the same height. */}
+                    {rt.photoDataUrl && (
+                      <img
+                        src={rt.photoDataUrl}
+                        alt={rt.name}
+                        style={{
+                          width: '100%', height: 180, objectFit: 'cover',
+                          display: 'block', flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: rt.photoDataUrl ? 14 : 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{rt.name}</div>
@@ -568,6 +611,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                         ))}
                       </div>
                     )}
+                    </div>
                   </button>
                 );
               })}

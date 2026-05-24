@@ -873,9 +873,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               }
               if (b.vip) items.push({ icon: 'star', tone: T.primary, text: 'Marked VIP' });
               if (b.formC) items.push({ icon: 'flag', tone: 'oklch(48% 0.14 75)', text: 'Foreign guest · Form C filing required' });
-              if (b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: 'Checked in' });
-              if (b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: 'Checked out · stay complete' });
-              if (b.status === 'cancelled') items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? 'Auto-released (hold expired)' : 'Booking cancelled' });
+              // Replay the structured event log (hold extensions, status
+              // transitions, moves). The boolean status branches below
+              // still cover the final-state case so freshly-imported
+              // bookings without an events[] still render correctly.
+              (b.events || []).forEach(ev => {
+                const iconMap = { hold: 'clock', status: 'sync', move: 'arrow' };
+                const toneMap = { hold: 'oklch(48% 0.14 75)', status: T.indigo, move: T.teal };
+                items.push({
+                  icon: iconMap[ev.kind] || 'info',
+                  tone: toneMap[ev.kind] || T.ink3,
+                  text: ev.text,
+                  time: ev.time ? new Date(ev.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : undefined,
+                });
+              });
+              if (!b.events && b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: 'Checked in' });
+              if (!b.events && b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: 'Checked out · stay complete' });
+              if (b.status === 'cancelled' && !(b.events || []).some(e => /cancelled/i.test(e.text))) items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? 'Auto-released (hold expired)' : 'Booking cancelled' });
               return items.length === 0
                 ? (
                   <div style={{ padding: '14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>

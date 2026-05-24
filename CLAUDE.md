@@ -456,6 +456,23 @@ Atithi keeps clean books; the CA decides what gets filed with GSTN. We do NOT ma
 - **Guest row click → open their most-recent booking.**
 - **Voucher checkIn/checkOut** uses shared ANCHOR; `BookingDetail`'s "X May" string-template bug fixed.
 
+### May 2026 — UX + pricing pass
+A multi-session round of polish + new features shipped together:
+
+- **Property Profile sheet** restructured into 9 accordion groups; only Branding + Basics open by default.
+- **Rates calendar** — bed-icon room-count badge replaces the % occupancy heatmap; legend rewritten into 3 grouped columns; "From → To" range picker replaces the single jump-to-date; inventory stepper accepts direct text input; touch swipe flips months; month label `May → June 2026` above the grid; "Select all Mondays" etc. now operate across a 180-day forward window; undo snackbar after any bulk apply; Copy-from honours an explicit date range / current selection / 90-day default.
+- **Reports** — new "Take-home · after tax + OTA" card with billed → GST → OTA commissions → net breakdown. Drives a new `channelCommissions` property field (defaults: 18% MMT, 15% Booking/Goibibo, 18% Agoda, 3% Airbnb, 0% direct/website).
+- **Meal plans** — property-wide *default meal plan* setting. Calendar rate treated as already including the default plan; switching to another plan adds/subtracts the per-guest-per-night delta. New `property.defaultMealPlanId` (default `'ep'` for back-compat). Voucher carries a prominent meal-plan chip.
+- **Extra-adult / extra-child pricing** — per-category `extraAdult` and `extraChild` rules with `{ mode: 'flat' | 'pct', value }`. Property-level `baseCapacityAdults` (default 2). Two-tier children: free below A (`accountant.childFreeBelowAge`, default 5), half between A and B (`accountant.childAgeBelow`, default 12), full above B. Surfaces as a folio line + voucher row.
+- **Diary** — fixed 180-day forward window (horizon picker dropped); single-night pills now reserve room for initials at default zoom; weekend column tint bumped from oklch(98% 0.012 65) → oklch(95% 0.030 65) for clear contrast.
+- **Dashboard** — Arriving / In-house / Departing tiles tappable; bottom sheet lists every booking in the group with guest initials, one-tap WhatsApp, and tap-to-open BookingDetail. Setup nudge gates the "CA email" task to the Invoicing tier only.
+- **Voucher** — explicit "Rooms reserved" card between the stay row and the folio, with per-room adults/children + total-guests footer + child-age note. New per-PDF EN/HI language picker on BookingDetail and BookingConfirmed.
+- **Public booking widget** — room tiles surface per-category amenity chips (Wi-Fi / AC / etc) to the guest. Closed units strictly subtracted from availability; whole-type close-out zeros the type. NewBooking surfaces warning banners (close-out / overbooking) but doesn't block the hotelier.
+- **First-run onboarding wizard** — 3-step modal (property basics → first room category → payment QR) that fires when property is empty. Cloud bootstrap seeds an empty skeleton for fresh hoteliers so the wizard triggers.
+- **Demo opt-in** — `?demo=1` URL + "Try the demo" button on SignIn flip the per-browser `atithi.demo.v1` flag. Slim DEMO banner at the top with EXIT button surfaces when session-demo is active (silent today because hardcoded covers everyone).
+- **BookingDetail balance buttons** restructured — big primary "Add payment · ₹X" CTA + compact icon row for Refund / Credit / Share booking / Remind ₹X.
+- **Activity feed** reads a new `booking.events[]` array — hold extensions, status transitions, moves all push structured entries with timestamps.
+
 ### Phase 1 audit-fix pass
 A late audit found a cluster of "today = May 5, 2026" hardcodes that survived the anchor migration:
 - Dashboard `todayKey()` was a static `'2026-05-05'`, so cash-closes never persisted under the actual date.
@@ -500,10 +517,22 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 - **Email-to-CA "send"** — opens `mailto:` and a printable register tab. No SMTP yet (Phase 3 — Resend).
 - **GSTIN auto-validation** — the header chip shows the entered GSTIN as-is (or a "GSTIN not set" warning). A real check would call `https://services.gst.gov.in/services/searchtp` before showing a "Verified" chip.
 
-### High-priority UX work queued (next session)
-- **First-run onboarding wizard** — new hotelier signs up → 3-step intro (property name + phone + city → 1+ room category → upload payment QR), then dropped into Dashboard. Skip if the relevant fields are already filled.
-- **Per-room close-out enforcement** — Rates F3 sets `closedUnits` on the override but Diary cells are still clickable to book those units, and New Booking's auto-unit picker can land bookings on closed units. Wire Diary + NewBooking to respect closedUnits.
-- **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion ship currently has them swapped (Meals 5, Pricing 6). Trivial source-block swap, deferred to keep the accordion commit small.
+### Phase-1 close-out — owner-visible, queued before going live
+- **DEMO_MODE flip** — `src/App.jsx` line ~42. `HARDCODED_DEMO_MODE = true` currently; flip to `false` to re-enable Supabase magic-link sign-in. SignIn screen + per-browser demo opt-in already live, so flip is a one-line change. Once flipped:
+  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, and `20260525_extra_guest_pricing.sql` into the Supabase SQL editor (idempotent).
+  - Write a Supabase anon-RLS policy allowing INSERT into `bookings` where `status = 'tentative' AND channel = 'website'` for the public widget. Rate-limit via Edge Function.
+- **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion currently has them swapped. Trivial source-block swap.
+
+### Mid-priority queued
+- Multi-month / date-range Reports (currently current-month only).
+- PWA wrapper (install-to-home-screen). Listed in Phase 1 roadmap as TBD.
+- Channel manager — current placeholder Channels screen needs the real partnership wired (Phase 5).
+- WhatsApp Cloud API + Resend email (Phase 3 — see NOT_WIRED.md).
+- Razorpay BYOK payment links (Phase 2 — see NOT_WIRED.md).
+- Per-night different room type within a single booking (deferred — data shape change).
+- Day close-out expansion: multiple payment accounts (owner UPI / manager UPI / cash / card / bank). Owner-flagged.
+- Daily expense tracker. Owner-flagged.
+- Team profiles with RBAC. Owner-flagged. Memberships table already exists.
 
 ### Polish opportunities (frontend, no backend dependency)
 - Undo for cancellations / auto-releases.

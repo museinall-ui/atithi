@@ -402,7 +402,22 @@ export default function App() {
         let result = await loadCurrentProperty(session.user.id);
         const isFirstTime = !result;
         if (isFirstTime) {
-          result = await bootstrapProperty(session.user, property);
+          // For a fresh hotelier who has never dismissed the onboarding
+          // wizard, seed the cloud row with an empty skeleton instead of
+          // the demo data so the wizard fires on first launch. Existing
+          // users who already onboarded (onboarded flag set) keep their
+          // real property data as the bootstrap seed.
+          const alreadyOnboarded = !!loadLS(LS_KEYS.onboarded, false);
+          const seed = alreadyOnboarded ? property : {
+            profile: { name: '', phone: '', city: '', checkIn: '14:00', checkOut: '11:00' },
+            categories: [],
+            rules: [],
+            amenityIds: [],
+            customAmenities: [],
+            accountant: { name: '', email: '', firm: '' },
+            theme: { hue: 38 },
+          };
+          result = await bootstrapProperty(session.user, seed);
         }
         if (cancelled || !result) return;
 
@@ -636,6 +651,19 @@ export default function App() {
     }
   };
 
+  // Lightweight event-log helper. Each booking carries an optional
+  // events[] (kind, text, time iso) that the BookingDetail activity feed
+  // surfaces. Avoids the audit_log RPC for now — these read/write through
+  // the same booking row so cloud sync rides along once the events jsonb
+  // column lands on bookings.
+  const pushBookingEvent = (bookingId, kind, text) => {
+    const time = new Date().toISOString();
+    const event = { kind, text, time };
+    setBookings(arr => arr.map(b => b.id === bookingId
+      ? { ...b, events: [...(Array.isArray(b.events) ? b.events : []), event] }
+      : b));
+  };
+
   const setStatus = (bookingId, status) => {
     const clearRelease = status === 'confirmed' || status === 'cancelled' || status === 'checkedin';
     setBookings(arr => arr.map(b => {
@@ -644,6 +672,14 @@ export default function App() {
       if (clearRelease) {
         delete next.releaseTs; delete next.releaseAt;
       }
+      const eventText = status === 'confirmed' ? 'Booking confirmed'
+        : status === 'checkedin' ? 'Checked in'
+        : status === 'checkout' ? 'Checked out'
+        : status === 'cancelled' ? 'Booking cancelled'
+        : status === 'tentative' ? 'Reverted to tentative hold'
+        : `Status set to ${status}`;
+      const evt = { kind: 'status', text: eventText, time: new Date().toISOString() };
+      next.events = [...(Array.isArray(b.events) ? b.events : []), evt];
       return next;
     }));
 
@@ -672,7 +708,8 @@ export default function App() {
 
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId || b.status !== 'tentative') return b;
-      return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false };
+      const evt = { kind: 'hold', text: `Hold extended by ${hours}h · new release ${releaseAt}`, time: new Date().toISOString() };
+      return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false, events: [...(Array.isArray(b.events) ? b.events : []), evt] };
     }));
 
     if (cloudReady && propertyId) {
@@ -681,7 +718,11 @@ export default function App() {
   };
 
   const moveBooking = (bookingId, patch) => {
-    setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, ...patch } : b));
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const evt = { kind: 'move', text: 'Booking moved (date or room)', time: new Date().toISOString() };
+      return { ...b, ...patch, events: [...(Array.isArray(b.events) ? b.events : []), evt] };
+    }));
     if (cloudReady && propertyId) {
       syncFire('Move booking', updateBookingCloud(bookingId, patch));
     }

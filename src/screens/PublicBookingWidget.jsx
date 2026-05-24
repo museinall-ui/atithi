@@ -34,6 +34,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const [data, setData] = useState({
     checkIn: '',
     nights: 1,
+    // Total rooms the guest wants — drives the multi-room booking
+    // path. Defaults to 1; if the guest bumps it up, the same room
+    // category is booked N times and the guest count below is
+    // distributed evenly across rooms.
+    rooms: 1,
     adults: 2,
     children: 0,
     roomTypeId: null,
@@ -162,7 +167,22 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
 
   const selectedRT = ROOM_TYPES.find(r => r.id === data.roomTypeId);
   const perNight = data.roomTypeId ? computePerNightRate(data.roomTypeId) : null;
-  const roomCost = perNight ? perNight * (data.nights || 1) : 0;
+  // Multi-room: rate × rooms × nights. Each room is the same category
+  // (simpler UX than mixed-type which adds a per-room picker; a guest
+  // wanting mixed types can just make two bookings).
+  const rooms = Math.max(1, data.rooms || 1);
+  const roomCost = perNight ? perNight * (data.nights || 1) * rooms : 0;
+
+  // Distribute guests evenly across N rooms. Remainder goes to the
+  // earlier rooms (so 7 adults across 3 rooms = [3, 2, 2]). Used to
+  // build the booking's roomItems[] on submit + the guests label.
+  const distributeAcross = (count, n) => {
+    const base = Math.floor(count / n);
+    const rem = count - base * n;
+    return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0));
+  };
+  const adultsPerRoom = distributeAcross(data.adults || 0, rooms);
+  const childrenPerRoom = distributeAcross(data.children || 0, rooms);
 
   // Meal plan delta vs the property's default plan. Default plan = the
   // one the calendar rate is treated as already including. Switching
@@ -203,9 +223,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const guestsStr = `${data.adults}A${data.children > 0 ? ` ${data.children}C` : ''}`;
 
   // Step 1 → 2 gate.
-  const datesValid = !!data.checkIn && (data.nights || 0) > 0 && (data.adults || 0) > 0;
-  // Step 2 → 3 gate.
-  const roomValid = !!data.roomTypeId && availUnitsFor(data.roomTypeId) > 0;
+  const datesValid = !!data.checkIn && (data.nights || 0) > 0 && (data.adults || 0) > 0 && (data.rooms || 0) > 0;
+  // Step 2 → 3 gate — must have enough units of the picked type to
+  // cover the requested room count for every night.
+  const roomValid = !!data.roomTypeId && availUnitsFor(data.roomTypeId) >= rooms;
   // Submit gate.
   const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length >= 7;
 
@@ -239,7 +260,16 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       country: 'IN',
       startIdx, nights: data.nights || 1,
       roomTypeId: data.roomTypeId,
-      roomItems: [{ roomTypeId: data.roomTypeId, adults: data.adults, children: data.children, rate: perNight }],
+      // One roomItems entry per requested room with the per-room
+      // adult/child split. Hotelier-side multi-room rendering uses
+      // exactly this shape, so the Diary pills + voucher rooms-card
+      // light up correctly without any extra translation.
+      roomItems: Array.from({ length: rooms }, (_, i) => ({
+        roomTypeId: data.roomTypeId,
+        adults: adultsPerRoom[i] || 0,
+        children: childrenPerRoom[i] || 0,
+        rate: perNight,
+      })),
       total, paid: 0,
       guests: guestsStr,
       notes: data.notes.trim() || `Booked via website widget`,
@@ -390,12 +420,20 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
 
             <SectionTitle style={{ marginTop: 18 }}>How many guests?</SectionTitle>
             <Card>
-              <Field label="Adults">
-                <Stepper value={data.adults} onChange={(v) => set('adults', Math.max(1, Math.min(12, v)))} />
+              <Field label="Rooms">
+                <Stepper value={data.rooms} onChange={(v) => set('rooms', Math.max(1, Math.min(5, v)))} />
               </Field>
-              <Field label={`Children${(property?.accountant?.childAgeBelow ?? 12) ? ` (under ${property?.accountant?.childAgeBelow ?? 12}y)` : ''}`}>
-                <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(8, v)))} />
+              <Field label="Adults (total)">
+                <Stepper value={data.adults} onChange={(v) => set('adults', Math.max(1, Math.min(20, v)))} />
               </Field>
+              <Field label={`Children${(property?.accountant?.childAgeBelow ?? 12) ? ` (under ${property?.accountant?.childAgeBelow ?? 12}y, total)` : ' (total)'}`}>
+                <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
+              </Field>
+              {data.rooms > 1 && (
+                <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
+                  Guests will be split across {data.rooms} rooms: {adultsPerRoom.map((a, i) => `${a}A${childrenPerRoom[i] > 0 ? ` ${childrenPerRoom[i]}C` : ''}`).join(' · ')}
+                </div>
+              )}
             </Card>
 
             <PrimaryBtn disabled={!datesValid} onClick={() => setStep(2)}>
@@ -407,14 +445,17 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
         {/* ---------- STEP 2: room picker ---------- */}
         {step === 2 && (
           <>
-            <SectionTitle>Pick a room</SectionTitle>
+            <SectionTitle>Pick a room{rooms > 1 ? ` (×${rooms})` : ''}</SectionTitle>
             <div style={{ fontSize: 12, color: T.ink3, marginBottom: 12, lineHeight: 1.5 }}>
-              {data.nights} night{data.nights > 1 ? 's' : ''} · {guestsStr} · {new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} → {new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+              {data.nights} night{data.nights > 1 ? 's' : ''} · {guestsStr} · {rooms} room{rooms > 1 ? 's' : ''} · {new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} → {new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ROOM_TYPES.map(rt => {
                 const avail = availUnitsFor(rt.id);
-                const soldOut = avail === 0;
+                // Sold-out logic now respects the requested room count —
+                // a type with only 1 unit free is "sold out" for a guest
+                // who wants 2 rooms.
+                const soldOut = avail < rooms;
                 const rate = computePerNightRate(rt.id);
                 const sel = data.roomTypeId === rt.id;
                 // Resolve amenity chip labels — combine per-category +
@@ -451,7 +492,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{rt.name}</div>
                         <div style={{ fontSize: 11, color: T.ink3, marginTop: 3 }}>
-                          {soldOut ? 'Sold out for these dates' : `${avail} of ${rt.units} available`}
+                          {soldOut
+                            ? (avail === 0 ? 'Sold out for these dates' : `Only ${avail} of ${rooms} rooms available`)
+                            : `${avail} of ${rt.units} available`}
                         </div>
                       </div>
                       {!soldOut && rate != null && (
@@ -693,8 +736,8 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <SummaryRow label="Stay" value={`${data.nights} night${data.nights > 1 ? 's' : ''}, ${guestsStr}`} />
               <SummaryRow label="Check-in" value={new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Check-out" value={new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
-              <SummaryRow label="Room" value={selectedRT?.name || ''} />
-              <SummaryRow label="Rate" value={`₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}`} />
+              <SummaryRow label="Room" value={`${rooms} × ${selectedRT?.name || ''}`} />
+              <SummaryRow label="Rate" value={`₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}${rooms > 1 ? ` × ${rooms} rooms` : ''}`} />
               {/* Meal plan line — show whenever a non-default plan is
                   picked OR when the property has more than one enabled
                   plan (so the guest sees which one is in effect). */}

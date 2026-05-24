@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
 import { effectiveRoomTypes, ANCHOR, ymd } from '../data.js';
 import { holidayFor } from '../holidays.js';
@@ -101,6 +101,23 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   // the category's total units (rt.units) to derive how many should
   // be blocked (= total - target).
   const [bulkInv, setBulkInv] = useState(null);
+  // Undo snackbar. After any bulk apply we snapshot the overrides map
+  // and surface a "X applied · Undo" pill at the bottom. 10s lifetime.
+  // null = no undo available. The snapshot is the FULL overrides map
+  // (cheap to copy at scale of hundreds of overrides per property).
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
+  const captureUndo = (label) => setUndoSnapshot({ prev: overrides, label, at: Date.now() });
+  const undoBulk = () => {
+    if (!undoSnapshot) return;
+    setOverrides(undoSnapshot.prev);
+    setUndoSnapshot(null);
+  };
+  // Auto-dismiss the snackbar after 10 seconds.
+  useEffect(() => {
+    if (!undoSnapshot) return;
+    const id = setTimeout(() => setUndoSnapshot(null), 10000);
+    return () => clearTimeout(id);
+  }, [undoSnapshot]);
   // Anchor for the visible window. 0 = today; jumping forward via the
   // date picker shifts the start of the calendar grid.
   const [viewStartIdx, setViewStartIdx] = useState(0);
@@ -344,6 +361,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const applyBulkRate = () => {
     const v = +bulkVal;
     if (!v) return;
+    captureUndo(`Set rate ₹${v.toLocaleString('en-IN')} on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => {
@@ -359,6 +377,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     setBulkVal(''); setShowBulkSheet(null);
   };
   const applyBlock = () => {
+    captureUndo(`Closed ${selected.size} ${selected.size === 1 ? 'date' : 'dates'} for ${rt.name}`);
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => {
@@ -378,6 +397,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const [blockUnits, setBlockUnits] = useState([]);
   const applyBlockUnits = () => {
     if (blockUnits.length === 0) return;
+    captureUndo(`Blocked ${blockUnits.length} unit${blockUnits.length === 1 ? '' : 's'} on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => {
@@ -392,6 +412,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     setShowBulkSheet(null);
   };
   const applyOpen = () => {
+    captureUndo(`Cleared custom settings on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => { delete next[`${selectedType}:${i}`]; });
@@ -412,6 +433,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const total = rt.units;
     const target = Math.max(0, Math.min(total, bulkInv));
     const toBlock = total - target;
+    captureUndo(`Set inventory to ${target}/${total} on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
       selected.forEach(i => {
@@ -443,28 +465,48 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   };
 
   // F2: copy rates from a source room type to the current type with a
-  // multiplier (e.g. "Luxury = Deluxe × 1.6"). Snapshot — runs over the
-  // currently-visible window so the hotelier can preview before deciding
-  // to extend. Only days where the source has a real effective rate get
-  // written; closed source days propagate as closed on the target too.
-  const [copyState, setCopyState] = useState({ sourceId: null, multiplier: 1.0 });
+  // multiplier (e.g. "Luxury = Deluxe × 1.6"). Operates on the explicit
+  // range below — defaults to "today → 90 days" so a copy is deterministic
+  // (the older "whatever's visible" behaviour depended on scroll position
+  // and tripped up hoteliers who'd scrolled to a different month). The
+  // selection set is also honoured when present, so picking dates first
+  // and then opening Copy applies only to those.
+  const [copyState, setCopyState] = useState({ sourceId: null, multiplier: 1.0, fromIso: '', toIso: '' });
   const applyCopyFromSource = () => {
     if (!copyState.sourceId || copyState.sourceId === selectedType) return;
     const m = Number(copyState.multiplier) || 1;
     if (m <= 0) return;
+    // Resolve the day-idx list to copy onto. Priority:
+    //   1) explicit From/To dates on the copyState
+    //   2) current selection set
+    //   3) fallback: today (idx 0) through +90
+    let indexes = [];
+    const a = isoToIdx(copyState.fromIso);
+    const b = isoToIdx(copyState.toIso);
+    if (a != null && b != null) {
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      for (let i = lo; i <= hi; i++) indexes.push(i);
+    } else if (selected.size > 0) {
+      indexes = Array.from(selected);
+    } else {
+      for (let i = 0; i <= 90; i++) indexes.push(i);
+    }
+    captureUndo(`Copied ${indexes.length} ${indexes.length === 1 ? 'day' : 'days'} of rates from ${ROOM_TYPES.find(r => r.id === copyState.sourceId)?.name || 'source'}`);
     setOverrides(o => {
       const next = { ...o };
-      visibleDays.forEach(d => {
-        const i = d.idx;
-        const sourceOverride = overrides[cellKey(i, copyState.sourceId)];
+      for (const i of indexes) {
+        const sourceOverride = o[cellKey(i, copyState.sourceId)];
         if (sourceOverride && sourceOverride.closed) {
           next[cellKey(i)] = { closed: true };
-          return;
+          continue;
         }
         const sourceRate = rateFor(copyState.sourceId, i);
-        if (sourceRate == null) return;
-        next[cellKey(i)] = { rate: Math.round(sourceRate * m), closed: false };
-      });
+        if (sourceRate == null) continue;
+        // Spread the prior target override so closedUnits + any meal-plan
+        // overrides survive a rate copy (same fix as applyBulkRate).
+        const prev = next[cellKey(i)] || {};
+        next[cellKey(i)] = { ...prev, rate: Math.round(sourceRate * m), closed: false };
+      }
       return next;
     });
     setShowBulkSheet(null);
@@ -762,7 +804,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
       </div>
 
-      {selCount > 0 && (
+      {selCount > 0 && !undoSnapshot && (
         <div style={{
           position: 'absolute', bottom: 78, left: 0, right: 0, zIndex: 20,
           background: T.ink, color: '#fff', padding: '10px 14px',
@@ -776,6 +818,42 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           <button onClick={() => setShowBulkSheet('rate')} style={bulkBtn(T.primary)}><Icon name="inr" size={12} stroke={2.4}/> {t('setRate')}</button>
           <button onClick={() => { setBulkInv(rt.units); setShowBulkSheet('inventory'); }} style={bulkBtn(T.indigo)}><Icon name="bed" size={12} stroke={2.4}/> {t('setInventory')}</button>
           <button onClick={() => setShowBulkSheet('block')} style={bulkBtn(T.danger)}><Icon name="x" size={12} stroke={2.4}/> {t('closeOut')}</button>
+        </div>
+      )}
+
+      {/* Undo snackbar — sits in the same slot as the action bar so the
+          two never compete for attention. 10-second lifetime managed
+          via the useEffect above; tap Undo to restore the overrides
+          snapshot. Useful after a mistyped bulk rate ("₹100 instead of
+          ₹4100" — easy to do on a small keyboard). */}
+      {undoSnapshot && (
+        <div style={{
+          position: 'absolute', bottom: 78, left: 0, right: 0, zIndex: 22,
+          background: T.ink, color: '#fff', padding: '12px 14px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          boxShadow: '0 -4px 14px rgba(0,0,0,0.15)',
+        }}>
+          <Icon name="check" size={14} color="oklch(85% 0.14 145)" stroke={2.4} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.3 }}>{undoSnapshot.label}</div>
+            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>Tap Undo to revert · auto-dismisses in 10s</div>
+          </div>
+          <button
+            onClick={undoBulk}
+            style={{
+              background: 'transparent', color: '#fff',
+              border: '1px solid rgba(255,255,255,0.4)', borderRadius: 7,
+              padding: '7px 14px', fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: 0.4,
+            }}
+          >UNDO</button>
+          <button
+            onClick={() => setUndoSnapshot(null)}
+            aria-label="Dismiss"
+            style={{
+              background: 'transparent', color: 'rgba(255,255,255,0.6)',
+              border: 'none', cursor: 'pointer', padding: 4, fontSize: 14, fontWeight: 700,
+            }}
+          ><Icon name="x" size={12} color="rgba(255,255,255,0.6)" stroke={2.2} /></button>
         </div>
       )}
 
@@ -946,13 +1024,28 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             {showBulkSheet === 'copy' && (() => {
               const sourceRT = ROOM_TYPES.find(r => r.id === copyState.sourceId);
               const m = Number(copyState.multiplier) || 1;
-              const sampleSource = sourceRT ? rateFor(sourceRT.id, viewStartIdx) : null;
+              const sampleSource = sourceRT ? rateFor(sourceRT.id, 0) : null;
               const samplePreview = sampleSource != null ? Math.round(sampleSource * m) : null;
+              // Compute the day count for the button label + safety. Three
+              // possible sources, in priority order: explicit From/To range,
+              // current selection, or fallback today→+90 days.
+              const a = isoToIdx(copyState.fromIso);
+              const b = isoToIdx(copyState.toIso);
+              const daysCount = a != null && b != null
+                ? Math.abs(b - a) + 1
+                : selected.size > 0
+                  ? selected.size
+                  : 91;
+              const rangeSourceLabel = a != null && b != null
+                ? `the picked range`
+                : selected.size > 0
+                  ? `your ${selected.size} selected ${selected.size === 1 ? 'date' : 'dates'}`
+                  : `the next 90 days`;
               return (
                 <>
                   <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Copy rates from another type</div>
                   <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>
-                    Copies {visibleDays.length} days of rates from the source to <strong>{rt.name}</strong> with a multiplier. Closed days propagate as closed. Any existing custom prices on the target are replaced.
+                    Copies rates from the source to <strong>{rt.name}</strong> with a multiplier, across <strong>{rangeSourceLabel}</strong>. Closed days propagate as closed. Existing custom prices on the target are replaced.
                   </div>
                   <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SOURCE ROOM TYPE</div>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -1004,14 +1097,23 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                     />
                     <span style={{ fontSize: 11, color: T.ink3 }}>×</span>
                   </div>
+                  <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>DATE RANGE <span style={{ fontWeight: 600, letterSpacing: 0 }}>· optional</span></div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                    <DatePill value={copyState.fromIso} onChange={(v) => setCopyState(s => ({ ...s, fromIso: v }))} placeholder={t('rangeFrom')} />
+                    <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>→</span>
+                    <DatePill value={copyState.toIso} onChange={(v) => setCopyState(s => ({ ...s, toIso: v }))} placeholder={t('rangeTo')} />
+                  </div>
+                  <div style={{ fontSize: 10, color: T.ink3, fontStyle: 'italic', marginBottom: 14, lineHeight: 1.4 }}>
+                    Leave both empty to default to the next 90 days{selected.size > 0 ? `, or honour your ${selected.size} selected ${selected.size === 1 ? 'date' : 'dates'}` : ''}.
+                  </div>
                   {sampleSource != null && samplePreview != null && (
                     <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>
-                      <strong>Preview:</strong> {sourceRT?.name} ₹{sampleSource.toLocaleString('en-IN')} × {m} = <strong style={{ color: T.primaryDk }}>₹{samplePreview.toLocaleString('en-IN')}</strong> on {visibleDays[0]?.dom} {visibleDays[0]?.monthShort}
+                      <strong>Preview:</strong> {sourceRT?.name} ₹{sampleSource.toLocaleString('en-IN')} × {m} = <strong style={{ color: T.primaryDk }}>₹{samplePreview.toLocaleString('en-IN')}</strong> on a typical day
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Btn variant="ghost" full onClick={() => setShowBulkSheet(null)}>{t('cancel')}</Btn>
-                    <Btn full onClick={applyCopyFromSource} disabled={!copyState.sourceId}>Copy {visibleDays.length} days</Btn>
+                    <Btn full onClick={applyCopyFromSource} disabled={!copyState.sourceId}>Copy {daysCount} {daysCount === 1 ? 'day' : 'days'}</Btn>
                   </div>
                 </>
               );

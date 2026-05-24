@@ -50,6 +50,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     mealPlanId: defaultMealPlanId,
     // {extraId: quantity} — multi-select with per-extra qty.
     extras: {},
+    // Coupon code the guest entered, normalised to uppercase. Empty
+    // until they apply one on Step 3.
+    couponCode: '',
+    couponError: '',
     name: '',
     phone: '',
     email: '',
@@ -234,7 +238,33 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     .filter(Boolean);
   const extrasCost = extrasLines.reduce((s, e) => s + e.line, 0);
 
-  const total = roomCost + mealDelta + extrasCost;
+  // Coupon resolution — find the active coupon by code, then check
+  // expiry / min-nights / max-uses. Anything failing returns null so
+  // the discount silently goes to ₹0 (with an error shown next to the
+  // input). Case-insensitive match against property.coupons[].code.
+  const activeCoupon = (() => {
+    const code = (data.couponCode || '').trim().toUpperCase();
+    if (!code) return null;
+    const coupons = Array.isArray(property?.coupons) ? property.coupons : [];
+    const c = coupons.find(x => (x.code || '').toUpperCase() === code && x.enabled !== false);
+    if (!c) return null;
+    if (c.expiryIso) {
+      const todayIso = ymd(new Date(ANCHOR));
+      if (todayIso > c.expiryIso) return null;
+    }
+    if (c.minNights && (data.nights || 0) < c.minNights) return null;
+    if (c.maxUses && (c.usedCount || 0) >= c.maxUses) return null;
+    return c;
+  })();
+  const subtotal = roomCost + mealDelta + extrasCost;
+  const discountAmount = (() => {
+    if (!activeCoupon) return 0;
+    const d = activeCoupon.discount || {};
+    if (d.mode === 'flat') return Math.min(+d.value || 0, subtotal);
+    if (d.mode === 'pct') return Math.round(subtotal * (+d.value || 0) / 100);
+    return 0;
+  })();
+  const total = Math.max(0, subtotal - discountAmount);
   const guestsStr = `${data.adults}A${data.children > 0 ? ` ${data.children}C` : ''}`;
 
   // Step 1 → 2 gate.
@@ -309,6 +339,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
           })
           .filter(Boolean)
       ),
+      // Coupon: store both the code (for the hotelier's records) and
+      // the resolved discount amount (so the folio total stays accurate
+      // even if the hotelier later edits / deletes the coupon).
+      couponCode: activeCoupon ? activeCoupon.code : '',
+      discountAmount: activeCoupon ? discountAmount : 0,
       // GST is not auto-applied for widget bookings — the hotelier
       // decides at folio time whether this booking goes on the GST
       // invoice register (some don't run their bookings through GST,
@@ -795,6 +830,51 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               </>
             )}
 
+            {/* Coupon code — optional. Apply button is implicit: any
+                change to the input re-validates. If valid, summary
+                shows the discount line; if not (and the input is
+                non-empty), a small red error appears. */}
+            {Array.isArray(property?.coupons) && property.coupons.length > 0 && (
+              <>
+                <SectionTitle style={{ marginTop: 18 }}>Have a coupon code?</SectionTitle>
+                <Card>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      value={data.couponCode}
+                      placeholder="Enter code"
+                      onChange={(e) => set('couponCode', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16))}
+                      style={{
+                        flex: 1, padding: '10px 12px',
+                        border: `1px solid ${activeCoupon ? T.ok : (data.couponCode ? T.danger : T.border)}`,
+                        outline: 'none', borderRadius: 8,
+                        background: activeCoupon ? T.okLt : T.card,
+                        fontSize: 14, fontWeight: 700, letterSpacing: 1,
+                        color: activeCoupon ? T.ok : T.ink,
+                        fontFamily: 'JetBrains Mono, monospace',
+                      }}
+                    />
+                    {activeCoupon && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: T.ok }}>
+                        <Icon name="check" size={12} color={T.ok} stroke={2.4} /> Applied
+                      </div>
+                    )}
+                  </div>
+                  {data.couponCode && !activeCoupon && (() => {
+                    const code = data.couponCode.toUpperCase();
+                    const c = (property.coupons || []).find(x => (x.code || '').toUpperCase() === code);
+                    let reason = "Code not recognised";
+                    if (c) {
+                      if (c.enabled === false) reason = "This code is disabled";
+                      else if (c.expiryIso && ymd(new Date(ANCHOR)) > c.expiryIso) reason = `This code expired on ${c.expiryIso}`;
+                      else if (c.minNights && (data.nights || 0) < c.minNights) reason = `Minimum stay for this code is ${c.minNights} nights`;
+                      else if (c.maxUses && (c.usedCount || 0) >= c.maxUses) reason = "This code has reached its usage limit";
+                    }
+                    return <div style={{ marginTop: 6, fontSize: 11, color: T.danger, fontWeight: 600 }}>{reason}</div>;
+                  })()}
+                </Card>
+              </>
+            )}
+
             <SectionTitle style={{ marginTop: 18 }}>Booking summary</SectionTitle>
             <Card>
               <SummaryRow label="Stay" value={`${data.nights} night${data.nights > 1 ? 's' : ''}, ${guestsStr}`} />
@@ -850,6 +930,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               {extrasLines.map(e => (
                 <SummaryRow key={e.id} label={`${e.name} × ${e.qty}`} value={`+₹${e.line.toLocaleString('en-IN')}`} />
               ))}
+              {activeCoupon && discountAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '4px 0' }}>
+                  <span style={{ fontSize: 12, color: T.ok, fontWeight: 700 }}>Discount · {activeCoupon.code}</span>
+                  <span className="tnum" style={{ fontSize: 12, color: T.ok, fontWeight: 800 }}>− ₹{discountAmount.toLocaleString('en-IN')}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0 4px', borderTop: `1px solid ${T.borderSoft}`, marginTop: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Total</span>
                 <span className="tnum" style={{ fontSize: 18, fontWeight: 800, color: T.primaryDk, letterSpacing: -0.4 }}>₹{total.toLocaleString('en-IN')}</span>

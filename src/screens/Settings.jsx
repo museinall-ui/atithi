@@ -189,6 +189,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ]
   );
+  // Hotelier-configured discount codes. The public booking widget
+  // accepts a code on Step 3 and applies the discount line in the
+  // summary. Empty array by default; hotelier adds codes in the
+  // dedicated accordion below.
+  const [coupons, setCoupons] = useState(Array.isArray(property.coupons) ? property.coupons : []);
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -227,6 +232,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     meals: false,
     accountant: false,
     bookingLink: false,
+    coupons: false,
     houseRules: false,
   });
   const toggleGroup = (key) => setOpenGroups(s => ({ ...s, [key]: !s[key] }));
@@ -251,6 +257,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
       mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
+      coupons,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -1631,6 +1638,138 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             );
           })()}
         </Card>
+        </AccordionGroup>
+
+        <AccordionGroup title="Coupons" open={openGroups.coupons} onToggle={() => toggleGroup('coupons')} hint={coupons.length > 0 ? `${coupons.filter(c => c.enabled !== false).length} active` : 'None yet'}>
+          <SectionHead title="Discount codes for your booking link" style={{ marginTop: 0 }} />
+          <Card padding={12}>
+            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+              Create codes you can hand to guests. They enter the code on the booking widget's summary screen; if valid, the discount applies to their total. Use percentage for "10% off" or flat ₹ for "₹500 off your first stay".
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {coupons.length === 0 && (
+                <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '4px 2px' }}>
+                  No coupons yet. Add one below to start.
+                </div>
+              )}
+              {coupons.map((c, i) => (
+                <div key={c.id || i} style={{
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  padding: 10, background: c.enabled === false ? T.card : T.bgSoft,
+                  border: `1px solid ${c.enabled === false ? T.border : T.borderSoft}`,
+                  borderRadius: 8, opacity: c.enabled === false ? 0.65 : 1,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      value={c.code || ''}
+                      placeholder="CODE"
+                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, code: ev.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16) } : x))}
+                      style={{ flex: 1, fontSize: 13, fontWeight: 800, letterSpacing: 1, color: T.ink, padding: '6px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, fontFamily: 'JetBrains Mono, monospace' }}
+                    />
+                    <Toggle
+                      on={c.enabled !== false}
+                      onChange={(v) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, enabled: v } : x))}
+                    />
+                    <button
+                      onClick={() => setCoupons(arr => arr.filter((_, j) => j !== i))}
+                      title="Delete this coupon"
+                      style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                    ><Icon name="x" size={13} /></button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>DISCOUNT</span>
+                    <div style={{ display: 'inline-flex', gap: 3 }}>
+                      {['flat', 'pct'].map(mode => {
+                        const sel = (c.discount?.mode || 'pct') === mode;
+                        return (
+                          <button
+                            key={mode}
+                            onClick={() => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, discount: { ...(x.discount || {}), mode, value: x.discount?.value || 0 } } : x))}
+                            style={{
+                              padding: '4px 9px', borderRadius: 5,
+                              border: `1px solid ${sel ? T.primary : T.border}`,
+                              background: sel ? T.primaryLt : T.card,
+                              color: sel ? T.primaryDk : T.ink3,
+                              fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                            }}
+                          >{mode === 'flat' ? '₹ flat' : '% off'}</button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={c.discount?.value || 0}
+                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, discount: { ...(x.discount || { mode: 'pct' }), value: Math.max(0, +ev.target.value || 0) } } : x))}
+                      className="tnum"
+                      style={{ width: 72, fontSize: 12, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>EXPIRES</span>
+                    <input
+                      type="date"
+                      value={c.expiryIso || ''}
+                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, expiryIso: ev.target.value || null } : x))}
+                      style={{ fontSize: 11, color: T.ink2, padding: '4px 6px', border: `1px solid ${T.border}`, borderRadius: 5, background: T.card }}
+                    />
+                    <span style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, fontStyle: 'italic' }}>blank = no expiry</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>MIN NIGHTS</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={c.minNights || 0}
+                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, minNights: Math.max(0, +ev.target.value || 0) } : x))}
+                      className="tnum"
+                      style={{ width: 56, fontSize: 11, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
+                    />
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginLeft: 6 }}>MAX USES</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={c.maxUses || 0}
+                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, maxUses: Math.max(0, +ev.target.value || 0) } : x))}
+                      className="tnum"
+                      style={{ width: 56, fontSize: 11, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
+                    />
+                    <span style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, fontStyle: 'italic' }}>0 = no cap</span>
+                  </div>
+                  {(c.usedCount || 0) > 0 && (
+                    <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, padding: '4px 8px', background: T.card, border: `1px dashed ${T.borderSoft}`, borderRadius: 5 }}>
+                      Used <strong style={{ color: T.primaryDk }}>{c.usedCount}</strong> time{c.usedCount === 1 ? '' : 's'} so far
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                const id = 'cp_' + Date.now().toString(36);
+                setCoupons(arr => [...arr, {
+                  id,
+                  code: '',
+                  discount: { mode: 'pct', value: 10 },
+                  expiryIso: null,
+                  minNights: 0,
+                  maxUses: 0,
+                  usedCount: 0,
+                  enabled: true,
+                }]);
+              }}
+              style={{
+                marginTop: 10, width: '100%',
+                padding: '9px 12px', borderRadius: 8,
+                border: `1.5px dashed ${T.border}`, background: T.card,
+                color: T.ink2, fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+            >
+              <Icon name="plus" size={12} color={T.ink2} />
+              Add coupon
+            </button>
+          </Card>
         </AccordionGroup>
 
         <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')}>

@@ -158,6 +158,7 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
 - `20260525_extra_guest_pricing.sql` — adds `properties.base_capacity_adults` (default 2) + `room_categories.extra_adult` / `extra_child` (jsonb `{mode:'flat'|'pct', value}`). Powers the per-category extra-guest surcharge UI. Idempotent.
 - `20260526_booking_meal_rate_email_events.sql` — closes the cloud round-trip gap for fields the app already wrote locally but the bookings table never had columns for: `bookings.meal_plan_id` (default `'ep'`), `bookings.rate_plan_id` (default `'standard'`), `bookings.email` (default `''`), `bookings.events` (jsonb, default `[]`). Without this, flipping DEMO_MODE off would silently lose the voucher meal-plan chip, the rate-plan multiplier, the guest email, and the activity feed on every page reload. Idempotent.
 - `20260527_room_and_property_photos.sql` — adds photos + tagline for the public booking widget. `room_categories.photo_data_url` (single hero per category), `properties.photo_gallery` (jsonb array, up to 5), `properties.tagline` (≤140 chars). Photos stored inline as base64 (2 MB cap per image, enforced in the upload UI). Idempotent.
+- `20260528_coupons.sql` — coupon code system. `properties.coupons` (jsonb array of `{id, code, discount:{mode:'pct'|'flat', value}, expiryIso?, minNights?, maxUses?, usedCount, enabled}`), `bookings.coupon_code` + `bookings.discount_amount`. Used-count increment is local-only under DEMO_MODE; a future migration replaces it with an atomic `redeem_coupon()` RPC. Idempotent.
 
   **Paste into Supabase SQL Editor before flipping DEMO_MODE off.**
 
@@ -522,7 +523,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 
 ### Phase-1 close-out — owner-visible, queued before going live
 - **DEMO_MODE flip** — `src/App.jsx` line ~42. `HARDCODED_DEMO_MODE = true` currently; flip to `false` to re-enable Supabase magic-link sign-in. SignIn screen + per-browser demo opt-in already live, so flip is a one-line change. Once flipped:
-  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, `20260525_extra_guest_pricing.sql`, `20260526_booking_meal_rate_email_events.sql`, and `20260527_room_and_property_photos.sql` into the Supabase SQL editor (idempotent).
+  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, `20260525_extra_guest_pricing.sql`, `20260526_booking_meal_rate_email_events.sql`, `20260527_room_and_property_photos.sql`, and `20260528_coupons.sql` into the Supabase SQL editor (idempotent).
   - Write a Supabase anon-RLS policy allowing INSERT into `bookings` where `status = 'tentative' AND channel = 'website'` for the public widget. Rate-limit via Edge Function.
 - **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion currently has them swapped. Trivial source-block swap.
 

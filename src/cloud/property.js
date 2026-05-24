@@ -40,6 +40,7 @@ function localToCloudProperty(local) {
     logo_data_url: p.logoDataUrl || '',
     photo_gallery: Array.isArray(p.photoGallery) ? p.photoGallery : [],
     tagline: p.tagline || '',
+    coupons: Array.isArray(local && local.coupons) ? local.coupons : [],
     gstin: (local && local.gstin) || '',
     accountant: (local && local.accountant) || { name: '', email: '', firm: '' },
     theme: (local && local.theme) || { hue: 38 },
@@ -127,6 +128,7 @@ function cloudToLocalProperty(row, categories) {
     ratePlans: Array.isArray(row.rate_plans) && row.rate_plans.length ? row.rate_plans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
+    coupons: Array.isArray(row.coupons) ? row.coupons : [],
   };
 }
 

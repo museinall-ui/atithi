@@ -39,6 +39,8 @@ function cloudBookingToLocal(row, payments, invoices) {
     mealPlanId: row.meal_plan_id || 'ep',
     ratePlanId: row.rate_plan_id || 'standard',
     events: Array.isArray(row.events) ? row.events : [],
+    couponCode: row.coupon_code || '',
+    discountAmount: row.discount_amount || 0,
     releaseTs: row.release_ts ? Number(row.release_ts) : undefined,
     releaseAt: row.release_at || undefined,
     holdHours: row.hold_hours || undefined,
@@ -94,6 +96,8 @@ function localBookingToCloud(b, propertyId, userId) {
     meal_plan_id: b.mealPlanId || 'ep',
     rate_plan_id: b.ratePlanId || 'standard',
     events: Array.isArray(b.events) ? b.events : [],
+    coupon_code: b.couponCode || '',
+    discount_amount: b.discountAmount || 0,
     release_ts: b.releaseTs || null,
     release_at: b.releaseAt || null,
     hold_hours: b.holdHours || null,
@@ -133,6 +137,8 @@ function patchLocalToCloud(patch) {
   if ('mealPlanId' in patch)   set('meal_plan_id', patch.mealPlanId || 'ep');
   if ('ratePlanId' in patch)   set('rate_plan_id', patch.ratePlanId || 'standard');
   if ('events' in patch)       set('events', Array.isArray(patch.events) ? patch.events : []);
+  if ('couponCode' in patch)   set('coupon_code', patch.couponCode || '');
+  if ('discountAmount' in patch) set('discount_amount', patch.discountAmount || 0);
   if ('releaseTs' in patch)    set('release_ts', patch.releaseTs || null);
   if ('releaseAt' in patch)    set('release_at', patch.releaseAt || null);
   if ('holdHours' in patch)    set('hold_hours', patch.holdHours || null);

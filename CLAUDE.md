@@ -145,6 +145,7 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
 ### Supabase schema — `supabase/migrations/`
 - `20260518_initial_schema.sql` — initial 10 tables + RLS + has_property_access() + issue_invoice() stored proc
 - `20260519_plan_and_invoice_prefix.sql` — drops the strict plan check constraint (3rd tier added) + extends issue_invoice() with `p_prefix` arg
+- `20260524_default_meal_plan_and_commissions.sql` — adds `properties.default_meal_plan_id` (text, default 'ep') + `properties.channel_commissions` (jsonb with the industry-default rates). Powers the calendar-rate-includes-default model and the Reports take-home card. Idempotent — safe to re-run.
 - `20260520_meal_plans_payment_qr_gst.sql` — accumulates several non-breaking property-shape extensions added across the Rates / branding / widget passes. Every statement is `add column if not exists`, so re-running it is always safe. Columns added:
   - `properties.meal_plans` (jsonb) — EP/CP/MAP/AP + custom plans
   - `properties.payment_qr_data_url` + `payment_qr_label` (text) — hotelier UPI QR rendered on vouchers

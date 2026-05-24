@@ -51,6 +51,13 @@ function localToCloudProperty(local) {
     weekend_rules: (local && local.weekendRules) || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(local && local.seasons) ? local.seasons : [],
     channel_markups: (local && local.channelMarkups) || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+    // Per-OTA commission % the hotelier loses on each booking. Used in
+    // Reports → Take-home card. Defaults mirror DEFAULT_CHANNEL_COMMISSIONS
+    // in data.js (kept in sync to avoid drift).
+    channel_commissions: (local && local.channelCommissions) || { direct: 0, mmt: 18, goibibo: 15, booking: 15, agoda: 18, airbnb: 3 },
+    // Meal plan the calendar rate is treated as already including. Default
+    // 'ep' keeps math equivalent to the older "always add on top" model.
+    default_meal_plan_id: (local && local.defaultMealPlanId) || 'ep',
     rate_plans: Array.isArray(local && local.ratePlans) ? local.ratePlans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
@@ -101,6 +108,8 @@ function cloudToLocalProperty(row, categories) {
     weekendRules: row.weekend_rules || { weekendDays: [0, 6], upliftPct: 20 },
     seasons: Array.isArray(row.seasons) ? row.seasons : [],
     channelMarkups: row.channel_markups || { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+    channelCommissions: row.channel_commissions || { direct: 0, mmt: 18, goibibo: 15, booking: 15, agoda: 18, airbnb: 3 },
+    defaultMealPlanId: row.default_meal_plan_id || 'ep',
     ratePlans: Array.isArray(row.rate_plans) && row.rate_plans.length ? row.rate_plans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],

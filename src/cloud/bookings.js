@@ -20,6 +20,7 @@ function cloudBookingToLocal(row, payments, invoices) {
     nights: row.nights,
     guest: row.guest_name || '',
     phone: row.phone || '',
+    email: row.email || '',
     country: row.country || 'IN',
     formC: row.form_c,
     guests: row.guests || '',
@@ -35,6 +36,9 @@ function cloudBookingToLocal(row, payments, invoices) {
     customExtras: row.custom_extras || [],
     extraPrices: row.extra_prices || {},
     roomItems: row.room_items || [],
+    mealPlanId: row.meal_plan_id || 'ep',
+    ratePlanId: row.rate_plan_id || 'standard',
+    events: Array.isArray(row.events) ? row.events : [],
     releaseTs: row.release_ts ? Number(row.release_ts) : undefined,
     releaseAt: row.release_at || undefined,
     holdHours: row.hold_hours || undefined,
@@ -71,6 +75,7 @@ function localBookingToCloud(b, propertyId, userId) {
     nights: b.nights || 1,
     guest_name: b.guest || '',
     phone: b.phone || '',
+    email: b.email || '',
     country: b.country || 'IN',
     form_c: !!b.formC,
     guests: b.guests || '',
@@ -86,6 +91,9 @@ function localBookingToCloud(b, propertyId, userId) {
     custom_extras: b.customExtras || [],
     extra_prices: b.extraPrices || {},
     room_items: b.roomItems || [],
+    meal_plan_id: b.mealPlanId || 'ep',
+    rate_plan_id: b.ratePlanId || 'standard',
+    events: Array.isArray(b.events) ? b.events : [],
     release_ts: b.releaseTs || null,
     release_at: b.releaseAt || null,
     hold_hours: b.holdHours || null,
@@ -106,6 +114,7 @@ function patchLocalToCloud(patch) {
   if ('nights' in patch)       set('nights', patch.nights || 1);
   if ('guest' in patch)        set('guest_name', patch.guest || '');
   if ('phone' in patch)        set('phone', patch.phone || '');
+  if ('email' in patch)        set('email', patch.email || '');
   if ('country' in patch)      set('country', patch.country || 'IN');
   if ('formC' in patch)        set('form_c', !!patch.formC);
   if ('guests' in patch)       set('guests', patch.guests || '');
@@ -121,6 +130,9 @@ function patchLocalToCloud(patch) {
   if ('customExtras' in patch) set('custom_extras', patch.customExtras || []);
   if ('extraPrices' in patch)  set('extra_prices', patch.extraPrices || {});
   if ('roomItems' in patch)    set('room_items', patch.roomItems || []);
+  if ('mealPlanId' in patch)   set('meal_plan_id', patch.mealPlanId || 'ep');
+  if ('ratePlanId' in patch)   set('rate_plan_id', patch.ratePlanId || 'standard');
+  if ('events' in patch)       set('events', Array.isArray(patch.events) ? patch.events : []);
   if ('releaseTs' in patch)    set('release_ts', patch.releaseTs || null);
   if ('releaseAt' in patch)    set('release_at', patch.releaseAt || null);
   if ('holdHours' in patch)    set('hold_hours', patch.holdHours || null);

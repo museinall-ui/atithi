@@ -654,18 +654,25 @@ export default function App() {
   // Lightweight event-log helper. Each booking carries an optional
   // events[] (kind, text, time iso) that the BookingDetail activity feed
   // surfaces. Avoids the audit_log RPC for now — these read/write through
-  // the same booking row so cloud sync rides along once the events jsonb
-  // column lands on bookings.
+  // the same booking row so cloud sync rides along on the bookings.events
+  // jsonb column added in migration 20260526.
   const pushBookingEvent = (bookingId, kind, text) => {
     const time = new Date().toISOString();
     const event = { kind, text, time };
-    setBookings(arr => arr.map(b => b.id === bookingId
-      ? { ...b, events: [...(Array.isArray(b.events) ? b.events : []), event] }
-      : b));
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), event];
+      return { ...b, events: nextEvents };
+    }));
+    if (cloudReady && propertyId && nextEvents) {
+      syncFire('Append booking event', updateBookingCloud(bookingId, { events: nextEvents }));
+    }
   };
 
   const setStatus = (bookingId, status) => {
     const clearRelease = status === 'confirmed' || status === 'cancelled' || status === 'checkedin';
+    let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
       const next = { ...b, status };
@@ -679,7 +686,8 @@ export default function App() {
         : status === 'tentative' ? 'Reverted to tentative hold'
         : `Status set to ${status}`;
       const evt = { kind: 'status', text: eventText, time: new Date().toISOString() };
-      next.events = [...(Array.isArray(b.events) ? b.events : []), evt];
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      next.events = nextEvents;
       return next;
     }));
 
@@ -689,6 +697,7 @@ export default function App() {
         patch.releaseTs = null;
         patch.releaseAt = null;
       }
+      if (nextEvents) patch.events = nextEvents;
       syncFire('Update booking status', updateBookingCloud(bookingId, patch));
     }
   };
@@ -706,25 +715,33 @@ export default function App() {
     const releaseAt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     const holdHours = (booking.holdHours || 0) + hours;
 
+    let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId || b.status !== 'tentative') return b;
       const evt = { kind: 'hold', text: `Hold extended by ${hours}h · new release ${releaseAt}`, time: new Date().toISOString() };
-      return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false, events: [...(Array.isArray(b.events) ? b.events : []), evt] };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, releaseTs, releaseAt, holdHours, autoReleased: false, events: nextEvents };
     }));
 
     if (cloudReady && propertyId) {
-      syncFire('Extend hold', updateBookingCloud(bookingId, { releaseTs, releaseAt, holdHours, autoReleased: false }));
+      const patch = { releaseTs, releaseAt, holdHours, autoReleased: false };
+      if (nextEvents) patch.events = nextEvents;
+      syncFire('Extend hold', updateBookingCloud(bookingId, patch));
     }
   };
 
   const moveBooking = (bookingId, patch) => {
+    let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
       const evt = { kind: 'move', text: 'Booking moved (date or room)', time: new Date().toISOString() };
-      return { ...b, ...patch, events: [...(Array.isArray(b.events) ? b.events : []), evt] };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, ...patch, events: nextEvents };
     }));
     if (cloudReady && propertyId) {
-      syncFire('Move booking', updateBookingCloud(bookingId, patch));
+      const cloudPatch = { ...patch };
+      if (nextEvents) cloudPatch.events = nextEvents;
+      syncFire('Move booking', updateBookingCloud(bookingId, cloudPatch));
     }
   };
 

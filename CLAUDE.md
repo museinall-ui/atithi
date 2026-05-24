@@ -155,6 +155,8 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
   - `properties.channel_markups` (jsonb) — per-OTA markup %
   - `properties.rate_plans` (jsonb) — Standard / Flexible / Non-refundable tiers
   - `room_categories.gst_rate` (smallint) — per-category GST override
+- `20260525_extra_guest_pricing.sql` — adds `properties.base_capacity_adults` (default 2) + `room_categories.extra_adult` / `extra_child` (jsonb `{mode:'flat'|'pct', value}`). Powers the per-category extra-guest surcharge UI. Idempotent.
+- `20260526_booking_meal_rate_email_events.sql` — closes the cloud round-trip gap for fields the app already wrote locally but the bookings table never had columns for: `bookings.meal_plan_id` (default `'ep'`), `bookings.rate_plan_id` (default `'standard'`), `bookings.email` (default `''`), `bookings.events` (jsonb, default `[]`). Without this, flipping DEMO_MODE off would silently lose the voucher meal-plan chip, the rate-plan multiplier, the guest email, and the activity feed on every page reload. Idempotent.
 
   **Paste into Supabase SQL Editor before flipping DEMO_MODE off.**
 
@@ -519,7 +521,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 
 ### Phase-1 close-out — owner-visible, queued before going live
 - **DEMO_MODE flip** — `src/App.jsx` line ~42. `HARDCODED_DEMO_MODE = true` currently; flip to `false` to re-enable Supabase magic-link sign-in. SignIn screen + per-browser demo opt-in already live, so flip is a one-line change. Once flipped:
-  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, and `20260525_extra_guest_pricing.sql` into the Supabase SQL editor (idempotent).
+  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, `20260525_extra_guest_pricing.sql`, and `20260526_booking_meal_rate_email_events.sql` into the Supabase SQL editor (idempotent).
   - Write a Supabase anon-RLS policy allowing INSERT into `bookings` where `status = 'tentative' AND channel = 'website'` for the public widget. Rate-limit via Edge Function.
 - **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion currently has them swapped. Trivial source-block swap.
 

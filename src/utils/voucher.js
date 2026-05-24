@@ -76,6 +76,7 @@ const VSTR = {
     childrenLabel: 'Children', childLabel: 'Child',
     guestsTotal: 'Total guests',
     childAgeNote: (age) => `Children under ${age} stay free; ${age}+ count as adults.`,
+    houseRulesHeader: 'House rules',
     termsLabel: 'Terms:',
     termsBody: (p, id, withTax) =>
       `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
@@ -140,6 +141,7 @@ const VSTR = {
     childrenLabel: 'बच्चे', childLabel: 'बच्चा',
     guestsTotal: 'कुल मेहमान',
     childAgeNote: (age) => `${age} साल से कम उम्र के बच्चे मुफ्त; ${age}+ वयस्क के रूप में गिने जाते हैं।`,
+    houseRulesHeader: 'घर के नियम',
     termsLabel: 'शर्तें:',
     termsBody: (p, id, withTax) =>
       `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी। रद्द: आगमन से 48 घंटे पहले मुफ़्त; उसके बाद 50% शुल्क; नो-शो पर पूरा अग्रिम राशि ज़ब्त।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
@@ -440,6 +442,14 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   </div>` : ''}
 
   ${b.notes ? `<div class="note"><div class="lbl">${L.specialRequest}</div>${b.notes}</div>` : ''}
+
+  ${!isInvoice && Array.isArray(prop?.rules) && prop.rules.length > 0 ? `
+  <div style="margin-bottom: 22px; padding: 14px 16px; background: #fff; border: 1px solid #E8E0D8; border-radius: 10px;">
+    <div style="font-size: 8pt; font-weight: 700; letter-spacing: 1.2px; color: #888; text-transform: uppercase; margin-bottom: 8px;">${L.houseRulesHeader}</div>
+    <ul style="margin: 0 0 0 16px; padding: 0; font-size: 9.5pt; color: #4a4a4a; line-height: 1.55;">
+      ${prop.rules.map(r => `<li style="margin-bottom: 3px;">${esc(r)}</li>`).join('')}
+    </ul>
+  </div>` : ''}
 
   ${!isInvoice && p.paymentQrDataUrl ? `
   <div style="margin: 20px 0 22px; padding: 16px 18px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 12px; display: flex; gap: 18px; align-items: center;">

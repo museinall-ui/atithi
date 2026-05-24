@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId, effectiveMealPlans, mealPlanById, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -400,6 +400,28 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                         </div>
                       )}
                     </div>
+                    {/* Inclusions hint — surfaces the default meal plan
+                        so the guest knows what's bundled in the rate
+                        before picking. Mirrors the model the hotelier
+                        sets in Settings → Meal plans (defaultMealPlanId). */}
+                    {(() => {
+                      const defaultMP = mealPlanById(property, property?.defaultMealPlanId || 'ep');
+                      if (!defaultMP) return null;
+                      return (
+                        <div style={{
+                          fontSize: 10.5, fontWeight: 600,
+                          color: sel ? T.primaryDk : T.ink2,
+                          background: sel ? 'rgba(255,255,255,0.7)' : T.bgSoft,
+                          border: `1px solid ${sel ? T.primaryDk : T.borderSoft}`,
+                          borderRadius: 6, padding: '5px 8px',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          alignSelf: 'flex-start',
+                        }}>
+                          <Icon name="check" size={10} color={sel ? T.primaryDk : T.ok} stroke={2.4} />
+                          Includes: <strong>{defaultMP.code}</strong> · {defaultMP.label}
+                        </div>
+                      );
+                    })()}
                     {amenityChips.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, width: '100%' }}>
                         {amenityChips.map(a => (
@@ -424,6 +446,33 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 );
               })}
             </div>
+
+            {/* Cancellation chip — visible even when only one rate plan
+                is enabled, so the guest always knows the policy. When
+                multiple plans exist, the chip below shows the policy of
+                the currently-picked plan and the picker (below) lets the
+                guest switch. */}
+            {data.roomTypeId && (() => {
+              const rp = ratePlans.find(p => p.id === data.ratePlanId) || ratePlans[0];
+              if (!rp) return null;
+              const isNonRef = rp.cancellation === 'non-refundable';
+              return (
+                <div style={{
+                  marginTop: 12, padding: '8px 10px',
+                  background: isNonRef ? 'oklch(96% 0.04 30)' : T.okLt,
+                  border: `1px solid ${isNonRef ? 'oklch(75% 0.12 30)' : T.ok}`,
+                  borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: isNonRef ? 'oklch(40% 0.12 30)' : T.ok, fontWeight: 600,
+                }}>
+                  <Icon name={isNonRef ? 'lock' : 'check'} size={12} stroke={2.2} />
+                  <span>
+                    <strong>{isNonRef ? 'Non-refundable' : `Free cancel ${rp.refundHours || 48}h before arrival`}</strong>
+                    {!isNonRef && rp.cancellation === 'moderate' && ' · 50% after that'}
+                    {!isNonRef && rp.cancellation === 'strict' && ' · no refund after that'}
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Rate plan picker — only when multiple are enabled. */}
             {ratePlans.length > 1 && data.roomTypeId && (
@@ -514,6 +563,33 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                   they're committing to before tapping Confirm. */}
               <MiniCalendar checkInIso={data.checkIn} nights={data.nights} />
             </Card>
+
+            {/* House rules — surfaced from property.rules[] so the guest
+                sees what they're agreeing to BEFORE confirming. Collapsed
+                by default to keep the summary view tight; tapping the
+                header expands the list. */}
+            {Array.isArray(property?.rules) && property.rules.length > 0 && (
+              <details style={{
+                marginTop: 12, padding: '10px 12px',
+                background: T.bgSoft, border: `1px solid ${T.borderSoft}`,
+                borderRadius: 8,
+              }}>
+                <summary style={{
+                  fontSize: 12, fontWeight: 700, color: T.ink2,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                  listStyle: 'none', userSelect: 'none',
+                }}>
+                  <Icon name="info" size={13} color={T.ink2} />
+                  House rules ({property.rules.length})
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: T.ink3, fontWeight: 600 }}>tap to view</span>
+                </summary>
+                <ul style={{ margin: '10px 0 0 18px', padding: 0, fontSize: 11.5, color: T.ink2, lineHeight: 1.6 }}>
+                  {property.rules.map((r, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>{r}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
 
             {(() => {
               const h = computeHoldHours();

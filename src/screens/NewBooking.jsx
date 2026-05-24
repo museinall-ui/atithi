@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -1005,6 +1005,97 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const gst = withTax ? Math.round(subtotal * blendedRate / 100) : 0;
   const total = subtotal + gst;
 
+  // Warnings for the hotelier on Step 4: per-unit close-outs that
+  // overlap this booking, whole-type close-outs, and overbooking.
+  // These DON'T block the confirm button — the hotelier may have a
+  // good reason to override (off-channel walk-in, friend-of-the-
+  // family stay, etc). They're heads-up notes, not gates.
+  const bookingWarnings = useMemo(() => {
+    if (!data.checkIn || !data.nights) return [];
+    const startIdx = dateToIdx(data.checkIn);
+    if (startIdx == null) return [];
+    const out = [];
+    const items = data.roomItems || [];
+    const startDate = new Date(ANCHOR);
+    startDate.setDate(startDate.getDate() + startIdx);
+    const fmtDay = (idx) => {
+      const d = new Date(ANCHOR);
+      d.setDate(d.getDate() + idx);
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    };
+    // Group room items by type so we report per-type warnings cleanly.
+    const byType = items.reduce((acc, r) => {
+      const tid = r.roomTypeId || data.roomTypeId;
+      if (!tid) return acc;
+      acc[tid] = (acc[tid] || 0) + 1;
+      return acc;
+    }, {});
+    for (const [typeId, count] of Object.entries(byType)) {
+      const rt = ROOM_TYPES.find(r => r.id === typeId);
+      if (!rt) continue;
+      // Per-night closures + competing bookings for this type.
+      let maxBookedHere = 0;
+      let maxBlockedHere = 0;
+      const closedDays = [];
+      const partialDays = [];
+      for (let d = startIdx; d < startIdx + data.nights; d++) {
+        const o = rateOverrides[`${typeId}:${d}`];
+        if (o && o.closed) closedDays.push(fmtDay(d));
+        if (o && Array.isArray(o.closedUnits) && o.closedUnits.length > 0) {
+          partialDays.push({ day: fmtDay(d), n: o.closedUnits.length });
+        }
+        // Existing bookings (excluding this one) overlapping this day for this type.
+        const overlapping = (bookings || []).filter(b => {
+          if (b.id === editing?.id) return false;
+          if (b.status === 'cancelled') return false;
+          const bStart = b.startIdx || 0;
+          const bEnd = bStart + (b.nights || 1);
+          if (d < bStart || d >= bEnd) return false;
+          const bItems = Array.isArray(b.roomItems) && b.roomItems.length
+            ? b.roomItems
+            : [{ roomTypeId: b.roomTypeId }];
+          return bItems.some(it => (it.roomTypeId || b.roomTypeId) === typeId);
+        });
+        const booked = overlapping.reduce((s, b) => {
+          const bItems = Array.isArray(b.roomItems) && b.roomItems.length
+            ? b.roomItems
+            : [{ roomTypeId: b.roomTypeId }];
+          return s + bItems.filter(it => (it.roomTypeId || b.roomTypeId) === typeId).length;
+        }, 0);
+        if (booked > maxBookedHere) maxBookedHere = booked;
+        const closedCount = (o && Array.isArray(o.closedUnits)) ? o.closedUnits.length : 0;
+        if (booked + closedCount > maxBlockedHere) maxBlockedHere = booked + closedCount;
+      }
+      if (closedDays.length > 0) {
+        out.push({
+          severity: 'block',
+          icon: 'x',
+          text: `${rt.name} is closed on ${closedDays.join(', ')}. Guests can't book online; you can still confirm this reservation.`,
+        });
+      }
+      if (partialDays.length > 0) {
+        const summary = partialDays.map(p => `${p.day} (${p.n})`).join(', ');
+        out.push({
+          severity: 'note',
+          icon: 'bed',
+          text: `${rt.name}: blocked units on ${summary}. Guests see less availability online — your in-app booking goes through anyway.`,
+        });
+      }
+      // Overbooking check: this booking adds `count` rooms of this type.
+      // If maxBookedHere + count > total units, we're overbooking.
+      const total = rt.units || 0;
+      if (maxBookedHere + count > total) {
+        const over = (maxBookedHere + count) - total;
+        out.push({
+          severity: 'warn',
+          icon: 'info',
+          text: `Overbook warning · ${rt.name}: this reservation pushes ${over} room${over === 1 ? '' : 's'} past the ${total}-unit total. Booking is allowed — you'll need to handle the room assignment manually.`,
+        });
+      }
+    }
+    return out;
+  }, [data.checkIn, data.nights, data.roomItems, data.roomTypeId, rateOverrides, bookings, editing?.id, ROOM_TYPES]);
+
   const titles = [t('stayDetails'), t('pickRoom'), t('guest'), t('payment')];
   const datesValid = !!data.checkIn && data.nights > 0;
   const guestValid = data.name.trim().length > 0 && data.phone.trim().length >= 6;
@@ -1026,7 +1117,37 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
-        {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />}
+        {step === 4 && (
+          <>
+            {bookingWarnings.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {bookingWarnings.map((w, i) => {
+                  const tone = w.severity === 'block'
+                    ? { bg: 'oklch(96% 0.04 25)', border: 'oklch(72% 0.14 25)', ink: 'oklch(40% 0.16 25)' }
+                    : w.severity === 'warn'
+                      ? { bg: 'oklch(96% 0.04 75)', border: 'oklch(72% 0.12 75)', ink: 'oklch(40% 0.14 75)' }
+                      : { bg: T.indigoLt, border: T.indigo, ink: T.indigo };
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex', gap: 10, alignItems: 'flex-start',
+                        padding: '10px 12px', borderRadius: 8,
+                        background: tone.bg, border: `1px solid ${tone.border}`,
+                      }}
+                    >
+                      <Icon name={w.icon} size={14} color={tone.ink} stroke={2.2} />
+                      <div style={{ fontSize: 11.5, color: tone.ink, lineHeight: 1.5, fontWeight: 600 }}>
+                        {w.text}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />
+          </>
+        )}
       </div>
 
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '12px 16px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>

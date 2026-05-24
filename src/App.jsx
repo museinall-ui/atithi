@@ -32,13 +32,37 @@ import Guests from './screens/Guests.jsx';
 import Settings from './screens/Settings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
+import Onboarding from './screens/Onboarding.jsx';
 
 // DEMO_MODE: skip the Supabase magic-link sign-in gate and run entirely off
 // localStorage so the app is immediately usable (no email round-trip, no
 // cloud dependency). The cloud-sync code paths stay intact; they're just
 // not exercised while DEMO_MODE is true. Flip this back to false once
 // auth is being added back into the productionised flow.
-const DEMO_MODE = true;
+const HARDCODED_DEMO_MODE = true;
+
+// Per-browser demo opt-in. When the hotelier (or a prospect) lands on
+// `?demo=1` or taps "Try the demo" on SignIn, we set this flag. It lets
+// the demo experience persist across reloads without touching the
+// hardcoded constant above — useful for showing prospective hoteliers
+// the app without making them create an account.
+function isSessionDemo() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('demo') === '1') {
+      try { window.localStorage.setItem('atithi.demo.v1', 'true'); } catch {}
+      return true;
+    }
+    return window.localStorage.getItem('atithi.demo.v1') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// Effective demo mode: hardcoded constant OR session-opted-in flag.
+// Either disables the sign-in gate.
+const DEMO_MODE = HARDCODED_DEMO_MODE || isSessionDemo();
 
 // Public-widget mode: when the URL has /book/<slug> (pretty URL) or
 // the legacy ?book=1 query param the app renders the customer-facing
@@ -75,6 +99,8 @@ const LS_KEYS = {
   property: 'atithi.property.v1',
   bookingsSeeded: 'atithi.bookings.seeded.v1',  // set once cloud bookings have been seeded for this browser
   extrasSeeded: 'atithi.extras.seeded.v1',      // set once cloud saved_extras/rate_overrides/cash_closes have been seeded
+  onboarded: 'atithi.onboarded.v1',             // first-run wizard dismissed (one-way flag)
+  demoSession: 'atithi.demo.v1',                // per-browser demo opt-in flag
 };
 
 const DEFAULT_PROPERTY = {
@@ -294,6 +320,13 @@ export default function App() {
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
   const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
   const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
+  // First-run onboarding state. Auto-shows on first launch when the
+  // property is empty (no name OR no room categories) and the dismissed
+  // flag isn't set. The Dashboard's "Finish setting up" nudge remains as
+  // the ongoing reminder after the wizard is closed.
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => !!loadLS(LS_KEYS.onboarded, false));
+  const needsOnboarding = !onboardingDismissed
+    && (!property?.profile?.name?.trim() || !(Array.isArray(property?.categories) && property.categories.length > 0));
   const [editing, setEditing] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   // Auth: session is null until Supabase tells us whether the user is signed
@@ -326,6 +359,7 @@ export default function App() {
   useEffect(() => { saveLS(LS_KEYS.plan, plan); }, [plan]);
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
   useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
+  useEffect(() => { saveLS(LS_KEYS.onboarded, onboardingDismissed); }, [onboardingDismissed]);
 
   // Push the hotelier's chosen brand colour into CSS variables that all
   // T.primary references read from. Runs on mount and whenever the theme
@@ -929,6 +963,7 @@ export default function App() {
         <PublicBookingWidget
           property={property}
           bookings={bookings}
+          rateOverrides={rateOverrides}
           onSubmit={(newBk) => {
             const id = 'BK-' + (2854 + bookings.length);
             const enriched = { ...newBk, id };
@@ -940,11 +975,55 @@ export default function App() {
     );
   }
 
+  // Session-demo banner — visible only when the visitor opted into demo
+  // via the "Try the demo" SignIn button or the `?demo=1` URL. Hidden when
+  // demo is active because of the hardcoded constant (current dev state)
+  // since everyone would be in demo, banner noise. Tapping Exit demo
+  // clears the flag and reloads.
+  const sessionDemoActive = !HARDCODED_DEMO_MODE && isSessionDemo();
+  const exitDemo = () => {
+    try { window.localStorage.removeItem('atithi.demo.v1'); } catch {}
+    window.location.reload();
+  };
+
   return (
     <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{ height: '100%', position: 'relative', background: 'transparent', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', inset: 0, paddingBottom: showTabs ? 78 : 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'absolute', inset: 0, paddingBottom: showTabs ? 78 : 0, paddingTop: sessionDemoActive ? 26 : 0, display: 'flex', flexDirection: 'column' }}>
         {screen}
       </div>
+      {sessionDemoActive && (
+        <div
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35,
+            height: 26, background: T.ink, color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6,
+          }}
+        >
+          <Icon name="eye" size={11} color="#fff" stroke={2.4} />
+          {lang === 'hi' ? 'डेमो मोड · कोई बदलाव नहीं सहेजा जाएगा' : 'DEMO MODE · NOTHING SAVES TO YOUR ACCOUNT'}
+          <button
+            onClick={exitDemo}
+            style={{
+              background: 'rgba(255,255,255,0.18)', color: '#fff',
+              border: 'none', borderRadius: 5, padding: '2px 10px',
+              fontSize: 10, fontWeight: 800, cursor: 'pointer', letterSpacing: 0.4,
+            }}
+          >{lang === 'hi' ? 'बाहर निकलें' : 'EXIT'}</button>
+        </div>
+      )}
+      {needsOnboarding && (
+        <Onboarding
+          property={property}
+          isHi={lang === 'hi'}
+          onApply={(patch) => setProperty(prev => ({
+            ...prev,
+            profile: { ...(prev.profile || {}), ...(patch.profile || {}) },
+            categories: patch.categories || prev.categories,
+          }))}
+          onDismiss={() => setOnboardingDismissed(true)}
+        />
+      )}
       {showTabs && (
         <TabBar active={route.name} onChange={(id) => {
           if (id === 'new') go('new');

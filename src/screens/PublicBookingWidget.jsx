@@ -24,7 +24,7 @@ import { generateVoucher } from '../utils/voucher.js';
 // through a Supabase anon RLS policy that allows status='tentative'
 // inserts but rejects everything else — that policy work is queued.
 
-export default function PublicBookingWidget({ property, bookings, onSubmit }) {
+export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, onSubmit }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const ratePlans = effectiveRatePlans(property);
 
@@ -85,15 +85,29 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
   };
 
   // Availability check — counts bookings that overlap the requested
-  // window for a given room type. A type is available if at least one
-  // unit is free for every night.
+  // window for a given room type, plus subtracts any hotelier-blocked
+  // units / whole-type close-outs from rateOverrides. A type is
+  // available if at least one unit is free for every night.
+  //
+  // Two kinds of close-out:
+  //   - overrides[type:day].closed === true  → whole type unavailable
+  //     that day; the type is hidden from the guest-facing widget.
+  //   - overrides[type:day].closedUnits = [..] → N specific units
+  //     blocked that day; subtract their count from the unit pool.
+  //
+  // The hotelier can still book on closed units from the in-app
+  // NewBooking flow (with a warning); this guest-facing widget
+  // honours close-outs strictly because the public can't override.
   const availUnitsFor = (typeId) => {
     const rt = ROOM_TYPES.find(r => r.id === typeId);
     if (!rt || !data.checkIn) return rt ? rt.units : 0;
     const start = dateToIdx(data.checkIn);
     const end = start + (data.nights || 1);
-    let maxBooked = 0;
+    let maxBlocked = 0;
     for (let day = start; day < end; day++) {
+      const o = rateOverrides[`${typeId}:${day}`];
+      // Whole-type close-out on any night in the range → 0 available.
+      if (o && o.closed) return 0;
       const overlapping = (bookings || []).filter(b => {
         if (b.status === 'cancelled') return false;
         const bStart = b.startIdx || 0;
@@ -104,16 +118,18 @@ export default function PublicBookingWidget({ property, bookings, onSubmit }) {
           : [{ roomTypeId: b.roomTypeId }];
         return items.some(it => (it.roomTypeId || b.roomTypeId) === typeId);
       });
-      // Sum roomItems of this type per overlapping booking
+      // Sum roomItems of this type per overlapping booking.
       const booked = overlapping.reduce((sum, b) => {
         const items = Array.isArray(b.roomItems) && b.roomItems.length
           ? b.roomItems
           : [{ roomTypeId: b.roomTypeId }];
         return sum + items.filter(it => (it.roomTypeId || b.roomTypeId) === typeId).length;
       }, 0);
-      if (booked > maxBooked) maxBooked = booked;
+      const closedCount = (o && Array.isArray(o.closedUnits)) ? o.closedUnits.length : 0;
+      const blocked = booked + closedCount;
+      if (blocked > maxBlocked) maxBlocked = blocked;
     }
-    return Math.max(0, rt.units - maxBooked);
+    return Math.max(0, rt.units - maxBlocked);
   };
 
   const selectedRT = ROOM_TYPES.find(r => r.id === data.roomTypeId);

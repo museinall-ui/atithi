@@ -77,6 +77,37 @@ export default function SignIn({ t, lang, onChangeLang }) {
             <div style={{ fontSize: 11, color: T.ink3, textAlign: 'center', lineHeight: 1.5, marginTop: 2 }}>
               {t('signInDesc')}
             </div>
+            {/* Demo opt-in — sets the per-browser demo flag so the
+                visitor can try the app without creating an account.
+                Useful both for prospective hoteliers and for showing
+                features without touching anyone's real data. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 4px' }}>
+              <div style={{ flex: 1, height: 1, background: T.borderSoft }} />
+              <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>{lang === 'hi' ? 'या' : 'or'}</span>
+              <div style={{ flex: 1, height: 1, background: T.borderSoft }} />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                try { window.localStorage.setItem('atithi.demo.v1', 'true'); } catch {}
+                window.location.reload();
+              }}
+              className="atithi-tap"
+              style={{
+                background: T.card, color: T.primaryDk, border: `1.5px solid ${T.primary}`,
+                borderRadius: 10, padding: '11px 14px', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}
+            >
+              <Icon name="eye" size={14} color={T.primary} stroke={2.2} />
+              {lang === 'hi' ? 'डेमो आज़माएं' : 'Try the demo'}
+              <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
+            </button>
+            <div style={{ fontSize: 10.5, color: T.ink3, textAlign: 'center', lineHeight: 1.5 }}>
+              {lang === 'hi'
+                ? 'खाते के बिना सभी फीचर्स देखें। आपका डेटा सिर्फ़ इस ब्राउज़र में रहेगा।'
+                : 'See every feature without creating an account. Data stays in this browser only.'}
+            </div>
           </form>
         ) : (
           <div style={{

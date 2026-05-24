@@ -224,6 +224,11 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   .stay .nights { text-align: center; }
   .stay .nights-num { font-size: 22pt; font-weight: 800; color: ${BRAND}; line-height: 1; }
   .stay .nights-lbl { font-size: 8pt; color: #999; letter-spacing: 1px; margin-top: 2px; text-transform: uppercase; }
+  .meal-chip { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: ${BRAND_LITE}; border-radius: 10px; margin-bottom: 22px; border: 1px solid ${BRAND}; }
+  .meal-chip .meal-code { font-size: 18pt; font-weight: 800; color: ${BRAND}; letter-spacing: 1px; min-width: 56px; text-align: center; padding: 4px 10px; background: #fff; border-radius: 6px; }
+  .meal-chip .meal-body { flex: 1; }
+  .meal-chip .meal-label { font-size: 8pt; font-weight: 700; letter-spacing: 1.2px; color: ${BRAND}; text-transform: uppercase; }
+  .meal-chip .meal-name { font-size: 12pt; font-weight: 700; color: #1a1a1a; margin-top: 2px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 11pt; }
   th { text-align: left; padding: 8px 6px; border-bottom: 1.5px solid #E8E0D8; font-size: 8pt; font-weight: 700; letter-spacing: 1px; color: #999; text-transform: uppercase; }
   th.r, td.r { text-align: right; }
@@ -307,6 +312,14 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     <div class="msg">${L.holdMsg1} <span class="when">${releaseLabel}</span>. ${L.holdMsg2} ${fmtINR(balance)} ${L.holdMsg3} <strong>${L.holdMsg4}</strong> ${L.holdMsg5}</div>
   </div>` : ''}
 
+  ${mealPlan && !isInvoice ? `<div class="meal-chip">
+    <div class="meal-code">${esc(mealPlan.code)}</div>
+    <div class="meal-body">
+      <div class="meal-label">${L.mealPlan}</div>
+      <div class="meal-name">${esc(mealPlan.label)}</div>
+    </div>
+  </div>` : ''}
+
   <h2>${isInvoice ? L.invoiceLines : L.folio}</h2>
   <table>
     <thead>
@@ -319,10 +332,25 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
         <td class="r">—</td>
         <td class="r">${fmtINR(tariffLine)}</td>
       </tr>
-      ${mealPlan && mealCost > 0 ? `
-      <tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">${fmtINR(mealCost)}</td></tr>` : ''}
-      ${mealPlan && mealCost === 0 && mealPlan.id !== 'ep' ? `
-      <tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">${L.included}</td><td class="r">—</td></tr>` : ''}
+      ${(() => {
+        if (!mealPlan) return '';
+        const defaultId = prop?.defaultMealPlanId || 'ep';
+        const isDefault = mealPlan.id === defaultId;
+        // Default plan row → "included" amount column, no delta.
+        if (isDefault) {
+          return `<tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">${L.included}</td><td class="r">—</td></tr>`;
+        }
+        // Different plan, positive delta → charge.
+        if (mealCost > 0) {
+          return `<tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">${fmtINR(mealCost)}</td></tr>`;
+        }
+        // Different plan, negative delta → discount (cheaper than default).
+        if (mealCost < 0) {
+          return `<tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">− ${fmtINR(Math.abs(mealCost))}</td></tr>`;
+        }
+        // Same price, different plan → just label it.
+        return `<tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>`;
+      })()}
       ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
       ${withTax ? (() => {
         const halfRate = (tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0);

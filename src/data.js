@@ -392,15 +392,39 @@ function bookingGuestCount(b) {
   return m ? (+m[1] || 0) + (+m[2] || 0) : 1;
 }
 
-// Compute the meal-plan cost for a booking. Returns 0 when no plan, plan
-// is the default "Room only" (price 0), or the plan no longer exists.
+// The property-wide *default* meal plan. The calendar rate is treated as
+// already including this plan — so a booking on the default plan pays no
+// extra meal cost. Picking a different plan adds (or subtracts) the delta
+// per guest per night.
+//
+// This unlocks the "all-inclusive package rate" model — a camp that quotes
+// ₹4,500/night MAP-inclusive sets MAP as the default, and switching the
+// same booking to EP yields a negative delta (the cost of meals refunded).
+// For city hotels selling "room + optional breakfast" the default stays at
+// 'ep' (price 0), so the math collapses to the previous "add on top" rule.
+export function defaultMealPlanId(property) {
+  return property?.defaultMealPlanId || 'ep';
+}
+
+// Cost of the meal plan add-on for this booking. Returns the delta from
+// the property's default plan × guests × nights. Returns 0 when:
+//   - booking has no mealPlanId
+//   - the picked plan doesn't exist on the property anymore
+//   - the picked plan IS the default (already in the room rate)
+// Negative deltas (e.g. EP on a property whose default is MAP) flow
+// through unchanged — the booking summary shows them as a discount.
 export function mealCostFor(booking, property) {
   if (!booking || !booking.mealPlanId) return 0;
-  const plan = mealPlanById(property, booking.mealPlanId);
-  if (!plan || !plan.price) return 0;
+  const selected = mealPlanById(property, booking.mealPlanId);
+  if (!selected) return 0;
+  const defaultId = defaultMealPlanId(property);
+  const defaultPlan = mealPlanById(property, defaultId);
+  const defaultPrice = (defaultPlan && defaultPlan.price) || 0;
+  const delta = (selected.price || 0) - defaultPrice;
+  if (delta === 0) return 0;
   const guests = bookingGuestCount(booking);
   const nights = booking.nights || 1;
-  return plan.price * guests * nights;
+  return delta * guests * nights;
 }
 
 // All issued (non-voided) invoices across the given bookings, in the order they

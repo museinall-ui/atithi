@@ -557,6 +557,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             {(() => {
               const mealCost = mealCostFor(b, property);
               const meal = mealPlanById(property, b.mealPlanId);
+              const defaultId = property?.defaultMealPlanId || 'ep';
               const preTax = withTax ? b.total - tx.gst : b.total;
               const tariff = preTax - mealCost;
               // Rate plan row — surfaced when the booking used something
@@ -564,6 +565,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // see the cancellation terms at a glance.
               const ratePlans = Array.isArray(property?.ratePlans) ? property.ratePlans : [];
               const rp = ratePlans.find(p => p.id === b.ratePlanId);
+              // Build the meal-plan folio row. Three cases:
+              //   - selected IS the default → just label it "in rate"
+              //   - delta > 0 → charge as positive add-on
+              //   - delta < 0 → show as discount (negative)
+              const mealRow = (() => {
+                if (!meal) return null;
+                if (meal.id === defaultId) {
+                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value="In room rate" />;
+                }
+                if (mealCost > 0) {
+                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`+ ₹${mealCost.toLocaleString('en-IN')}`} />;
+                }
+                if (mealCost < 0) {
+                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`− ₹${Math.abs(mealCost).toLocaleString('en-IN')}`} />;
+                }
+                return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value="—" />;
+              })();
               return (
                 <>
                   <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${tariff.toLocaleString('en-IN')}`} />
@@ -573,12 +591,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       value={`${rp.label} · ${rp.cancellation === 'non-refundable' ? 'No refunds' : `free cancel ${rp.refundHours}h`}`}
                     />
                   )}
-                  {meal && mealCost > 0 && (
-                    <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
-                  )}
-                  {meal && mealCost === 0 && meal.id !== 'ep' && (
-                    <Row label="Meal plan" value={`${meal.code} · ${meal.label}`} />
-                  )}
+                  {mealRow}
                 </>
               );
             })()}

@@ -1,16 +1,21 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId } from '../data.js';
 
-// Default mealPlanId for a fresh booking. Used to always be 'ep' but the
-// hotelier can now disable EP (e.g. an all-MAP camp). Falls back to 'ep'
-// only if literally no plan is enabled, so the booking object is never
-// left without a mealPlanId — downstream cost code happily treats unknown
-// ids as zero-cost.
-function firstEnabledMealPlanId(property) {
+// Default mealPlanId for a fresh booking. Priority order:
+//   1) property.defaultMealPlanId (if set & still enabled) — the camp's
+//      "rates quoted INCLUDING this plan" anchor.
+//   2) First enabled plan on the property — covers properties that
+//      disabled EP without picking a new default.
+//   3) 'ep' as a final fallback so the booking object is never left
+//      without a mealPlanId; downstream cost code treats unknown ids
+//      as zero-cost.
+function startingMealPlanId(property) {
   const enabled = effectiveMealPlans(property).filter(p => p.enabled);
-  if (enabled.length === 0) return 'ep';
-  return enabled[0].id;
+  const desired = defaultMealPlanId(property);
+  if (enabled.some(p => p.id === desired)) return desired;
+  if (enabled.length > 0) return enabled[0].id;
+  return 'ep';
 }
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -375,7 +380,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
 // roomTypeId, so a single booking can mix Deluxe + Luxury + Pool etc.
 // The booking-level `roomTypeId` (kept for backward-compat with screens
 // that still read it) is auto-derived from the first room.
-function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans = [] }) {
+function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans = [], property }) {
   const totalAdults = data.roomItems.reduce((s, r) => s + r.adults, 0);
   const totalChildren = data.roomItems.reduce((s, r) => s + r.children, 0);
   const totalGuests = totalAdults + totalChildren;
@@ -461,51 +466,69 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans 
           </Card>
         );
       })()}
-      {enabledMealPlans.length > 0 && (
-        <Card padding={14}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>{t('mealPlanHeader')}</div>
-            <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{totalGuests} guest{totalGuests > 1 ? 's' : ''} × {data.nights} night{data.nights > 1 ? 's' : ''}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {enabledMealPlans.map(plan => {
-              const sel = plan.id === selectedMealPlanId;
-              const planCost = (plan.price || 0) * totalGuests * data.nights;
-              return (
-                <button
-                  key={plan.id}
-                  onClick={() => set('mealPlanId', plan.id)}
-                  className="atithi-tap"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 10,
-                    border: sel ? `1.5px solid ${T.primary}` : `1px solid ${T.border}`,
-                    background: sel ? T.primaryLt : T.card,
-                    cursor: 'pointer', textAlign: 'left',
-                  }}
-                >
-                  <span style={{
-                    width: 38, fontSize: 10, fontWeight: 800,
-                    color: sel ? T.primaryDk : T.ink2, letterSpacing: 0.5,
-                    flexShrink: 0,
-                  }}>{plan.code}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{plan.label}</div>
-                    <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
-                      {plan.price > 0
-                        ? `₹${plan.price.toLocaleString('en-IN')} ${t('perGuestPerNight')}`
-                        : t('mealPlanNoExtra')}
+      {enabledMealPlans.length > 0 && (() => {
+        // Calendar rate is treated as already including the property's
+        // default meal plan; other plans charge the per-guest-per-night
+        // delta on top (can be negative — that's the discount when a
+        // guest on a MAP-default property picks EP).
+        const defaultId = property?.defaultMealPlanId || 'ep';
+        const defaultPlan = enabledMealPlans.find(p => p.id === defaultId);
+        const defaultPrice = (defaultPlan && defaultPlan.price) || 0;
+        return (
+          <Card padding={14}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>{t('mealPlanHeader')}</div>
+              <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{totalGuests} guest{totalGuests > 1 ? 's' : ''} × {data.nights} night{data.nights > 1 ? 's' : ''}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {enabledMealPlans.map(plan => {
+                const sel = plan.id === selectedMealPlanId;
+                const isDefault = plan.id === defaultId;
+                const delta = (plan.price || 0) - defaultPrice;
+                const planCost = delta * totalGuests * data.nights;
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => set('mealPlanId', plan.id)}
+                    className="atithi-tap"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 10,
+                      border: sel ? `1.5px solid ${T.primary}` : `1px solid ${T.border}`,
+                      background: sel ? T.primaryLt : T.card,
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{
+                      width: 38, fontSize: 10, fontWeight: 800,
+                      color: sel ? T.primaryDk : T.ink2, letterSpacing: 0.5,
+                      flexShrink: 0,
+                    }}>{plan.code}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>
+                        {plan.label}
+                        {isDefault && (
+                          <span style={{ marginLeft: 6, fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase' }}>· included</span>
+                        )}
+                      </div>
+                      <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
+                        {isDefault
+                          ? t('mealPlanInRate') || 'In room rate'
+                          : delta > 0
+                            ? `+ ₹${delta.toLocaleString('en-IN')} ${t('perGuestPerNight')}`
+                            : `− ₹${Math.abs(delta).toLocaleString('en-IN')} ${t('perGuestPerNight')}`}
+                      </div>
                     </div>
-                  </div>
-                  <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: sel ? T.primaryDk : T.ink2 }}>
-                    {planCost > 0 ? `+₹${planCost.toLocaleString('en-IN')}` : '—'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+                    <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: planCost < 0 ? T.ok : sel ? T.primaryDk : T.ink2 }}>
+                      {planCost === 0 ? '—' : planCost > 0 ? `+₹${planCost.toLocaleString('en-IN')}` : `−₹${Math.abs(planCost).toLocaleString('en-IN')}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
@@ -865,7 +888,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         payMethod: null, payAmount: 'full', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
-        mealPlanId: editing.mealPlanId || firstEnabledMealPlanId(property),
+        mealPlanId: editing.mealPlanId || startingMealPlanId(property),
         ratePlanId: editing.ratePlanId || defaultRatePlanId(),
       };
     }
@@ -888,7 +911,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // Default to the first enabled plan. Used to always be 'ep' but the
       // hotelier can now disable EP (e.g. an all-MAP camp), so we look up
       // the active default at booking-create time.
-      mealPlanId: firstEnabledMealPlanId(property),
+      mealPlanId: startingMealPlanId(property),
       // Rate plan defaults to "Standard". Hotelier picks a different one
       // on Step 2 if multiple plans are enabled.
       ratePlanId: defaultRatePlanId(),
@@ -953,11 +976,17 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     const ex = allExtras.find(x => x.id === id);
     return ex ? sum + ex.price * qty : sum;
   }, 0);
-  // Meal plan cost: per-guest per-night × total guests × nights.
+  // Meal plan cost: delta from the property's default plan × guests ×
+  // nights. The calendar rate is treated as already including the
+  // default plan, so picking the same plan costs 0; cheaper plans yield
+  // a negative delta (discount); pricier plans add to the total.
   const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
   const mealPlans = Array.isArray(property?.mealPlans) ? property.mealPlans.filter(p => p.enabled) : [];
   const selectedMealPlan = mealPlans.find(p => p.id === data.mealPlanId);
-  const mealCost = selectedMealPlan ? (selectedMealPlan.price || 0) * totalGuests * data.nights : 0;
+  const defaultMpId = property?.defaultMealPlanId || 'ep';
+  const defaultMealPlan = mealPlans.find(p => p.id === defaultMpId);
+  const mealDeltaPrice = (selectedMealPlan?.price || 0) - (defaultMealPlan?.price || 0);
+  const mealCost = selectedMealPlan ? mealDeltaPrice * totalGuests * data.nights : 0;
   const subtotal = roomsSubtotal + extrasTotal + mealCost;
   // Blended GST rate across rooms — different categories sit in different
   // Indian GST slabs (≤₹1k exempt, ₹1k-7.5k = 12%, >₹7.5k = 18%).
@@ -995,7 +1024,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
         {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} />}
-        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} />}
+        {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
         {step === 4 && <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />}
       </div>

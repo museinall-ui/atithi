@@ -89,7 +89,7 @@ export const STRINGS = {
     removeMealPlan: 'Remove this plan',
     // NewBooking meal plan picker (Step 2)
     mealPlanHeader: 'MEAL PLAN',
-    mealPlanNoExtra: 'No extra charge',
+    mealPlanNoExtra: 'No extra charge', mealPlanInRate: 'In room rate',
     // Repeat-guest banner (NewBooking Step 3)
     repeatGuestQ: 'Repeat guest?',
     previousStayFound: 'previous stay found',
@@ -190,7 +190,7 @@ export const STRINGS = {
     removeMealPlan: 'यह योजना हटाएँ',
     // NewBooking meal plan picker (Step 2)
     mealPlanHeader: 'भोजन योजना',
-    mealPlanNoExtra: 'कोई अतिरिक्त शुल्क नहीं',
+    mealPlanNoExtra: 'कोई अतिरिक्त शुल्क नहीं', mealPlanInRate: 'किराये में शामिल',
     // Repeat-guest banner (NewBooking Step 3)
     repeatGuestQ: 'पुराने मेहमान?',
     previousStayFound: 'पिछला ठहराव मिला',

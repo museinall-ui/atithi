@@ -156,6 +156,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
   const [mealPlans, setMealPlans] = useState(property.mealPlans || []);
+  // Property-wide default meal plan. The Rates calendar rate is treated
+  // as INCLUDING this plan, so a guest who picks a different plan pays
+  // the per-guest-per-night delta on top. Defaults to 'ep' so existing
+  // properties keep their old "add on top" behaviour (EP price = 0).
+  const [defaultMealPlan, setDefaultMealPlan] = useState(property.defaultMealPlanId || 'ep');
   // Weekend rules (advanced setting). Hotelier toggles which days count
   // as weekend and the uplift % applied on those days in Rates &
   // inventory. Defaults: Sat + Sun, +20%.
@@ -241,7 +246,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
-      mealPlans, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans,
+      mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -641,6 +646,39 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
             {t('mealPlansHint')}
+          </div>
+          {/* Default meal plan: the one the calendar rate is treated as
+              already including. Picking a different plan on a booking
+              adds (or subtracts) the per-guest-per-night delta. Set to
+              EP for hotels that quote room-only and sell breakfast on
+              top; set to MAP/AP for camps that quote all-inclusive. */}
+          <div style={{ padding: '10px 12px', background: T.primaryLt, border: `1px solid ${T.primary}`, borderRadius: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: T.primaryDk, fontWeight: 700, letterSpacing: 0.3, marginBottom: 6, textTransform: 'uppercase' }}>Default meal plan</div>
+            <div style={{ fontSize: 10.5, color: T.primaryDk, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
+              Your calendar rate is treated as already including this plan. Other plans add (or subtract) the per-guest-per-night difference.
+            </div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {mealPlans.filter(mp => mp.enabled).map(mp => {
+                const sel = defaultMealPlan === mp.id;
+                return (
+                  <button
+                    key={mp.id}
+                    onClick={() => setDefaultMealPlan(mp.id)}
+                    style={{
+                      padding: '6px 11px', borderRadius: 999, cursor: 'pointer',
+                      border: `1.5px solid ${sel ? T.primary : T.border}`,
+                      background: sel ? T.card : 'transparent',
+                      color: sel ? T.primaryDk : T.ink2,
+                      fontSize: 11, fontWeight: 700,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    {sel && <Icon name="check" size={11} stroke={2.4} color={T.primary} />}
+                    <strong>{mp.code}</strong> · {mp.label || ''}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {mealPlans.map((mp, i) => {

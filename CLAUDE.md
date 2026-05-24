@@ -257,6 +257,13 @@ Unchanged: writes `--atithi-primary*` CSS vars onto `:root` and syncs `<meta nam
     { id: 'map', code: 'MAP', label: 'Breakfast + 1 main meal', price: 1200, enabled: true  },
     { id: 'ap',  code: 'AP',  label: 'All meals',               price: 2000, enabled: false },
   ],
+  // The plan the calendar rate is treated as already including. A camp
+  // that quotes "₹4500 MAP-inclusive" sets this to 'map' so a booking
+  // on MAP costs ₹4500; switching the same booking to EP / CP yields a
+  // negative delta on the folio (the cost of meals refunded). Defaults
+  // to 'ep' on new properties, which makes the math equivalent to the
+  // previous "always add meal cost on top" rule.
+  defaultMealPlanId: 'ep',
   invoiceCounters: { '2627': 12 },        // last-used seq per Indian FY
   accountant: {                            // CA contact + a few misc property flags piggybacking on this jsonb to avoid schema migrations
     name, email, firm,
@@ -273,6 +280,12 @@ Unchanged: writes `--atithi-primary*` CSS vars onto `:root` and syncs `<meta nam
   // Per-channel markup % vs direct (Rates F8). Channels / Invoicing
   // tiers only; non-zero values surface a rate-parity warning.
   channelMarkups: { direct: 0, mmt: 0, goibibo: 0, booking: 0, agoda: 0, airbnb: 0 },
+  // Per-channel commission % the OTA deducts from bookings. Powers the
+  // Reports "Take-home · after tax + OTA" card. Defaults from
+  // DEFAULT_CHANNEL_COMMISSIONS in data.js (18% MMT, 15% Booking.com,
+  // 15% Goibibo, 18% Agoda, 3% Airbnb, 0% direct / website). Hoteliers
+  // override per their actual contract in Settings → Channel commissions.
+  channelCommissions: { direct: 0, mmt: 18, goibibo: 15, booking: 15, agoda: 18, airbnb: 3 },
   // Rate plans (Rates F7). Standard always present + at 0%; hotelier
   // enables Flexible / Non-refundable / custom plans per property.
   ratePlans: [

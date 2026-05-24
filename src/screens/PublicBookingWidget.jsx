@@ -94,27 +94,38 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const upliftPct = property?.weekendRules?.upliftPct ?? 20;
   const seasons = Array.isArray(property?.seasons) ? property.seasons : [];
 
-  const computePerNightRate = (typeId) => {
-    if (!data.checkIn) return null;
+  // Per-night rates for a stay, room-type pair. Returns an array of
+  // {iso, rate, isWknd, seasonName?} so the summary can show a
+  // breakdown when nights differ.
+  const computePerNightRates = (typeId) => {
+    if (!data.checkIn) return [];
     const rt = ROOM_TYPES.find(r => r.id === typeId);
-    if (!rt) return null;
-    // Average rate across the stay: sum each night's rate, divide by nights.
-    let totalSum = 0;
+    if (!rt) return [];
+    const rpObj = ratePlanById(property, data.ratePlanId) || { multiplierPct: 0 };
+    const rpMult = 1 + ((rpObj.multiplierPct || 0) / 100);
+    const out = [];
     for (let i = 0; i < (data.nights || 1); i++) {
       const d = new Date(data.checkIn + 'T00:00:00');
       d.setDate(d.getDate() + i);
       const iso = ymd(d);
       const isWknd = weekendDays.includes(d.getDay());
-      const seasonMult = seasons
-        .filter(s => iso >= s.startIso && iso <= s.endIso)
-        .reduce((m, s) => m * (1 + ((s.multiplierPct || 0) / 100)), 1);
+      const matchingSeason = seasons.find(s => iso >= s.startIso && iso <= s.endIso);
+      const seasonMult = matchingSeason ? (1 + ((matchingSeason.multiplierPct || 0) / 100)) : 1;
       const wkMult = isWknd ? (1 + upliftPct / 100) : 1;
-      totalSum += rt.base * wkMult * seasonMult;
+      const rate = Math.round(rt.base * wkMult * seasonMult * rpMult);
+      out.push({ iso, rate, isWknd, seasonName: matchingSeason ? matchingSeason.name : null });
     }
-    const avg = totalSum / (data.nights || 1);
-    const rpObj = ratePlanById(property, data.ratePlanId) || { multiplierPct: 0 };
-    const rpMult = 1 + ((rpObj.multiplierPct || 0) / 100);
-    return Math.round(avg * rpMult);
+    return out;
+  };
+
+  const computePerNightRate = (typeId) => {
+    const nights = computePerNightRates(typeId);
+    if (!nights.length) return null;
+    // Average across the stay — used for the room-tile rate label
+    // ("₹4,500 per night"). Step 3 shows the per-night breakdown if
+    // the rates actually differ from night to night.
+    const sum = nights.reduce((s, n) => s + n.rate, 0);
+    return Math.round(sum / nights.length);
   };
 
   // Availability check — counts bookings that overlap the requested
@@ -166,12 +177,16 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   };
 
   const selectedRT = ROOM_TYPES.find(r => r.id === data.roomTypeId);
-  const perNight = data.roomTypeId ? computePerNightRate(data.roomTypeId) : null;
+  const perNightArray = data.roomTypeId ? computePerNightRates(data.roomTypeId) : [];
+  const perNight = perNightArray.length ? Math.round(perNightArray.reduce((s, n) => s + n.rate, 0) / perNightArray.length) : null;
+  const ratesVary = perNightArray.length > 1 && perNightArray.some(n => n.rate !== perNightArray[0].rate);
   // Multi-room: rate × rooms × nights. Each room is the same category
   // (simpler UX than mixed-type which adds a per-room picker; a guest
   // wanting mixed types can just make two bookings).
   const rooms = Math.max(1, data.rooms || 1);
-  const roomCost = perNight ? perNight * (data.nights || 1) * rooms : 0;
+  // Use the actual per-night array sum (not the average × nights) so
+  // the displayed total exactly matches the breakdown numbers.
+  const roomCost = perNightArray.length ? perNightArray.reduce((s, n) => s + n.rate, 0) * rooms : 0;
 
   // Distribute guests evenly across N rooms. Remainder goes to the
   // earlier rooms (so 7 adults across 3 rooms = [3, 2, 2]). Used to
@@ -338,6 +353,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{propName}</div>
             {propAddr && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{propAddr}</div>}
+            {property?.profile?.tagline && (
+              <div style={{ fontSize: 11.5, opacity: 0.9, marginTop: 4, fontStyle: 'italic', lineHeight: 1.4 }}>
+                {property.profile.tagline}
+              </div>
+            )}
             <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, letterSpacing: 0.4, textTransform: 'uppercase' }}>
               {step === 4 ? 'Booking confirmed' : `Book direct · Step ${step} of 3`}
             </div>
@@ -737,7 +757,36 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <SummaryRow label="Check-in" value={new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Check-out" value={new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Room" value={`${rooms} × ${selectedRT?.name || ''}`} />
-              <SummaryRow label="Rate" value={`₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}${rooms > 1 ? ` × ${rooms} rooms` : ''}`} />
+              <SummaryRow label="Rate" value={ratesVary ? `Varies by night (see below)` : `₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}${rooms > 1 ? ` × ${rooms} rooms` : ''}`} />
+              {/* Per-night breakdown — only shown when rates differ
+                  across nights (weekend uplift / season multiplier
+                  kicks in mid-stay). Keeps the simple-stay case clean
+                  while making the surprise-pricing case explicit. */}
+              {ratesVary && (
+                <div style={{
+                  marginTop: 4, padding: '8px 10px',
+                  background: T.bgSoft, border: `1px solid ${T.borderSoft}`,
+                  borderRadius: 8,
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Per-night breakdown
+                  </div>
+                  {perNightArray.map((n, i) => {
+                    const d = new Date(n.iso + 'T00:00:00');
+                    const dayLabel = d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+                    return (
+                      <div key={n.iso} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: 11 }}>
+                        <span style={{ color: T.ink2, fontWeight: 600 }}>
+                          {dayLabel}
+                          {n.isWknd && <span style={{ marginLeft: 4, fontSize: 9, color: T.primaryDk, fontWeight: 700 }}>· weekend</span>}
+                          {n.seasonName && <span style={{ marginLeft: 4, fontSize: 9, color: T.indigo, fontWeight: 700 }}>· {n.seasonName}</span>}
+                        </span>
+                        <span className="tnum" style={{ color: T.ink, fontWeight: 700 }}>₹{n.rate.toLocaleString('en-IN')}{rooms > 1 ? ` × ${rooms}` : ''}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {/* Meal plan line — show whenever a non-default plan is
                   picked OR when the property has more than one enabled
                   plan (so the guest sees which one is in effect). */}

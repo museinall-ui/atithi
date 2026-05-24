@@ -398,6 +398,30 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             </label>
           </div>
         </Card>
+
+        <SectionHead title="Property tagline" style={{ marginTop: 16 }} />
+        <Card padding={14}>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
+            One short sentence shown on the booking widget header. Keep it under ~120 characters — e.g. "Luxury desert tents 40 km from Jaisalmer fort" or "Family-run beach resort on Goa's north coast".
+          </div>
+          <input
+            value={profile.tagline || ''}
+            onChange={(e) => setProfile({ ...profile, tagline: e.target.value.slice(0, 140) })}
+            placeholder="One-line property pitch"
+            maxLength={140}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '9px 12px', fontSize: 13, fontWeight: 600, color: T.ink,
+              border: `1px solid ${T.border}`, borderRadius: 8, background: T.card,
+              outline: 'none',
+            }}
+          />
+          {profile.tagline && (
+            <div style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, marginTop: 4, textAlign: 'right' }}>
+              {profile.tagline.length}/140
+            </div>
+          )}
+        </Card>
         </AccordionGroup>
 
         <AccordionGroup title="Basics" open={openGroups.basics} onToggle={() => toggleGroup('basics')}>

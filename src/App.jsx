@@ -1022,6 +1022,7 @@ export default function App() {
           property={property}
           bookings={bookings}
           rateOverrides={rateOverrides}
+          savedCustomExtras={savedCustomExtras}
           onSubmit={(newBk) => {
             const id = 'BK-' + (2854 + bookings.length);
             const enriched = { ...newBk, id };

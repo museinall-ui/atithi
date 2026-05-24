@@ -24,9 +24,11 @@ import { generateVoucher } from '../utils/voucher.js';
 // through a Supabase anon RLS policy that allows status='tentative'
 // inserts but rejects everything else — that policy work is queued.
 
-export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, onSubmit }) {
+export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, savedCustomExtras = [], onSubmit }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const ratePlans = effectiveRatePlans(property);
+  const mealPlans = effectiveMealPlans(property).filter(mp => mp.enabled);
+  const defaultMealPlanId = property?.defaultMealPlanId || 'ep';
 
   const [step, setStep] = useState(1);
   const [data, setData] = useState({
@@ -36,6 +38,13 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     children: 0,
     roomTypeId: null,
     ratePlanId: defaultRatePlanId(),
+    // Default to the property's default meal plan so the displayed
+    // room rate matches what the guest will be charged. If they pick
+    // a different plan we add (or subtract) the per-guest-per-night
+    // delta — same model the hotelier-side uses.
+    mealPlanId: defaultMealPlanId,
+    // {extraId: quantity} — multi-select with per-extra qty.
+    extras: {},
     name: '',
     phone: '',
     email: '',
@@ -153,7 +162,44 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
 
   const selectedRT = ROOM_TYPES.find(r => r.id === data.roomTypeId);
   const perNight = data.roomTypeId ? computePerNightRate(data.roomTypeId) : null;
-  const total = perNight ? perNight * (data.nights || 1) : 0;
+  const roomCost = perNight ? perNight * (data.nights || 1) : 0;
+
+  // Meal plan delta vs the property's default plan. Default plan = the
+  // one the calendar rate is treated as already including. Switching
+  // adds the per-guest-per-night price difference × guests × nights.
+  // Negative deltas (cheaper plan than default) reduce the total.
+  const mealDelta = (() => {
+    if (!data.mealPlanId || !mealPlans.length) return 0;
+    const picked = mealPlanById(property, data.mealPlanId);
+    const def = mealPlanById(property, defaultMealPlanId);
+    if (!picked || !def) return 0;
+    if (picked.id === def.id) return 0;
+    const totalGuests = (data.adults || 0) + (data.children || 0);
+    return Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
+  })();
+
+  // Sum of selected extras. Each extra has a unit that determines the
+  // multiplier: per stay (×1) / per night (×nights) / per guest
+  // (×guests) / per guest per night (×guests×nights).
+  const extrasLines = Object.entries(data.extras || {})
+    .map(([id, qty]) => {
+      const ex = savedCustomExtras.find(x => x.id === id);
+      if (!ex || !qty) return null;
+      const totalGuests = (data.adults || 0) + (data.children || 0);
+      let mult = 1;
+      switch (ex.unit) {
+        case 'per night': mult = data.nights || 1; break;
+        case 'per guest': mult = totalGuests; break;
+        case 'per guest per night': mult = totalGuests * (data.nights || 1); break;
+        default: mult = 1; // 'per stay'
+      }
+      const line = (ex.price || 0) * qty * mult;
+      return { id, name: ex.name, qty, price: ex.price, unit: ex.unit, line };
+    })
+    .filter(Boolean);
+  const extrasCost = extrasLines.reduce((s, e) => s + e.line, 0);
+
+  const total = roomCost + mealDelta + extrasCost;
   const guestsStr = `${data.adults}A${data.children > 0 ? ` ${data.children}C` : ''}`;
 
   // Step 1 → 2 gate.
@@ -199,8 +245,25 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       notes: data.notes.trim() || `Booked via website widget`,
       status: 'tentative',
       channel: 'website',
-      mealPlanId: 'ep',
+      mealPlanId: data.mealPlanId || defaultMealPlanId,
       ratePlanId: data.ratePlanId,
+      // Selected saved extras → booking extras map + price overrides.
+      // Use the price the guest saw at booking time even if the hotelier
+      // later edits the saved-extra catalog (price honesty principle).
+      customExtras: Object.keys(data.extras).filter(id => (data.extras[id] || 0) > 0).map(id => {
+        const ex = savedCustomExtras.find(x => x.id === id);
+        return ex ? { id: ex.id, label: ex.name || 'Extra', price: ex.price || 0 } : null;
+      }).filter(Boolean),
+      extras: Object.fromEntries(Object.entries(data.extras).filter(([, q]) => (q || 0) > 0)),
+      extraPrices: Object.fromEntries(
+        Object.keys(data.extras)
+          .filter(id => (data.extras[id] || 0) > 0)
+          .map(id => {
+            const ex = savedCustomExtras.find(x => x.id === id);
+            return ex ? [id, ex.price || 0] : null;
+          })
+          .filter(Boolean)
+      ),
       // GST is not auto-applied for widget bookings — the hotelier
       // decides at folio time whether this booking goes on the GST
       // invoice register (some don't run their bookings through GST,
@@ -474,6 +537,55 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               );
             })()}
 
+            {/* Meal plan picker — shown when the hotelier has more than
+                one enabled plan. Each option shows the per-guest-per-
+                night delta vs the default plan (which is "Included" in
+                the rate). Picking a different plan adjusts the total
+                shown on the Continue button immediately. */}
+            {data.roomTypeId && mealPlans.length > 1 && (
+              <>
+                <SectionTitle style={{ marginTop: 18 }}>Choose a meal plan</SectionTitle>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {mealPlans.map(mp => {
+                    const sel = mp.id === data.mealPlanId;
+                    const def = mealPlanById(property, defaultMealPlanId);
+                    const isDefault = mp.id === defaultMealPlanId;
+                    const totalGuests = (data.adults || 0) + (data.children || 0);
+                    const deltaPerNight = isDefault ? 0 : ((mp.price || 0) - (def?.price || 0)) * totalGuests;
+                    return (
+                      <button
+                        key={mp.id}
+                        onClick={() => set('mealPlanId', mp.id)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 12px', borderRadius: 10,
+                          background: sel ? T.primaryLt : T.card,
+                          border: `1.5px solid ${sel ? T.primary : T.border}`,
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 10,
+                        }}
+                      >
+                        <span style={{
+                          minWidth: 38, padding: '4px 6px',
+                          fontSize: 11, fontWeight: 800, letterSpacing: 0.4,
+                          color: sel ? T.primaryDk : T.ink2,
+                          background: sel ? T.card : T.bgSoft,
+                          border: `1px solid ${sel ? T.primary : T.borderSoft}`,
+                          borderRadius: 5, textAlign: 'center',
+                        }}>{mp.code}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{mp.label}</div>
+                          <div style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
+                            {isDefault ? 'Included in rate' : (deltaPerNight === 0 ? 'Same price' : `${deltaPerNight > 0 ? '+' : '−'}₹${Math.abs(deltaPerNight).toLocaleString('en-IN')} / night for ${totalGuests} guest${totalGuests > 1 ? 's' : ''}`)}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             {/* Rate plan picker — only when multiple are enabled. */}
             {ratePlans.length > 1 && data.roomTypeId && (
               <>
@@ -543,6 +655,39 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               </Field>
             </Card>
 
+            {/* Optional add-ons — saved extras configured by the
+                hotelier in Settings → Meal plans + saved extras. Each
+                extra has a unit (per stay / night / guest / guest-per-
+                night) that determines the multiplier on the qty. */}
+            {savedCustomExtras.length > 0 && (
+              <>
+                <SectionTitle style={{ marginTop: 18 }}>Add extras (optional)</SectionTitle>
+                <Card>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {savedCustomExtras.map(ex => {
+                      const qty = data.extras[ex.id] || 0;
+                      return (
+                        <div key={ex.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: 10, background: qty > 0 ? T.primaryLt : T.bgSoft,
+                          border: `1px solid ${qty > 0 ? T.primary : T.borderSoft}`,
+                          borderRadius: 8,
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: qty > 0 ? T.primaryDk : T.ink }}>{ex.name || 'Extra'}</div>
+                            <div className="tnum" style={{ fontSize: 10, color: T.ink3, marginTop: 2 }}>
+                              ₹{(ex.price || 0).toLocaleString('en-IN')} · {ex.unit || 'per stay'}
+                            </div>
+                          </div>
+                          <Stepper value={qty} onChange={(v) => setData(d => ({ ...d, extras: { ...d.extras, [ex.id]: Math.max(0, Math.min(9, v)) } }))} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </>
+            )}
+
             <SectionTitle style={{ marginTop: 18 }}>Booking summary</SectionTitle>
             <Card>
               <SummaryRow label="Stay" value={`${data.nights} night${data.nights > 1 ? 's' : ''}, ${guestsStr}`} />
@@ -550,6 +695,25 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <SummaryRow label="Check-out" value={new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Room" value={selectedRT?.name || ''} />
               <SummaryRow label="Rate" value={`₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}`} />
+              {/* Meal plan line — show whenever a non-default plan is
+                  picked OR when the property has more than one enabled
+                  plan (so the guest sees which one is in effect). */}
+              {(() => {
+                const picked = mealPlanById(property, data.mealPlanId);
+                if (!picked) return null;
+                if (mealDelta === 0) {
+                  return <SummaryRow label="Meal plan" value={`${picked.code} · ${picked.label}`} />;
+                }
+                return (
+                  <>
+                    <SummaryRow label="Meal plan" value={`${picked.code} · ${picked.label}`} />
+                    <SummaryRow label={mealDelta > 0 ? 'Meal plan extra' : 'Meal plan discount'} value={`${mealDelta > 0 ? '+' : '−'}₹${Math.abs(mealDelta).toLocaleString('en-IN')}`} />
+                  </>
+                );
+              })()}
+              {extrasLines.map(e => (
+                <SummaryRow key={e.id} label={`${e.name} × ${e.qty}`} value={`+₹${e.line.toLocaleString('en-IN')}`} />
+              ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0 4px', borderTop: `1px solid ${T.borderSoft}`, marginTop: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Total</span>
                 <span className="tnum" style={{ fontSize: 18, fontWeight: 800, color: T.primaryDk, letterSpacing: -0.4 }}>₹{total.toLocaleString('en-IN')}</span>

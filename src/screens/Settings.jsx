@@ -1549,7 +1549,22 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             // Falls back to ?book=1 query if the hotelier prefers a flat URL.
             const widgetUrl = `${origin}${basePath}book/${slug}`;
             const iframeSnippet = `<iframe src="${widgetUrl}" style="width:100%; max-width:480px; height:780px; border:0; border-radius:14px; box-shadow:0 4px 18px rgba(0,0,0,0.08);"></iframe>`;
-            const linkSnippet = `<a href="${widgetUrl}" target="_blank" rel="noopener">Book your stay →</a>`;
+            // Embed button config — stored on property.profile.embedButton.
+            // Defaults give a sensible-looking button that anyone can drop
+            // on their site without thinking about styling.
+            const eb = profile.embedButton || {};
+            const btnText = eb.text || 'Book your stay';
+            const btnStyle = eb.style || 'pill';      // pill | rounded | square
+            const btnSize = eb.size || 'md';          // sm | md | lg
+            const btnColor = eb.useCustomColour && eb.color ? eb.color : (theme.color || `oklch(60% 0.16 ${theme.hue ?? 38})`);
+            const sizePadding = btnSize === 'sm' ? '8px 14px' : btnSize === 'lg' ? '16px 32px' : '12px 22px';
+            const sizeFont = btnSize === 'sm' ? 13 : btnSize === 'lg' ? 18 : 15;
+            const borderRadius = btnStyle === 'pill' ? 999 : btnStyle === 'rounded' ? 10 : 4;
+            // Inline-styled HTML so it works on any website without
+            // depending on the hotelier having CSS files. No external
+            // fonts so it inherits the site's font.
+            const btnInlineStyle = `display:inline-block;padding:${sizePadding};border-radius:${borderRadius}px;background:${btnColor};color:#fff;font-size:${sizeFont}px;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,0.12);letter-spacing:0.2px;`;
+            const linkSnippet = `<a href="${widgetUrl}" target="_blank" rel="noopener" style="${btnInlineStyle}">${btnText} →</a>`;
             const copyToClipboard = (text) => {
               if (typeof navigator !== 'undefined' && navigator.clipboard) {
                 navigator.clipboard.writeText(text).catch(() => {});
@@ -1613,14 +1628,135 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
 
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>
-                  OR JUST A LINK (NO IFRAME)
+                  STYLED BUTTON FOR YOUR WEBSITE
                 </div>
+                {/* Live preview of the button using the current config.
+                    The preview renders the exact same inline-styled
+                    anchor that the snippet box outputs, so what the
+                    hotelier sees here is exactly what their site
+                    visitor will see. */}
+                <div style={{
+                  padding: '18px 12px', marginBottom: 10,
+                  background: 'repeating-linear-gradient(45deg, #fafafa 0 12px, #f4f4f4 12px 24px)',
+                  border: `1px dashed ${T.border}`, borderRadius: 8,
+                  display: 'flex', justifyContent: 'center', alignItems: 'center',
+                }}>
+                  <a
+                    href="#"
+                    onClick={(e) => e.preventDefault()}
+                    style={{
+                      display: 'inline-block', padding: sizePadding,
+                      borderRadius: borderRadius, background: btnColor, color: '#fff',
+                      fontSize: sizeFont, fontWeight: 700, textDecoration: 'none',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)', letterSpacing: 0.2,
+                      cursor: 'default',
+                    }}
+                  >{btnText} →</a>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 3 }}>Button text</div>
+                    <input
+                      value={btnText}
+                      placeholder="Book your stay"
+                      maxLength={28}
+                      onChange={(e) => setProfile({ ...profile, embedButton: { ...eb, text: e.target.value } })}
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, fontWeight: 700, color: T.ink, padding: '6px 9px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 3 }}>Shape</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {[
+                          { id: 'pill', label: 'Pill' },
+                          { id: 'rounded', label: 'Rounded' },
+                          { id: 'square', label: 'Square' },
+                        ].map(opt => {
+                          const sel = btnStyle === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => setProfile({ ...profile, embedButton: { ...eb, style: opt.id } })}
+                              style={{
+                                flex: 1, padding: '5px 0', borderRadius: 5,
+                                border: `1px solid ${sel ? T.primary : T.border}`,
+                                background: sel ? T.primaryLt : T.card,
+                                color: sel ? T.primaryDk : T.ink3,
+                                fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                              }}
+                            >{opt.label}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 3 }}>Size</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {[
+                          { id: 'sm', label: 'S' },
+                          { id: 'md', label: 'M' },
+                          { id: 'lg', label: 'L' },
+                        ].map(opt => {
+                          const sel = btnSize === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => setProfile({ ...profile, embedButton: { ...eb, size: opt.id } })}
+                              style={{
+                                flex: 1, padding: '5px 0', borderRadius: 5,
+                                border: `1px solid ${sel ? T.primary : T.border}`,
+                                background: sel ? T.primaryLt : T.card,
+                                color: sel ? T.primaryDk : T.ink3,
+                                fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                              }}
+                            >{opt.label}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 3 }}>Colour</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button
+                        onClick={() => setProfile({ ...profile, embedButton: { ...eb, useCustomColour: false } })}
+                        style={{
+                          padding: '5px 10px', borderRadius: 5,
+                          border: `1px solid ${!eb.useCustomColour ? T.primary : T.border}`,
+                          background: !eb.useCustomColour ? T.primaryLt : T.card,
+                          color: !eb.useCustomColour ? T.primaryDk : T.ink3,
+                          fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                        }}
+                      >Match brand</button>
+                      <label style={{
+                        position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '5px 10px', borderRadius: 5,
+                        border: `1px solid ${eb.useCustomColour ? T.primary : T.border}`,
+                        background: eb.useCustomColour ? T.primaryLt : T.card,
+                        color: eb.useCustomColour ? T.primaryDk : T.ink3,
+                        fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                      }}>
+                        <input
+                          type="color"
+                          value={eb.color || '#c8553d'}
+                          onChange={(e) => setProfile({ ...profile, embedButton: { ...eb, useCustomColour: true, color: e.target.value } })}
+                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
+                        />
+                        <span style={{ width: 14, height: 14, borderRadius: 3, background: eb.color || '#c8553d', border: '1px solid rgba(0,0,0,0.15)' }} />
+                        Custom {eb.useCustomColour && eb.color ? eb.color.toUpperCase() : ''}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
                 <div style={{ position: 'relative', marginBottom: 10 }}>
                   <textarea
                     readOnly
                     value={linkSnippet}
                     onFocus={(e) => e.target.select()}
-                    rows={2}
+                    rows={3}
                     style={{ width: '100%', boxSizing: 'border-box', fontSize: 10.5, color: T.ink, padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.bgSoft, fontFamily: 'JetBrains Mono, monospace', resize: 'vertical' }}
                   />
                   <Btn

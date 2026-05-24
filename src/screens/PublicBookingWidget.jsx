@@ -517,6 +517,48 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               )}
             </Card>
 
+            {/* Group inquiry — when the guest hits the 5-room cap or
+                requests more than 12 total guests, the widget isn't the
+                right tool; their best path is a direct WhatsApp ping to
+                the hotelier. We open a templated message via wa.me. */}
+            {((data.rooms >= 5) || ((data.adults || 0) + (data.children || 0) > 12)) && property?.profile?.phone && (() => {
+              const phoneDigits = String(property.profile.phone).replace(/\D/g, '');
+              const msg = [
+                `Hi ${propName},`,
+                `I'd like to enquire about a group booking — ${data.rooms} room${data.rooms > 1 ? 's' : ''} for ${data.adults} adults${data.children > 0 ? ` + ${data.children} children` : ''}${data.checkIn ? ` arriving ${data.checkIn}` : ''}. Please share your group rates.`,
+                ``,
+                `Thanks!`,
+              ].join('\n');
+              const waUrl = `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
+              return (
+                <div style={{
+                  marginTop: 14, padding: '14px 16px',
+                  background: 'oklch(96% 0.04 145)', border: `1.5px solid oklch(72% 0.15 145)`,
+                  borderRadius: 10,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'oklch(35% 0.13 145)', marginBottom: 4 }}>
+                    Group inquiry?
+                  </div>
+                  <div style={{ fontSize: 11, color: 'oklch(35% 0.13 145)', fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                    For bigger groups (5+ rooms or 12+ guests) it's faster to message us directly — we'll quote a group rate and check availability for you.
+                  </div>
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8px 14px', borderRadius: 8,
+                      background: '#25D366', color: '#fff',
+                      fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                    }}
+                  >
+                    <Icon name="wa" size={14} color="#fff" stroke={2} /> Get a quote on WhatsApp
+                  </a>
+                </div>
+              );
+            })()}
+
             <PrimaryBtn disabled={!datesValid} onClick={() => setStep(2)}>
               See available rooms →
             </PrimaryBtn>
@@ -1031,6 +1073,51 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                   }}
                 >
                   <Icon name="download" size={13} stroke={2.2} color={T.primaryDk} /> Download voucher
+                </button>
+                {/* .ics calendar file — Google/Apple/Outlook all accept
+                    this. All-day event using VALUE=DATE so timezone
+                    nuances don't shift the dates. */}
+                <button
+                  onClick={() => {
+                    const startIso = data.checkIn.replace(/-/g, '');
+                    const endIso = checkOutIso.replace(/-/g, '');
+                    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+                    const loc = [property?.profile?.city, property?.profile?.state].filter(Boolean).join(', ');
+                    const ics = [
+                      'BEGIN:VCALENDAR',
+                      'VERSION:2.0',
+                      'PRODID:-//Atithi//Booking//EN',
+                      'CALSCALE:GREGORIAN',
+                      'METHOD:PUBLISH',
+                      'BEGIN:VEVENT',
+                      `UID:${createdBookingId}@atithi.local`,
+                      `DTSTAMP:${stamp}`,
+                      `DTSTART;VALUE=DATE:${startIso}`,
+                      `DTEND;VALUE=DATE:${endIso}`,
+                      `SUMMARY:${propName} · Stay (${createdBookingId})`,
+                      loc ? `LOCATION:${loc}` : '',
+                      `DESCRIPTION:Booking reference ${createdBookingId}\\n${data.nights} night${data.nights > 1 ? 's' : ''} · ${guestsStr}\\nRoom: ${selectedRT?.name || ''}\\nTotal: ₹${total.toLocaleString('en-IN')}`,
+                      'END:VEVENT',
+                      'END:VCALENDAR',
+                    ].filter(Boolean).join('\r\n');
+                    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `booking-${createdBookingId}.ics`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  style={{
+                    padding: '10px 16px', borderRadius: 8,
+                    border: `1.5px solid ${T.border}`, background: T.card, color: T.ink2,
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <Icon name="cal" size={13} stroke={2.2} color={T.ink2} /> Add to calendar
                 </button>
                 {data.email && (() => {
                   const checkInLabel = new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });

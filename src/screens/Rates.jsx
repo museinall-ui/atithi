@@ -260,6 +260,29 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const tierColor = (tier) => tier === 'soldOut' ? T.danger : tier === 'tight' ? 'oklch(60% 0.16 65)' : T.ink3;
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
+
+  // Mobile swipe across the calendar to flip months. Tracks one-finger
+  // horizontal travel; if dx > 60px and travel is mostly horizontal we
+  // navigate and cancel any in-progress cell selection so the swipe
+  // doesn't accidentally mark a date as well.
+  const swipeRef = useRef(null);
+  const onCalSwipeStart = (e) => {
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    swipeRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onCalSwipeEnd = (e) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return;
+    if (dx > 0) goPrevMonth(); else goNextMonth();
+    setDragStart(null); setDragEnd(null); setDragMoved(false);
+  };
   const onCellEnter = (i) => {
     if (dragStart != null) {
       if (i !== dragStart) setDragMoved(true);
@@ -349,11 +372,33 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   // Bulk-select pattern picker. The "Select…" button opens a sheet with
   // one-tap presets: all of a given weekday, all weekend days, or all
-  // holidays falling inside the visible window. Lets the hotelier set,
-  // for instance, "all Fridays in October" without tapping each.
+  // holidays falling inside a 180-day forward window. "All Mondays"
+  // earlier only covered the visible 5-week window, which surprised
+  // hoteliers who wanted to set rates for "all Mondays this season".
   const [showSelectPattern, setShowSelectPattern] = useState(false);
+  const PATTERN_HORIZON_DAYS = 180;
+  // Pre-compute all days in the 180-day window so the patterns operate
+  // on the full horizon (today → +180). Each entry mirrors the shape of
+  // `visibleDays` so the predicates downstream can stay unchanged.
+  const horizonDays = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < PATTERN_HORIZON_DAYS; i++) {
+      const d = new Date(ANCHOR);
+      d.setDate(d.getDate() + i);
+      out.push({
+        idx: i,
+        dom: d.getDate(),
+        dow: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()],
+        dowIdx: d.getDay(),
+        isWknd: weekendDaySet.has(d.getDay()),
+        iso: ymd(d),
+        holiday: holidayFor(ymd(d)),
+      });
+    }
+    return out;
+  }, [weekendDaySet]);
   const selectByPredicate = (pred) => {
-    const ids = visibleDays.filter(pred).map(d => d.idx);
+    const ids = horizonDays.filter(pred).map(d => d.idx);
     setSelected(new Set(ids));
     setShowSelectPattern(false);
   };
@@ -581,7 +626,31 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           </div>
         )}
 
-        <SectionHead title={t('dailyRate')} action={
+        {/* Month label — derives the dominant month of the visible 5-week
+            window so the hotelier always knows which month they're
+            looking at. When the window straddles two months we show
+            both (e.g. "May → Jun 2026"). */}
+        {(() => {
+          if (!visibleDays.length) return null;
+          const first = visibleDays[0];
+          const last = visibleDays[visibleDays.length - 1];
+          const fd = new Date(ANCHOR);
+          fd.setDate(fd.getDate() + first.idx);
+          const ld = new Date(ANCHOR);
+          ld.setDate(ld.getDate() + last.idx);
+          const sameMonth = fd.getMonth() === ld.getMonth() && fd.getFullYear() === ld.getFullYear();
+          const monthFmt = (d) => d.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' });
+          const label = sameMonth
+            ? monthFmt(fd)
+            : `${fd.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { month: 'short' })} → ${monthFmt(ld)}`;
+          return (
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px', marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: T.ink, letterSpacing: -0.3 }}>{label}</h3>
+              <span style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>{t('dailyRate')}</span>
+            </div>
+          );
+        })()}
+        <SectionHead title="" style={{ marginBottom: 8, padding: 0 }} action={
           <div style={{ display: 'inline-flex', gap: 12 }}>
             <button
               onClick={() => setShowSelectPattern(true)}
@@ -589,7 +658,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             >Select…</button>
             {ROOM_TYPES.length > 1 && (
               <button
-                onClick={() => { setCopyState({ sourceId: ROOM_TYPES.find(r => r.id !== selectedType)?.id, multiplier: 1.0 }); setShowBulkSheet('copy'); }}
+                onClick={() => { setCopyState({ sourceId: ROOM_TYPES.find(r => r.id !== selectedType)?.id, multiplier: 1.0, fromIso: '', toIso: '' }); setShowBulkSheet('copy'); }}
                 style={{ background: 'none', border: 'none', color: T.indigo, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
               >Copy from…</button>
             )}
@@ -598,6 +667,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             )}
           </div>
         } />
+        <div onTouchStart={onCalSwipeStart} onTouchEnd={onCalSwipeEnd}>
         <Card padding={10}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
             {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, ix) => (
@@ -801,6 +871,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             </div>
           </div>
         </Card>
+        </div>
 
       </div>
 
@@ -861,7 +932,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 30, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowSelectPattern(false)}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Select dates by pattern</div>
-            <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>Bulk-select all matching dates in the visible {visibleDays.length}-day window. Then tap Set rate or Close-out.</div>
+            <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>Bulk-select all matching dates in the next {PATTERN_HORIZON_DAYS} days. Then tap Set rate, Set inventory, or Close-out.</div>
             <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>BY WEEKDAY</div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
               {[
@@ -873,7 +944,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 { idx: 6, label: 'All Saturdays' },
                 { idx: 0, label: 'All Sundays' },
               ].map(opt => {
-                const count = visibleDays.filter(d => d.dowIdx === opt.idx).length;
+                const count = horizonDays.filter(d => d.dowIdx === opt.idx).length;
                 return (
                   <button
                     key={opt.idx}
@@ -892,19 +963,19 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               <button
                 onClick={() => selectByPredicate(d => d.isWknd)}
                 style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700 }}
-              >Every weekend · {visibleDays.filter(d => d.isWknd).length}</button>
+              >Every weekend · {horizonDays.filter(d => d.isWknd).length}</button>
               <button
                 onClick={() => selectByPredicate(d => !!d.holiday)}
                 style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid oklch(72% 0.12 75)`, background: 'oklch(96% 0.04 75)', color: 'oklch(48% 0.14 75)', fontSize: 11, fontWeight: 700 }}
-              >Indian holidays · {visibleDays.filter(d => !!d.holiday).length}</button>
+              >Indian holidays · {horizonDays.filter(d => !!d.holiday).length}</button>
               <button
                 onClick={() => selectByPredicate(d => d.holiday && d.holiday.intensity === 'high')}
                 style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700 }}
-              >Peak holidays (Diwali / Holi / NY) · {visibleDays.filter(d => d.holiday && d.holiday.intensity === 'high').length}</button>
+              >Peak holidays (Diwali / Holi / NY) · {horizonDays.filter(d => d.holiday && d.holiday.intensity === 'high').length}</button>
               <button
                 onClick={() => selectByPredicate(() => true)}
                 style={{ padding: '6px 11px', borderRadius: 999, cursor: 'pointer', border: `1.5px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700 }}
-              >All visible · {visibleDays.length}</button>
+              >Next {PATTERN_HORIZON_DAYS} days</button>
             </div>
             <Btn variant="ghost" full onClick={() => setShowSelectPattern(false)}>{t('cancel')}</Btn>
           </div>
@@ -965,7 +1036,27 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                       style={stepBtn(N === 0)}
                     >−</button>
                     <div className="tnum" style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
-                      <div style={{ fontSize: 34, fontWeight: 800, color: T.ink, lineHeight: 1.05, letterSpacing: -0.5 }}>{N}</div>
+                      <input
+                        type="number"
+                        min={0}
+                        max={total}
+                        value={N}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') { setBulkInv(0); return; }
+                          const v = parseInt(raw, 10);
+                          if (Number.isNaN(v)) return;
+                          setBulkInv(Math.max(0, Math.min(total, v)));
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        className="tnum"
+                        style={{
+                          width: '100%', textAlign: 'center',
+                          fontSize: 34, fontWeight: 800, color: T.ink,
+                          lineHeight: 1.05, letterSpacing: -0.5,
+                          background: 'transparent', border: 'none', outline: 'none', padding: 0,
+                        }}
+                      />
                       <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2 }}>of {total} {rt.name}</div>
                     </div>
                     <button

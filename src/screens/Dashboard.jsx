@@ -11,14 +11,28 @@ import ExtendOptions from '../components/ExtendOptions.jsx';
 const D_MONTH_HI = ['जन','फ़र','मार्च','अप्रैल','मई','जून','जुल','अग','सित','अक्ट','नव','दिस'];
 const D_DOW_HI   = ['सोम','मंगल','बुध','गुरु','शुक्र','शनि','रवि'];
 
-function StatTile({ label, value, icon, color }) {
+function StatTile({ label, value, icon, color, onClick, disabled }) {
+  // Tappable when there are bookings to show. We disable the press affordance
+  // when value === 0 to avoid opening an empty sheet — saves the hotelier
+  // a confusing tap on "0 Arriving".
+  const isInteractive = !!onClick && !disabled;
   return (
-    <Card padding={12} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <Card
+      padding={12}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 8,
+        cursor: isInteractive ? 'pointer' : 'default',
+        opacity: disabled ? 0.55 : 1,
+        transition: 'transform .15s, box-shadow .15s',
+      }}
+      onClick={isInteractive ? onClick : undefined}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{
           width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklch, ${color} 12%, white)`,
           color, display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><Icon name={icon} size={14} stroke={2} /></div>
+        {isInteractive && <Icon name="chev" size={12} color={T.ink3} stroke={2} />}
       </div>
       <div>
         <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.6, lineHeight: 1 }}>{value}</div>
@@ -260,10 +274,21 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   // Everything that used to compare against `1` (the demo's hardcoded
   // "today = idx 1") needs to use 0 instead.
   const TODAY_IDX = 0;
-  const today = bookings.filter(b => b.startIdx === TODAY_IDX);
-  const arriving = today.length;
-  const departing = bookings.filter(b => b.startIdx + b.nights === TODAY_IDX).length;
-  const inhouse = bookings.filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
+  // Exclude cancellations from every tile / list — they shouldn't inflate
+  // "arriving today" counts. The old code counted them.
+  const liveBookings = bookings.filter(b => b.status !== 'cancelled');
+  const arrivingList = liveBookings.filter(b => b.startIdx === TODAY_IDX);
+  const departingList = liveBookings.filter(b => b.startIdx + b.nights === TODAY_IDX);
+  const inhouseList = liveBookings.filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX);
+  const today = arrivingList; // kept for downstream consumers that still read `today`
+  const arriving = arrivingList.length;
+  const departing = departingList.length;
+  const inhouse = inhouseList.length;
+  // Stat-tile sheet: which group of bookings to surface, or null when
+  // closed. The list itself is computed inline from the three arrays
+  // above so the sheet stays in sync if a booking is created / updated
+  // while the sheet is open.
+  const [statSheet, setStatSheet] = useState(null);
   const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
 
   const catOcc = ROOM_TYPES.map(rt => {
@@ -524,9 +549,9 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
       </div>
 
       <div style={{ padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-        <StatTile label={t('arriving')} value={arriving} icon="arrow" color={T.primary} />
-        <StatTile label={t('inhouse')} value={inhouse} icon="bed" color={T.indigo} />
-        <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} />
+        <StatTile label={t('arriving')} value={arriving} icon="arrow" color={T.primary} onClick={() => setStatSheet('arriving')} disabled={arriving === 0} />
+        <StatTile label={t('inhouse')} value={inhouse} icon="bed" color={T.indigo} onClick={() => setStatSheet('inhouse')} disabled={inhouse === 0} />
+        <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} onClick={() => setStatSheet('departing')} disabled={departing === 0} />
       </div>
 
       <SetupNudge property={property} plan={plan} go={go} isHi={isHi} />
@@ -716,6 +741,95 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
       )}
 
       <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} />
+
+      {statSheet && (() => {
+        const map = {
+          arriving: { title: isHi ? 'आज आ रहे हैं' : 'Arriving today', list: arrivingList, color: T.primary, icon: 'arrow' },
+          inhouse:  { title: isHi ? 'अभी ठहरे हुए' : 'In-house right now', list: inhouseList, color: T.indigo, icon: 'bed' },
+          departing:{ title: isHi ? 'आज जा रहे हैं' : 'Departing today', list: departingList, color: T.teal, icon: 'door' },
+        };
+        const cfg = map[statSheet];
+        return (
+          <div
+            onClick={() => setStatSheet(null)}
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'flex-end' }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '78%', overflow: 'auto' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: `color-mix(in oklch, ${cfg.color} 14%, white)`, color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name={cfg.icon} size={16} stroke={2} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.ink, letterSpacing: -0.2 }}>{cfg.title}</div>
+                  <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{cfg.list.length} {cfg.list.length === 1 ? (isHi ? 'बुकिंग' : 'booking') : (isHi ? 'बुकिंग' : 'bookings')}</div>
+                </div>
+                <button
+                  onClick={() => setStatSheet(null)}
+                  style={{ background: 'transparent', border: 'none', color: T.ink3, cursor: 'pointer', padding: 6 }}
+                  aria-label="Close"
+                ><Icon name="x" size={14} stroke={2.2} /></button>
+              </div>
+              {cfg.list.length === 0 ? (
+                <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: T.ink3, fontStyle: 'italic' }}>
+                  {isHi ? 'इस श्रेणी में अभी कोई बुकिंग नहीं है।' : 'No bookings in this group right now.'}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {cfg.list.map(b => {
+                    const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+                    const initials = (b.guest || '?').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+                    const stay = b.startIdx + b.nights;
+                    const waDigits = (b.phone || '').replace(/\D/g, '');
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => { setStatSheet(null); go('booking', b.id); }}
+                        className="atithi-tap"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', background: T.bgSoft,
+                          border: `1px solid ${T.borderSoft}`, borderRadius: 10,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ width: 32, height: 32, borderRadius: 16, background: cfg.color, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, letterSpacing: 0.4, flexShrink: 0 }}>
+                          {initials || '?'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.guest || '—'}</div>
+                          <div className="tnum" style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, marginTop: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span>{rt?.name || b.roomTypeId}</span><span>·</span>
+                            <span>{statSheet === 'departing' ? (isHi ? 'चेक-आउट' : 'check-out') : `${b.nights}N`}</span>
+                            {statSheet !== 'departing' && (b.startIdx + b.nights) === TODAY_IDX + 1 && (
+                              <><span>·</span><span style={{ color: T.primary }}>{isHi ? 'कल जाएंगे' : 'leaves tmrw'}</span></>
+                            )}
+                          </div>
+                        </div>
+                        {waDigits && (
+                          <a
+                            href={`https://wa.me/${waDigits}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="atithi-tap"
+                            style={{ width: 32, height: 32, borderRadius: 16, background: 'oklch(94% 0.08 150)', color: 'oklch(40% 0.15 145)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', flexShrink: 0 }}
+                            aria-label="WhatsApp"
+                          >
+                            <Icon name="wa" size={14} stroke={2.2} />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

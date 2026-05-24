@@ -127,28 +127,37 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   const visibleNights = isPastStart ? Math.max(0, (b.nights || 1) + startCol) : (b.nights || 1);
   const totalW = Math.max(0, visibleNights * colW - 6);
   const pillLeft = isPastStart ? (labelW + 3) : (labelW + startCol * colW + 3);
+  // Compact mode for short pills (1-night at default zoom is ~54px).
+  // We tighten padding + drop the gap so the name has real room to render,
+  // and trim the channel-stripe width too. The status info is still
+  // conveyed by the pill border/bg tint when the badge is hidden.
+  const isCompact = totalW < 78;
+  const stripeW = isCompact ? 3 : 4;
+  const padX = isCompact ? 3 : 4;
+  const gap = isCompact ? 3 : 6;
+  const fixedChrome = stripeW + padX * 2 + gap; // stripe + padding + one inter-flex gap
   const fullBadgeW = isHold ? 56 : 36;
   const iconBadgeW = 22;
-  const fixedChrome = 4 /*channel stripe*/ + 6 /*paddings + gaps*/;
   let usedBadgeW = 0;
   let badgeMode = 'hidden'; // 'full' | 'icon' | 'hidden'
   if (badge) {
     if (totalW - fixedChrome - fullBadgeW >= 42) {
       badgeMode = 'full';
       usedBadgeW = fullBadgeW;
-    } else if (totalW - fixedChrome - iconBadgeW >= 28) {
+    } else if (totalW - fixedChrome - iconBadgeW >= 36) {
       badgeMode = 'icon';
       usedBadgeW = iconBadgeW;
     } else {
       badgeMode = 'hidden';
     }
   }
-  const innerW = totalW - fixedChrome - usedBadgeW;
-  // Width thresholds tuned to fontSize 11: ~6px per char + ellipsis budget.
-  // Fall back to initials before truncation eats the name into "Kart…".
+  const innerW = totalW - fixedChrome - usedBadgeW - (usedBadgeW > 0 ? gap : 0);
+  // Width thresholds tuned for fontSize 11 at ~6px per char + a little
+  // ellipsis budget. Fall back to initials before truncation eats the
+  // name into "Kart…" — initials always render whole even at 22px innerW.
   const firstName = (b.guest || '').split(/\s+/)[0] || '';
   const firstNameW = firstName.length * 6 + 4;
-  const showInitials = innerW < Math.min(firstNameW + 4, 48);
+  const showInitials = innerW < Math.min(firstNameW + 4, 44);
   const showFirstNameOnly = !showInitials && innerW < 80;
   const showVipStar = innerW >= 50;
   const displayName = showInitials
@@ -172,8 +181,8 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
         border,
         borderRadius: 8,
         boxShadow: isHold ? 'none' : '0 1px 2px rgba(20,15,10,.06)',
-        padding: '0 4px 0 4px',
-        display: 'flex', alignItems: 'center', gap: 6,
+        padding: `0 ${padX}px 0 ${padX}px`,
+        display: 'flex', alignItems: 'center', gap,
         cursor: 'grab', userSelect: 'none', overflow: 'hidden',
         touchAction: 'none',
         zIndex: dx !== 0 ? 5 : 2,
@@ -183,7 +192,7 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
         textDecoration: isCancelled ? 'line-through' : 'none',
       }}
     >
-      <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, flexShrink: 0, background: ch.color, marginTop: 4, marginBottom: 4 }} />
+      <span style={{ width: stripeW, alignSelf: 'stretch', borderRadius: 2, flexShrink: 0, background: ch.color, marginTop: 4, marginBottom: 4 }} />
       <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div
           className={showInitials ? 'tnum' : ''}
@@ -267,7 +276,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
           </div>
         </div>
         {days.map(d => (
-          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: d.iso === todayIso ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent' }} />
+          <div key={d.iso} style={{ width: colW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, background: d.iso === todayIso ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent' }} />
         ))}
       </div>
       {!collapsed && Array.from({ length: rt.units }).map((_, ui) => {
@@ -299,12 +308,12 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                   style={{
                     width: colW, flexShrink: 0,
                     borderRight: `1px solid ${T.borderSoft}`,
-                    background: isToday ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent',
+                    background: isToday ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent',
                     cursor: occupied ? 'default' : 'pointer',
                     transition: 'background .15s',
                   }}
                   onMouseEnter={occupied ? undefined : (e) => { e.currentTarget.style.background = `color-mix(in oklch, ${T.primary} 8%, white)`; }}
-                  onMouseLeave={occupied ? undefined : (e) => { e.currentTarget.style.background = isToday ? T.primaryLt : d.isWknd ? 'oklch(98% 0.012 65)' : 'transparent'; }}
+                  onMouseLeave={occupied ? undefined : (e) => { e.currentTarget.style.background = isToday ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent'; }}
                 />
               );
             })}

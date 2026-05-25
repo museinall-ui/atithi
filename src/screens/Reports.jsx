@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, ANCHOR, ymd, idxToDate, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
+import { DAYS, ANCHOR, ymd, idxToDate, dateToIdx, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
 import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
 import { buildCsv, downloadCsv } from '../utils/csv.js';
 import Icon from '../components/Icon.jsx';
@@ -10,6 +10,55 @@ import Card from '../components/Card.jsx';
 import Row from '../components/Row.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+
+// Helpers for the date-range picker. Default range = current calendar
+// month so opening Reports always lands on something meaningful, and
+// the user picks a different month via the date inputs.
+function firstOfMonth(d) {
+  const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x;
+}
+function lastOfMonth(d) {
+  const x = new Date(d.getFullYear(), d.getMonth() + 1, 0); x.setHours(0,0,0,0); return x;
+}
+// Tap-to-open date pill, same pattern Diary / NewBooking use. Wraps a
+// native date input with our brand-styled chrome so taps reliably
+// trigger the OS picker on every browser.
+function DatePill({ value, onChange, label }) {
+  const ref = useRef(null);
+  const open = () => {
+    const el = ref.current;
+    if (el && typeof el.showPicker === 'function') {
+      try { el.showPicker(); } catch {}
+    }
+  };
+  const filled = !!value;
+  const display = filled
+    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    : label;
+  return (
+    <div
+      onClick={open}
+      style={{
+        flex: 1, position: 'relative', height: 38,
+        background: filled ? T.primaryLt : T.bgSoft,
+        border: `1px solid ${filled ? T.primary : T.border}`,
+        borderRadius: 8, cursor: 'pointer', minWidth: 0,
+      }}
+    >
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
+      />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', pointerEvents: 'none', fontSize: 12, fontWeight: 700, color: filled ? T.primaryDk : T.ink2, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Icon name="cal" size={12} color={filled ? T.primaryDk : T.ink2} />
+        {display}
+      </div>
+    </div>
+  );
+}
 
 // Two-column label / value row used inside the Take-home breakdown card.
 // Lets us colour the subtractive lines (tax + commission) muted and the
@@ -55,6 +104,54 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
   const caEmail = property?.accountant?.email || '';
 
+  // Date-range state — defaults to the current calendar month so the
+  // first thing a hotelier sees is "this month". They can pick any
+  // arbitrary range; all KPIs + CSV downloads honor it. Stored as ISO
+  // strings (yyyy-mm-dd) for the native date inputs.
+  const today = new Date(ANCHOR);
+  const [rangeStart, setRangeStart] = useState(() => ymd(firstOfMonth(today)));
+  const [rangeEnd, setRangeEnd] = useState(() => ymd(lastOfMonth(today)));
+  // Convert the ISO range to day-idx [start, end] (end inclusive).
+  const rangeStartIdx = dateToIdx(rangeStart);
+  const rangeEndIdx = dateToIdx(rangeEnd);
+  // Number of days in the inclusive range. Used for available-room-night
+  // math + the CSV row count.
+  const rangeDays = Math.max(1, (rangeEndIdx - rangeStartIdx) + 1);
+  // Pretty label for the picker subtitle ("May 2026" / "Apr 1 – Jun 30 2026")
+  const rangeLabel = (() => {
+    const s = new Date(rangeStart + 'T00:00:00');
+    const e = new Date(rangeEnd + 'T00:00:00');
+    const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth();
+    if (sameMonth) return s.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const sameYear = s.getFullYear() === e.getFullYear();
+    if (sameYear) return `${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${e.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    return `${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} – ${e.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+  })();
+  // Shortcut buttons jump the range to a common preset.
+  const setRangeToMonth = (delta = 0) => {
+    const ref = new Date(today.getFullYear(), today.getMonth() + delta, 1);
+    setRangeStart(ymd(firstOfMonth(ref)));
+    setRangeEnd(ymd(lastOfMonth(ref)));
+  };
+  const setRangeToFinancialYear = () => {
+    // Indian FY runs Apr 1 → Mar 31. If we're in Jan / Feb / Mar, the
+    // "current" FY started last calendar year.
+    const fyStartYear = today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear();
+    setRangeStart(ymd(new Date(fyStartYear, 3, 1)));
+    setRangeEnd(ymd(new Date(fyStartYear + 1, 2, 31)));
+  };
+
+  // True when the booking's stay overlaps the picked range. Used to
+  // scope every stat below. A booking that starts on rangeEndIdx + 1
+  // (after the range) doesn't count; one that started before but
+  // overlaps the first day of the range DOES count for that day's
+  // occupancy + revenue.
+  const overlapsRange = (b) => {
+    const bStart = b.startIdx || 0;
+    const bEnd = bStart + (b.nights || 1);
+    return bStart <= rangeEndIdx && bEnd > rangeStartIdx;
+  };
+
   const handleSendToCA = () => {
     if (issuedInvoices.length === 0) {
       alert('No invoices to send yet. Open any booking and tap "Issue invoice" first.');
@@ -69,10 +166,11 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     setTimeout(() => emailToAccountant(issuedInvoices, property), 600);
   };
   const stats = useMemo(() => {
-    const active = bookings.filter(b => b.status !== 'cancelled');
+    const active = bookings.filter(b => b.status !== 'cancelled' && overlapsRange(b));
     const totalUnits = ROOM_TYPES.reduce((s, r) => s + r.units, 0);
 
     // Revenue = sum of paid (cash collected). Total billed is shown as a sub-label.
+    // All money figures are over the picked range only.
     const revenue = active.reduce((s, b) => s + (b.paid || 0), 0);
     const billed = active.reduce((s, b) => s + (b.total || 0), 0);
 
@@ -103,13 +201,16 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     }
     const netRevenue = Math.max(0, billed - totalTax - totalCommission);
 
-    // Occupancy is computed across the 14-day diary window. For each day, count
-    // every booking whose [startIdx, startIdx+nights) range covers that day.
-    const dailyOccupied = DAYS.map((_, dayIdx) =>
-      active.filter(b => b.startIdx <= dayIdx && dayIdx < b.startIdx + b.nights).length
-    );
+    // Occupancy across the picked range. For each day in the range,
+    // count every booking whose stay covers that day.
+    const dailyOccupied = [];
+    for (let i = 0; i < rangeDays; i++) {
+      const dayIdx = rangeStartIdx + i;
+      const n = active.filter(b => (b.startIdx || 0) <= dayIdx && dayIdx < (b.startIdx || 0) + (b.nights || 1)).length;
+      dailyOccupied.push(n);
+    }
     const occupiedRoomNights = dailyOccupied.reduce((s, v) => s + v, 0);
-    const availableRoomNights = totalUnits * DAYS.length;
+    const availableRoomNights = totalUnits * rangeDays;
     const avgOccPct = availableRoomNights ? Math.round((occupiedRoomNights / availableRoomNights) * 100) : 0;
 
     // ADR = revenue / occupied room nights; RevPAR = revenue / available room nights.
@@ -143,18 +244,59 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const gapCount = reconciliationGaps.length + overdueArrivals.length;
     const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
 
-    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission };
-  }, [bookings, ROOM_TYPES]);
+    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays };
+  }, [bookings, ROOM_TYPES, rangeStartIdx, rangeEndIdx, rangeDays, property]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('reportsTitle')} subtitle={`${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · ${stats.totalUnits} units · live`} onBack={() => go('home')}
+      <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} units · ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} onBack={() => go('home')}
         right={<Btn size="sm" variant="ghost" icon="download">Export</Btn>}
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
+        {/* Date-range picker — defaults to current calendar month. All
+            KPIs + CSV exports below honor whatever is picked here. */}
+        <Card padding={12} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>REPORT PERIOD</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <DatePill value={rangeStart} onChange={setRangeStart} label="From" />
+            <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label="To" />
+          </div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {[
+              { id: 'thismonth', label: 'This month', onClick: () => setRangeToMonth(0) },
+              { id: 'lastmonth', label: 'Last month', onClick: () => setRangeToMonth(-1) },
+              { id: 'fy',        label: 'This FY',    onClick: setRangeToFinancialYear },
+              {
+                id: 'next14',    label: 'Next 14 days',
+                onClick: () => {
+                  setRangeStart(ymd(new Date(ANCHOR)));
+                  const e = new Date(ANCHOR);
+                  e.setDate(e.getDate() + 13);
+                  setRangeEnd(ymd(e));
+                },
+              },
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={p.onClick}
+                style={{
+                  padding: '4px 9px', borderRadius: 999,
+                  border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+                  fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                }}
+              >{p.label}</button>
+            ))}
+          </div>
+          {rangeEndIdx < rangeStartIdx && (
+            <div style={{ marginTop: 8, fontSize: 11, color: T.danger, fontWeight: 700 }}>
+              End date is before start — please pick a valid range.
+            </div>
+          )}
+        </Card>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
           <KPI label="Money earned" value={fmtINR(stats.revenue)} sub={`of ${fmtINR(stats.billed)} billed`} icon="inr" color={T.primary} />
-          <KPI label="Rooms full" value={`${stats.avgOccPct}%`} sub={`avg over ${DAYS.length} days`} icon="bed" color={T.indigo} />
+          <KPI label="Rooms full" value={`${stats.avgOccPct}%`} sub={`avg over ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} icon="bed" color={T.indigo} />
           <KPI label="Per room / night" value={fmtINR(stats.adr)} sub="when room is booked" icon="tag" color={T.teal} />
           <KPI label="Per room / day" value={fmtINR(stats.revpar)} sub="across all rooms" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
@@ -201,18 +343,21 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 icon: 'bed',
                 color: T.indigo,
                 title: 'Occupancy report',
-                sub: `Daily occupancy across the next ${DAYS.length} days + ADR + RevPAR`,
+                sub: `Daily occupancy across ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'} (${rangeLabel}) + ADR + RevPAR`,
                 onClick: () => {
                   const rows = [];
                   const active = bookings.filter(b => b.status !== 'cancelled');
-                  for (let i = 0; i < DAYS.length; i++) {
-                    const d = DAYS[i];
-                    const iso = idxToDate(i);
+                  const dowNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                  for (let i = 0; i < stats.rangeDays; i++) {
+                    const dayIdx = rangeStartIdx + i;
+                    const iso = idxToDate(dayIdx);
+                    const dateObj = new Date(iso + 'T00:00:00');
+                    const dow = dowNames[dateObj.getDay()];
                     let occupied = 0;
                     const perType = {};
                     for (const rt of ROOM_TYPES) perType[rt.id] = 0;
                     for (const b of active) {
-                      if (b.startIdx <= i && i < b.startIdx + b.nights) {
+                      if (b.startIdx <= dayIdx && dayIdx < b.startIdx + b.nights) {
                         const items = Array.isArray(b.roomItems) && b.roomItems.length ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
                         for (const it of items) {
                           const tid = it.roomTypeId || b.roomTypeId;
@@ -223,15 +368,16 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                     }
                     const totalUnits = ROOM_TYPES.reduce((s, r) => s + r.units, 0);
                     const pct = totalUnits ? Math.round((occupied / totalUnits) * 100) : 0;
-                    rows.push([iso, d.dow, occupied, totalUnits, pct + '%', ...ROOM_TYPES.map(rt => perType[rt.id])]);
+                    rows.push([iso, dow, occupied, totalUnits, pct + '%', ...ROOM_TYPES.map(rt => perType[rt.id])]);
                   }
                   // Summary footer
                   rows.push([]);
+                  rows.push([`Period: ${rangeStart} → ${rangeEnd}`]);
                   rows.push(['Average occupancy', '', '', '', stats.avgOccPct + '%']);
                   rows.push(['ADR (avg daily rate)', '', '', '', '', stats.adr]);
                   rows.push(['RevPAR (revenue per available room)', '', '', '', '', stats.revpar]);
                   const header = ['Date', 'Day', 'Occupied', 'Available', 'Occupancy %', ...ROOM_TYPES.map(rt => rt.name)];
-                  downloadCsv(`atithi-occupancy-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                  downloadCsv(`atithi-occupancy-${rangeStart}-to-${rangeEnd}`, buildCsv(header, rows));
                 },
               },
               {
@@ -239,16 +385,27 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 icon: 'inr',
                 color: 'oklch(58% 0.13 155)',
                 title: 'Payment reconciliation',
-                sub: 'Every payment recorded, grouped by method (cash / UPI / card / bank)',
+                sub: `Payments within ${rangeLabel}, grouped by method (cash / UPI / card / bank)`,
                 onClick: () => {
                   const rows = [];
                   const methodTotals = {};
                   bookings.forEach(b => {
                     (b.payments || []).forEach(p => {
+                      // Range-filter on payment date. Payments without
+                      // a date (legacy / synthesized) fall back to the
+                      // booking's start date so they're still visible.
+                      let payIso = '';
+                      if (p.date && p.date !== 'now') {
+                        const pd = new Date(p.date);
+                        if (!isNaN(pd.getTime())) payIso = ymd(pd);
+                      }
+                      const fallbackIso = (b.startIdx != null) ? idxToDate(b.startIdx) : '';
+                      const effectiveIso = payIso || fallbackIso;
+                      if (effectiveIso && (effectiveIso < rangeStart || effectiveIso > rangeEnd)) return;
                       const method = p.method || 'unspecified';
                       const amt = (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
                       rows.push([
-                        p.date ? new Date(p.date).toLocaleDateString('en-IN') : '',
+                        effectiveIso || '',
                         b.id, b.guest || '', b.phone || '',
                         method, p.kind || 'payment', amt, p.note || '',
                       ]);
@@ -260,13 +417,14 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                   // Summary footer per method
                   if (Object.keys(methodTotals).length) {
                     rows.push([]);
+                    rows.push([`Period: ${rangeStart} → ${rangeEnd}`]);
                     rows.push(['SUMMARY BY METHOD']);
                     Object.entries(methodTotals).forEach(([m, total]) => {
                       rows.push(['', '', '', '', m, '', total]);
                     });
                   }
                   const header = ['Date', 'Booking ID', 'Guest', 'Phone', 'Method', 'Kind', 'Amount (₹)', 'Note'];
-                  downloadCsv(`atithi-payments-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                  downloadCsv(`atithi-payments-${rangeStart}-to-${rangeEnd}`, buildCsv(header, rows));
                 },
               },
               {
@@ -274,11 +432,11 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 icon: 'sync',
                 color: 'oklch(60% 0.16 38)',
                 title: 'OTA booking report',
-                sub: 'Bookings grouped by channel (MMT / Booking / Goibibo / Agoda / Airbnb / Direct / Website)',
+                sub: `Bookings overlapping ${rangeLabel}, grouped by channel (MMT / Booking / Goibibo / Agoda / Airbnb / Direct / Website)`,
                 onClick: () => {
                   const rows = [];
                   const channelTotals = {};
-                  bookings.filter(b => b.status !== 'cancelled').forEach(b => {
+                  bookings.filter(b => b.status !== 'cancelled' && overlapsRange(b)).forEach(b => {
                     const ch = b.channel || 'direct';
                     const label = (CHANNELS[ch] && CHANNELS[ch].label) || ch;
                     rows.push([
@@ -297,13 +455,14 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                   rows.sort((a, b) => String(a[3]).localeCompare(String(b[3])));
                   // Per-channel summary
                   rows.push([]);
+                  rows.push([`Period: ${rangeStart} → ${rangeEnd}`]);
                   rows.push(['SUMMARY BY CHANNEL']);
                   rows.push(['Channel', 'Bookings', 'Total billed (₹)', 'Total paid (₹)']);
                   Object.entries(channelTotals).forEach(([ch, v]) => {
                     rows.push([ch, v.count, v.total, v.paid]);
                   });
                   const header = ['Booking ID', 'Guest', 'Channel', 'Check-in', 'Nights', 'Total (₹)', 'Paid (₹)', 'Balance (₹)', 'Status', 'Form C'];
-                  downloadCsv(`atithi-ota-bookings-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                  downloadCsv(`atithi-ota-bookings-${rangeStart}-to-${rangeEnd}`, buildCsv(header, rows));
                 },
               },
               ...(plan === 'invoicing' ? [{
@@ -465,26 +624,40 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'baseline' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Daily occupancy</div>
-              <div style={{ fontSize: 11, color: T.ink3 }}>Next 14 days</div>
+              <div style={{ fontSize: 11, color: T.ink3 }}>{rangeLabel}</div>
             </div>
             <Chip color="ok">{stats.avgOccPct}% avg</Chip>
           </div>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 80 }}>
-            {stats.dailyOccPct.map((v, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{
-                  width: '100%', height: `${Math.max(v, 4)}%`, borderRadius: '3px 3px 0 0',
-                  background: i === 0 ? T.primary : `oklch(${50 + v/3}% ${0.04 + v/1500} 38)`,
-                }} title={`${DAYS[i].dom} ${DAYS[i].month} · ${v}%`} />
-              </div>
-            ))}
+          <div style={{ display: 'flex', gap: stats.rangeDays > 60 ? 1 : 4, alignItems: 'flex-end', height: 80 }}>
+            {stats.dailyOccPct.map((v, i) => {
+              const dayIdx = rangeStartIdx + i;
+              const dateObj = new Date(idxToDate(dayIdx) + 'T00:00:00');
+              const isToday = dayIdx === 0;
+              const label = `${dateObj.getDate()} ${dateObj.toLocaleDateString('en-IN', { month: 'short' })} · ${v}%`;
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{
+                    width: '100%', height: `${Math.max(v, 4)}%`, borderRadius: '3px 3px 0 0',
+                    background: isToday ? T.primary : `oklch(${50 + v/3}% ${0.04 + v/1500} 38)`,
+                  }} title={label} />
+                </div>
+              );
+            })}
           </div>
-          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-            {DAYS.map((d, i) => (
-              <span key={i} style={{ flex: 1, fontSize: 8, color: T.ink3, textAlign: 'center', fontWeight: 600 }} className="tnum">
-                {i % 3 === 0 ? d.dom : ''}
-              </span>
-            ))}
+          <div style={{ display: 'flex', gap: stats.rangeDays > 60 ? 1 : 4, marginTop: 6 }}>
+            {stats.dailyOccPct.map((_, i) => {
+              const dayIdx = rangeStartIdx + i;
+              const dateObj = new Date(idxToDate(dayIdx) + 'T00:00:00');
+              // Tick density adapts to range size — every day for ≤14
+              // days, every 3rd for ≤60, every 7th otherwise.
+              const interval = stats.rangeDays > 60 ? 7 : stats.rangeDays > 14 ? 3 : 1;
+              const show = i % interval === 0;
+              return (
+                <span key={i} style={{ flex: 1, fontSize: 8, color: T.ink3, textAlign: 'center', fontWeight: 600 }} className="tnum">
+                  {show ? dateObj.getDate() : ''}
+                </span>
+              );
+            })}
           </div>
         </Card>
 

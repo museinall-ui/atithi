@@ -60,10 +60,22 @@ export default function Guests({ go, bookings = [], t }) {
         ranges: [...(prev?.ranges || []), { startIdx: b.startIdx, nights: b.nights, cancelled: b.status === 'cancelled' }],
       });
     });
-    // Build guest rows from the bookings store only. Tag = Foreign for any
-    // foreign passport, Repeat for 2+ stays, otherwise no tag. "Last stay"
-    // labels come from the most recent non-cancelled booking's startIdx
-    // relative to today.
+    // Build guest rows from the bookings store. The tag system is now
+    // multi-label rather than mutually exclusive:
+    //
+    //   VIP     — manual flag on the booking (★ toggle on BookingDetail).
+    //             Nothing auto-derives this; the hotelier picks it.
+    //   Repeat  — 2+ non-cancelled stays.
+    //   Whale   — high lifetime spend (₹50k+) — auto-derived from the
+    //             sum of total across all this guest's bookings. Captures
+    //             your best customers separate from VIP (which is a
+    //             relationship flag, while Whale is a value flag).
+    //   Foreign — formC flag (foreign passport, Form C applies).
+    //
+    // A guest can carry multiple at once: a returning foreign VIP who's
+    // spent ₹2 lakh on stays gets all four tags. The Guests row shows
+    // them as a stacked set of chips so the hotelier can see at a glance.
+    const WHALE_THRESHOLD = 50000;
     const merged = [];
     bookingGuests.forEach((g) => {
       const lastNonCancelled = (g.ranges || []).filter(r => !r.cancelled).sort((a, b) => b.startIdx - a.startIdx)[0];
@@ -77,9 +89,18 @@ export default function Guests({ go, bookings = [], t }) {
         else if (idx < 0) lastStayLabel = `${-idx} days ago`;
         else lastStayLabel = `in ${idx} days`;
       }
+      const tags = [];
+      if (g.vip) tags.push('VIP');
+      if (g.stays >= 2) tags.push('Repeat');
+      if ((g.spent || 0) >= WHALE_THRESHOLD) tags.push('Whale');
+      if (g.formC) tags.push('Foreign');
       merged.push({
         ...g,
-        tag: g.formC ? 'Foreign' : g.stays >= 2 ? 'Repeat' : g.vip ? 'Whale' : undefined,
+        // Legacy single `tag` (used by some old filters) keeps backward-
+        // compat by reporting the highest-priority label. New code reads
+        // the full `tags` array instead.
+        tag: tags[0],
+        tags,
         lastStay: lastStayLabel,
       });
     });
@@ -245,10 +266,29 @@ export default function Guests({ go, bookings = [], t }) {
           >
             <Avatar name={g.name} size={44} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>{g.name}</span>
-                {g.vip && <span style={{ color: 'oklch(60% 0.16 60)', fontSize: 12 }}>★</span>}
-                {g.tag && <Chip color={g.formC ? 'indigo' : g.vip ? 'warn' : 'soft'} style={{ fontSize: 9, padding: '1px 6px' }}>{g.tag}</Chip>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: T.ink, marginRight: 2 }}>{g.name}</span>
+                {/* Multi-tag stack — each label gets its own colour so
+                    the eye can scan the list at a glance. Hover reveals
+                    the rule behind each tag for hotelier transparency. */}
+                {(g.tags || []).map(tag => {
+                  const colour =
+                    tag === 'VIP'     ? 'warn'   :
+                    tag === 'Whale'   ? 'indigo' :
+                    tag === 'Repeat'  ? 'ok'     :
+                    tag === 'Foreign' ? 'soft'   : 'soft';
+                  const title =
+                    tag === 'VIP'     ? 'Marked VIP on the booking'                                   :
+                    tag === 'Whale'   ? `Lifetime spend ₹${(g.spent || 0).toLocaleString('en-IN')} (≥ ₹50,000 threshold)` :
+                    tag === 'Repeat'  ? `${g.stays} stays — repeat customer`                          :
+                    tag === 'Foreign' ? 'Foreign passport (Form C applies)'                           : tag;
+                  return (
+                    <Chip key={tag} color={colour} title={title} style={{ fontSize: 9, padding: '1px 6px' }}>
+                      {tag === 'VIP' && <span style={{ marginRight: 2 }}>★</span>}
+                      {tag}
+                    </Chip>
+                  );
+                })}
                 {g.inhouse && <Chip color="ok" style={{ fontSize: 9, padding: '1px 6px' }}>In-house</Chip>}
               </div>
               <div className="tnum" style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>

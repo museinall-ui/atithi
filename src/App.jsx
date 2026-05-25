@@ -752,6 +752,16 @@ export default function App() {
     }
   };
 
+  // Mark / unmark a booking as VIP. Drives the ★ chip on BookingDetail
+  // and Dashboard, the 'Whale' / 'Repeat VIP' derivations in Guests,
+  // and the VIP filter. Manual flag — no auto-derivation here.
+  const setBookingVip = (bookingId, value) => {
+    setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, vip: !!value } : b));
+    if (cloudReady && propertyId) {
+      syncFire('Update VIP flag', updateBookingCloud(bookingId, { vip: !!value }));
+    }
+  };
+
   // Issue one sequential tax invoice against a booking. The argument is a
   // single { amount, recipient, items?, note? } object; legacy callers that
   // passed an array of "parts" (split invoicing, removed) get the first
@@ -977,7 +987,7 @@ export default function App() {
       screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
       break;
     }
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;

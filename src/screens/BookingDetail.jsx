@@ -323,7 +323,7 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
@@ -442,7 +442,26 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{b.guest}</span>
-                  {b.vip && <Chip color="warn" icon="star">VIP</Chip>}
+                  {/* VIP toggle — tap the chip to mark / unmark.
+                      Filled when VIP, outlined when not. This is the
+                      ONLY way a guest becomes VIP — no auto-derivation
+                      (auto tags like 'Repeat' / 'Whale' are derived
+                      separately in Guests). */}
+                  <button
+                    onClick={() => onSetVip && onSetVip(b.id, !b.vip)}
+                    title={b.vip ? 'Marked VIP — tap to unmark' : 'Tap to mark this booking VIP'}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '3px 9px', borderRadius: 999,
+                      border: `1.5px solid ${b.vip ? T.warn : T.border}`,
+                      background: b.vip ? T.warnLt : 'transparent',
+                      color: b.vip ? 'oklch(40% 0.14 75)' : T.ink3,
+                      fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: 12 }}>{b.vip ? '★' : '☆'}</span> VIP
+                  </button>
                   {isRepeat && prevStays > 0 && (
                     <Chip color="ok" icon="sync" style={{ fontSize: 10 }}>{prevStays === 1 ? '2nd stay' : `${prevStays + 1}th stay`}</Chip>
                   )}

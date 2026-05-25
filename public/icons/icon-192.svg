@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C8553D"/>
+      <stop offset="1" stop-color="#8E2D1A"/>
+    </linearGradient>
+  </defs>
+  <!-- Maskable safe zone: full 192x192 fill. App content sits inside the
+       central 80% so iOS/Android crops never clip the brand letter. -->
+  <rect width="192" height="192" fill="url(#bg)"/>
+  <text x="96" y="118" font-family="Georgia, 'Times New Roman', serif"
+        font-size="120" font-weight="800" fill="#ffffff"
+        text-anchor="middle" letter-spacing="-4">A</text>
+  <!-- A small underline mark, evokes the diary -->
+  <rect x="56" y="138" width="80" height="3.5" fill="#ffffff" opacity="0.85" rx="2"/>
+</svg>

@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <meta name="theme-color" content="#C8553D"/>
   <title>Atithi · Booking engine</title>
+
+  <!-- PWA install-to-home-screen wiring. Manifest declares the app to
+       Chrome / Android / iOS so 'Add to Home Screen' creates a real
+       app launcher. The service worker (registered at the bottom of
+       this page) caches the app shell so repeat opens are instant. -->
+  <link rel="manifest" href="manifest.webmanifest"/>
+  <link rel="apple-touch-icon" href="icons/icon-192.svg"/>
+  <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Atithi"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { height: 100%; }
@@ -37,5 +49,21 @@
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
+  <script>
+    // Register the service worker on production builds. We skip
+    // registration on localhost / Vite-dev so HMR isn't tripped up
+    // by a stale cached shell. The URL is relative to this file so
+    // it works whether the app is served at '/' (Vercel) or '/atithi/'
+    // (GitHub Pages).
+    if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {
+          // Swallow registration errors — the app still works
+          // without the service worker, you just lose offline
+          // caching + the standalone install prompt's instant feel.
+        });
+      });
+    }
+  </script>
 </body>
 </html>

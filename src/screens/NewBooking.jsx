@@ -352,25 +352,97 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
               )}
             </div>
           )}
-          {perNight && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, padding: 8, background: T.card, borderRadius: 8, border: `1px dashed ${T.border}`, marginTop: 8 }}>
-              {nightRates.map((rate, ni) => (
-                <div key={ni} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3 }}>NIGHT {ni + 1} · {nightDateLabel(ni)}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', height: 30 }}>
-                    <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                    <input
-                      type="number"
-                      value={rate}
-                      onChange={(e) => onChange({ nightRates: nightRates.map((nr, k) => k === ni ? +e.target.value || 0 : nr) })}
-                      className="tnum"
-                      style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 0 }}
-                    />
-                  </div>
+          {perNight && (() => {
+            // nightTypes is an optional parallel array — if absent we
+            // treat every night as using the room item's main type.
+            // Hotelier can toggle "Vary room type by night" to switch a
+            // night to a different category mid-stay (e.g. Dlx-Dlx-Lux
+            // for a guest who upgrades for their anniversary night).
+            const nightTypes = Array.isArray(item.nightTypes) && item.nightTypes.length === nights
+              ? item.nightTypes
+              : Array.from({ length: nights }, () => item.roomTypeId);
+            const variesByNight = nightTypes.some(tid => tid !== item.roomTypeId);
+            const toggleVaryByNight = () => {
+              if (variesByNight) {
+                // Reset to all-same; clear the array so the booking
+                // shape is clean.
+                onChange({ nightTypes: undefined });
+              } else {
+                // Initialize all nights to the item's current type so
+                // the picker shows up; hotelier then picks a different
+                // type for the night(s) they want to vary.
+                onChange({ nightTypes: Array.from({ length: nights }, () => item.roomTypeId) });
+              }
+            };
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  <button
+                    onClick={toggleVaryByNight}
+                    className="atithi-tap"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                      background: variesByNight ? T.indigoLt : T.card,
+                      color: variesByNight ? T.indigo : T.ink3,
+                      border: `1px solid ${variesByNight ? T.indigo : T.border}`,
+                      fontSize: 10, fontWeight: 700,
+                    }}
+                  >
+                    <Icon name={variesByNight ? 'check' : 'plus'} size={9} stroke={2.4} />
+                    Vary room type by night
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
+                <div style={{ display: 'grid', gridTemplateColumns: variesByNight ? '1fr' : 'repeat(2, 1fr)', gap: 6, padding: 8, background: T.card, borderRadius: 8, border: `1px dashed ${T.border}`, marginTop: 8 }}>
+                  {nightRates.map((rate, ni) => {
+                    const nightType = nightTypes[ni];
+                    const nightTypeObj = roomTypes.find(rt => rt.id === nightType) || selectedType;
+                    return (
+                      <div key={ni} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3 }}>NIGHT {ni + 1} · {nightDateLabel(ni)}</span>
+                        {variesByNight && (
+                          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 4 }}>
+                            {roomTypes.map(rt => {
+                              const sel = nightType === rt.id;
+                              return (
+                                <button
+                                  key={rt.id}
+                                  onClick={() => onChange({ nightTypes: nightTypes.map((t, k) => k === ni ? rt.id : t) })}
+                                  style={{
+                                    padding: '3px 7px', borderRadius: 5, fontSize: 9, fontWeight: 700,
+                                    border: `1px solid ${sel ? T.indigo : T.border}`,
+                                    background: sel ? T.indigoLt : T.card,
+                                    color: sel ? T.indigo : T.ink3, cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                  }}
+                                >
+                                  <span style={{ width: 5, height: 5, borderRadius: 3, background: T[rt.tag] }} />
+                                  {rt.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', height: 30 }}>
+                          <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                          <input
+                            type="number"
+                            value={rate}
+                            onChange={(e) => onChange({ nightRates: nightRates.map((nr, k) => k === ni ? +e.target.value || 0 : nr) })}
+                            className="tnum"
+                            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 0 }}
+                          />
+                          {variesByNight && nightTypeObj && nightTypeObj.id !== item.roomTypeId && (
+                            <span style={{ fontSize: 9, color: T.indigo, fontWeight: 700, letterSpacing: 0.3 }}>· {nightTypeObj.name.slice(0, 8)}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
       {!selectedType && (

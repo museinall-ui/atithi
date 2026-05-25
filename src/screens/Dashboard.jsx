@@ -352,9 +352,77 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const tomorrowIdx = TODAY_IDX + 1;
   const arrivingTomorrow = bookings.filter(b => b.startIdx === tomorrowIdx && b.status !== 'cancelled');
   const foreignOnProperty = bookings.filter(b => b.formC && b.status !== 'cancelled' && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX);
+  // Tick every 30 seconds so time-sensitive nudges (10-min hold
+  // warning, 4h hold-expiring) refresh while the hotelier has the
+  // dashboard open. Cheap — just bumps an integer counter.
+  const [, setTickN] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTickN(n => n + 1), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const nowMs = Date.now();
-  const holdsExpiringSoon = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs < 4 * 3600 * 1000);
+  // Two urgency tiers for tentative holds:
+  //   - imminent: ≤10 minutes — RED, "urgent — call now"
+  //   - soon:     >10 min and ≤4h — amber, "chase payment"
+  const holdsImminent     = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs <= 10 * 60 * 1000);
+  const holdsExpiringSoon = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs > 10 * 60 * 1000 && b.releaseTs - nowMs < 4 * 3600 * 1000);
+
+  // Unseen website-channel bookings. The hotelier acknowledges by
+  // tapping the nudge, which opens the booking AND clears the flag.
+  // Acknowledged IDs are kept in localStorage so refresh / re-open
+  // doesn't re-pop the nudge.
+  const seenWebsite = (() => {
+    try {
+      const raw = window.localStorage.getItem('atithi.seenWebsite.v1');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  })();
+  const newWebsiteBookings = bookings.filter(b =>
+    b.channel === 'website' && b.status !== 'cancelled' && !seenWebsite.has(b.id)
+  );
+  const ackWebsite = (id) => {
+    try {
+      const raw = window.localStorage.getItem('atithi.seenWebsite.v1');
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!arr.includes(id)) arr.push(id);
+      window.localStorage.setItem('atithi.seenWebsite.v1', JSON.stringify(arr));
+    } catch {}
+  };
+
   const nudges = [];
+  // Imminent holds get top priority — render first so the urgency
+  // colour catches the eye before the calmer nudges below.
+  if (holdsImminent.length > 0) {
+    const first = holdsImminent[0];
+    const mins = Math.max(1, Math.round((first.releaseTs - nowMs) / 60000));
+    nudges.push({
+      icon: 'clock', tone: T.danger,
+      text: `${holdsImminent.length === 1 ? first.guest : holdsImminent.length + ' holds'} expire${holdsImminent.length > 1 ? '' : 's'} in ${mins} min · chase NOW`,
+      cta: holdsImminent.length === 1 ? 'Open' : 'View',
+      onClick: () => {
+        if (holdsImminent.length === 1) go('booking', first.id);
+        else go('diary');
+      },
+    });
+  }
+  if (newWebsiteBookings.length > 0) {
+    const first = newWebsiteBookings[0];
+    nudges.push({
+      icon: 'bell', tone: 'oklch(58% 0.16 200)',
+      text: `${newWebsiteBookings.length === 1 ? '1 new booking from your website' : newWebsiteBookings.length + ' new website bookings'} · ${first.guest}`,
+      cta: newWebsiteBookings.length === 1 ? 'Review' : 'View all',
+      onClick: () => {
+        if (newWebsiteBookings.length === 1) {
+          ackWebsite(first.id);
+          go('booking', first.id);
+        } else {
+          newWebsiteBookings.forEach(b => ackWebsite(b.id));
+          go('diary');
+        }
+      },
+    });
+  }
   if (arrivingTomorrow.length > 0) {
     // The green WhatsApp button promises WhatsApp, so it should open
     // WhatsApp — not just navigate. Compose a directions message for the

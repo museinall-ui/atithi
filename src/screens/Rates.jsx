@@ -61,23 +61,23 @@ function DatePill({ value, onChange, placeholder, flex = 1 }) {
 // From → To bar with prev/next month chevrons and a Today reset. Picking
 // From alone jumps the visible window; picking both From and To adds the
 // inclusive day range to the rate-editor's selection set.
-function RangeBar({ rangeStart, rangeEnd, onRangeStartChange, onRangeEndChange, viewStartIdx, goPrevMonth, goNextMonth, goToday, t }) {
+function RangeBar({ rangeStart, rangeEnd, onRangeStartChange, onRangeEndChange, isCurrentMonth, goPrevMonth, goNextMonth, goToday, t }) {
   const chevBtn = { width: 36, height: 38, borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
   return (
     <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
-      <button onClick={goPrevMonth} title="Previous 4 weeks" style={chevBtn}>
+      <button onClick={goPrevMonth} title="Previous month" style={chevBtn}>
         <Icon name="arrowL" size={14} stroke={2.2} color={T.ink2} />
       </button>
       <DatePill value={rangeStart} onChange={onRangeStartChange} placeholder={t('rangeFrom')} />
       <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>→</span>
       <DatePill value={rangeEnd} onChange={onRangeEndChange} placeholder={t('rangeTo')} />
-      {viewStartIdx !== 0 && (
+      {!isCurrentMonth && (
         <button
           onClick={goToday}
           style={{ padding: '0 10px', height: 38, borderRadius: 8, border: `1px solid ${T.primary}`, background: T.primaryLt, color: T.primaryDk, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
         >{t('today')}</button>
       )}
-      <button onClick={goNextMonth} title="Next 4 weeks" style={chevBtn}>
+      <button onClick={goNextMonth} title="Next month" style={chevBtn}>
         <Icon name="chev" size={14} stroke={2.2} color={T.ink2} />
       </button>
     </div>
@@ -118,9 +118,19 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const id = setTimeout(() => setUndoSnapshot(null), 10000);
     return () => clearTimeout(id);
   }, [undoSnapshot]);
-  // Anchor for the visible window. 0 = today; jumping forward via the
-  // date picker shifts the start of the calendar grid.
-  const [viewStartIdx, setViewStartIdx] = useState(0);
+  // Anchor for the visible window. We default to the 1st of the
+  // current calendar month so the grid looks like a wall calendar:
+  // each row is one Mon–Sun week, the 1st sits under its real weekday
+  // column with leading blanks before it, and trailing blanks fill out
+  // the last partial week. Pressing the chevrons or swiping flips by
+  // calendar month, not by a fixed 28-day strip.
+  const firstOfMonthOffsetFromToday = () => {
+    const today = new Date(ANCHOR);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const msPerDay = 24 * 60 * 60 * 1000;
+    return Math.round((monthStart.setHours(0,0,0,0) - new Date(ANCHOR).setHours(0,0,0,0)) / msPerDay);
+  };
+  const [viewStartIdx, setViewStartIdx] = useState(() => firstOfMonthOffsetFromToday());
   // Range picker — replaces the single jump-to-date input. When "From"
   // is set we jump the view; when both "From" and "To" are set we add
   // the day range to selection so the hotelier can immediately apply a
@@ -357,10 +367,25 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     setRangeEnd(iso);
     if (iso && rangeStart) applyRangeSelect(rangeStart, iso);
   };
-  const goPrevMonth = () => setViewStartIdx(i => i - 28);
-  const goNextMonth = () => setViewStartIdx(i => i + 28);
+  // Step by actual calendar month — picks the 1st of the previous /
+  // next month relative to whichever month the current viewStartIdx
+  // lives in. Means May → June → July rather than "next 28 days".
+  const stepCalendarMonth = (delta) => {
+    setViewStartIdx(currentIdx => {
+      const ref = new Date(ANCHOR);
+      ref.setDate(ref.getDate() + currentIdx);
+      const target = new Date(ref.getFullYear(), ref.getMonth() + delta, 1);
+      const msPerDay = 24 * 60 * 60 * 1000;
+      return Math.round((target.setHours(0,0,0,0) - new Date(ANCHOR).setHours(0,0,0,0)) / msPerDay);
+    });
+  };
+  const goPrevMonth = () => stepCalendarMonth(-1);
+  const goNextMonth = () => stepCalendarMonth(1);
   const goToday = () => {
-    setViewStartIdx(0);
+    // Snap to the 1st of the current month, not literal today — keeps
+    // the calendar feel ("show me this month"). The today cell remains
+    // highlighted within the grid regardless.
+    setViewStartIdx(firstOfMonthOffsetFromToday());
     setRangeStart('');
     setRangeEnd('');
     // Also drop any in-flight selection so the bottom action bar resets.
@@ -608,7 +633,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
           rangeEnd={rangeEnd}
           onRangeStartChange={onRangeStartChange}
           onRangeEndChange={onRangeEndChange}
-          viewStartIdx={viewStartIdx}
+          isCurrentMonth={viewStartIdx === firstOfMonthOffsetFromToday()}
           goPrevMonth={goPrevMonth}
           goNextMonth={goNextMonth}
           goToday={goToday}

@@ -40,6 +40,17 @@ function localToCloudProperty(local) {
     logo_data_url: p.logoDataUrl || '',
     photo_gallery: Array.isArray(p.photoGallery) ? p.photoGallery : [],
     tagline: p.tagline || '',
+    // URL slug for the public booking widget (/book/<slug>). Editable
+    // in Settings → Booking link. Falls back to a name-derived slug
+    // at runtime when empty.
+    short_code: p.shortCode || '',
+    // Styled-button customiser config: { text, style, size,
+    // useCustomColour, color }. Used by Settings → Booking link to
+    // generate the inline-styled HTML snippet.
+    embed_button: p.embedButton || {},
+    // Designated WhatsApp recipients for the daily arrivals digest.
+    // Array of { id, label, phone }.
+    arrivals_recipients: Array.isArray(p.arrivalsRecipients) ? p.arrivalsRecipients : [],
     coupons: Array.isArray(local && local.coupons) ? local.coupons : [],
     gstin: (local && local.gstin) || '',
     accountant: (local && local.accountant) || { name: '', email: '', firm: '' },
@@ -91,6 +102,9 @@ function cloudToLocalProperty(row, categories) {
       logoDataUrl: row.logo_data_url || '',
       tagline: row.tagline || '',
       photoGallery: Array.isArray(row.photo_gallery) ? row.photo_gallery : [],
+      shortCode: row.short_code || '',
+      embedButton: row.embed_button || {},
+      arrivalsRecipients: Array.isArray(row.arrivals_recipients) ? row.arrivals_recipients : [],
     },
     categories: (categories || []).map(c => ({
       id: c.code,

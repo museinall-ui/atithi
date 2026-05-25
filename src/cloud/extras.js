@@ -109,6 +109,10 @@ export async function loadRateOverrides(propertyId) {
     map[`${r.room_category_code}:${idx}`] = {
       rate: r.rate == null ? null : r.rate,
       closed: !!r.closed_out,
+      // Per-unit close-outs (Rates F3): which specific unit indices are
+      // out on this date. Empty array = no per-unit close-outs (the
+      // whole-type closed flag above is the bigger hammer).
+      closedUnits: Array.isArray(r.closed_units) ? r.closed_units : [],
     };
   });
   return map;
@@ -128,6 +132,7 @@ export async function seedRateOverrides(propertyId, localMap) {
       date: idxToDate(idx),
       rate: v.rate == null ? null : v.rate,
       closed_out: !!v.closed,
+      closed_units: Array.isArray(v.closedUnits) ? v.closedUnits : [],
     });
   }
   if (!rows.length) return;
@@ -138,7 +143,7 @@ export async function seedRateOverrides(propertyId, localMap) {
 }
 
 // Upsert a single cell. Pass `value=null` to delete the override (open day at
-// the base rate). Otherwise pass `{rate, closed}`.
+// the base rate). Otherwise pass `{rate, closed, closedUnits}`.
 export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value) {
   const date = idxToDate(dayIdx);
   if (value == null) {
@@ -157,6 +162,7 @@ export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value
     date,
     rate: value.rate == null ? null : value.rate,
     closed_out: !!value.closed,
+    closed_units: Array.isArray(value.closedUnits) ? value.closedUnits : [],
   };
   const { error } = await supabase
     .from('rate_overrides')

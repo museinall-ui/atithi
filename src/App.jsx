@@ -760,6 +760,42 @@ export default function App() {
     }
   };
 
+  // Append a voice note to a booking. The note is an object
+  // { id, dataUrl, durationSec, createdAt } — recorded by the
+  // VoiceRecorder component on BookingDetail. We cap at 3 notes per
+  // booking (enforced in the UI too) so localStorage stays bounded.
+  const addVoiceNote = (bookingId, note) => {
+    let nextNotes = null;
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const existing = Array.isArray(b.voiceNotes) ? b.voiceNotes : [];
+      if (existing.length >= 3) return b;
+      nextNotes = [...existing, note];
+      const evt = { kind: 'voice', text: `Voice note added (${Math.round(note.durationSec || 0)}s)`, time: new Date().toISOString() };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, voiceNotes: nextNotes, events: nextEvents };
+    }));
+    if (cloudReady && propertyId && nextNotes) {
+      syncFire('Add voice note', updateBookingCloud(bookingId, { voiceNotes: nextNotes, events: nextEvents }));
+    }
+  };
+  const removeVoiceNote = (bookingId, noteId) => {
+    let nextNotes = null;
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const existing = Array.isArray(b.voiceNotes) ? b.voiceNotes : [];
+      nextNotes = existing.filter(n => n.id !== noteId);
+      const evt = { kind: 'voice', text: 'Voice note deleted', time: new Date().toISOString() };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, voiceNotes: nextNotes, events: nextEvents };
+    }));
+    if (cloudReady && propertyId && nextNotes) {
+      syncFire('Remove voice note', updateBookingCloud(bookingId, { voiceNotes: nextNotes, events: nextEvents }));
+    }
+  };
+
   // Mark / unmark a booking as VIP. Drives the ★ chip on BookingDetail
   // and Dashboard, the 'Whale' / 'Repeat VIP' derivations in Guests,
   // and the VIP filter. Manual flag — no auto-derivation here.
@@ -1034,7 +1070,7 @@ export default function App() {
       screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
       break;
     }
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;

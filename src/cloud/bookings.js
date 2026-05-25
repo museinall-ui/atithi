@@ -41,6 +41,7 @@ function cloudBookingToLocal(row, payments, invoices) {
     events: Array.isArray(row.events) ? row.events : [],
     couponCode: row.coupon_code || '',
     discountAmount: row.discount_amount || 0,
+    voiceNotes: Array.isArray(row.voice_notes) ? row.voice_notes : [],
     releaseTs: row.release_ts ? Number(row.release_ts) : undefined,
     releaseAt: row.release_at || undefined,
     holdHours: row.hold_hours || undefined,
@@ -98,6 +99,7 @@ function localBookingToCloud(b, propertyId, userId) {
     events: Array.isArray(b.events) ? b.events : [],
     coupon_code: b.couponCode || '',
     discount_amount: b.discountAmount || 0,
+    voice_notes: Array.isArray(b.voiceNotes) ? b.voiceNotes : [],
     release_ts: b.releaseTs || null,
     release_at: b.releaseAt || null,
     hold_hours: b.holdHours || null,
@@ -139,6 +141,7 @@ function patchLocalToCloud(patch) {
   if ('events' in patch)       set('events', Array.isArray(patch.events) ? patch.events : []);
   if ('couponCode' in patch)   set('coupon_code', patch.couponCode || '');
   if ('discountAmount' in patch) set('discount_amount', patch.discountAmount || 0);
+  if ('voiceNotes' in patch)   set('voice_notes', Array.isArray(patch.voiceNotes) ? patch.voiceNotes : []);
   if ('releaseTs' in patch)    set('release_ts', patch.releaseTs || null);
   if ('releaseAt' in patch)    set('release_at', patch.releaseAt || null);
   if ('holdHours' in patch)    set('hold_hours', patch.holdHours || null);

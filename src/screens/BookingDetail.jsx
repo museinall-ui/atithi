@@ -26,6 +26,7 @@ import Row from '../components/Row.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 import ExtendOptions from '../components/ExtendOptions.jsx';
+import VoiceRecorder from '../components/VoiceRecorder.jsx';
 
 const METHOD_LABELS = { cash: 'Cash', card: 'Card', upi: 'UPI', account: 'Bank a/c', other: 'Other' };
 const METHOD_OPTIONS = [
@@ -323,7 +324,7 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
@@ -865,6 +866,22 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
         </div>
         )}
 
+        {/* Voice notes — quick spoken memos attached to the booking.
+            Hotelier records up to 3 × 60s clips; the activity feed
+            below logs each add / delete so the audit trail stays
+            complete. Capped sizes keep localStorage + the row's
+            voice_notes jsonb bounded. */}
+        <div style={{ padding: '0 16px 16px' }}>
+          <SectionHead title="Voice notes" />
+          <Card padding={12}>
+            <VoiceRecorder
+              notes={b.voiceNotes || []}
+              onAdd={(note) => onAddVoiceNote && onAddVoiceNote(b.id, note)}
+              onRemove={(id) => onRemoveVoiceNote && onRemoveVoiceNote(b.id, id)}
+            />
+          </Card>
+        </div>
+
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('activity')} />
           <Card padding={0}>
@@ -897,8 +914,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // still cover the final-state case so freshly-imported
               // bookings without an events[] still render correctly.
               (b.events || []).forEach(ev => {
-                const iconMap = { hold: 'clock', status: 'sync', move: 'arrow', edit: 'edit', vip: 'star' };
-                const toneMap = { hold: 'oklch(48% 0.14 75)', status: T.indigo, move: T.teal, edit: 'oklch(50% 0.10 280)', vip: T.warn };
+                const iconMap = { hold: 'clock', status: 'sync', move: 'arrow', edit: 'edit', vip: 'star', voice: 'bell' };
+                const toneMap = { hold: 'oklch(48% 0.14 75)', status: T.indigo, move: T.teal, edit: 'oklch(50% 0.10 280)', vip: T.warn, voice: T.primary };
                 items.push({
                   icon: iconMap[ev.kind] || 'info',
                   tone: toneMap[ev.kind] || T.ink3,

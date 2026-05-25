@@ -78,6 +78,14 @@ function localToCloudProperty(local) {
     rate_plans: Array.isArray(local && local.ratePlans) ? local.ratePlans : [
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
+    // Hotelier-defined cash accounts for day-close. Default is the two
+    // legacy buckets so existing properties don't see a behaviour change.
+    cash_accounts: Array.isArray(local && local.cashAccounts) && local.cashAccounts.length
+      ? local.cashAccounts
+      : [
+          { id: 'cash',    label: 'Cash drawer',         kind: 'cash' },
+          { id: 'digital', label: 'Digital (UPI / Card)', kind: 'upi' },
+        ],
   };
 }
 
@@ -143,6 +151,12 @@ function cloudToLocalProperty(row, categories) {
       { id: 'standard', label: 'Standard', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true },
     ],
     coupons: Array.isArray(row.coupons) ? row.coupons : [],
+    cashAccounts: Array.isArray(row.cash_accounts) && row.cash_accounts.length
+      ? row.cash_accounts
+      : [
+          { id: 'cash',    label: 'Cash drawer',         kind: 'cash' },
+          { id: 'digital', label: 'Digital (UPI / Card)', kind: 'upi' },
+        ],
   };
 }
 

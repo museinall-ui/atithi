@@ -54,26 +54,44 @@ function todayKey() {
   return ymd(ANCHOR);
 }
 
-function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
+function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts }) {
   const dateKey = todayKey();
   const closes = cashCloses || {};
   const closed = closes[dateKey];
+  // Use the hotelier-configured account list. Fallback to the two
+  // legacy buckets so properties that haven't customised still get
+  // the familiar Cash + Digital UI.
+  const accounts = (Array.isArray(cashAccounts) && cashAccounts.length)
+    ? cashAccounts
+    : [
+        { id: 'cash',    label: 'Cash drawer',         kind: 'cash' },
+        { id: 'digital', label: 'Digital (UPI / Card)', kind: 'upi' },
+      ];
   const [open, setOpen] = useState(false);
-  const [cash, setCash] = useState('');
-  const [digital, setDigital] = useState('');
+  // Per-account amount inputs, keyed by account id. Reset on submit
+  // or cancel.
+  const [amounts, setAmounts] = useState({});
   const [note, setNote] = useState('');
 
   const expected = todayBookings.reduce((s, b) => s + (b.total || 0), 0);
 
   const submit = () => {
-    const c = Math.max(0, +cash || 0);
-    const d = Math.max(0, +digital || 0);
-    if (c + d <= 0 && !note.trim()) return;
+    const collected = accounts.map(a => ({
+      accountId: a.id,
+      label: a.label,
+      kind: a.kind,
+      amount: Math.max(0, +(amounts[a.id] || 0)),
+    }));
+    const total = collected.reduce((s, a) => s + a.amount, 0);
+    if (total <= 0 && !note.trim()) return;
     const now = new Date();
     const closedAt = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    onSetCashClose(dateKey, { cash: c, digital: d, total: c + d, expected, note: note.trim(), closedAt });
+    const cash = collected.filter(a => a.kind === 'cash').reduce((s, a) => s + a.amount, 0);
+    const digital = total - cash;
+    onSetCashClose(dateKey, { accounts: collected, cash, digital, total, expected, note: note.trim(), closedAt });
     setOpen(false);
-    setCash(''); setDigital(''); setNote('');
+    setAmounts({});
+    setNote('');
   };
 
   const reopen = () => {
@@ -81,30 +99,49 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
   };
 
   if (closed) {
-    const gap = closed.total - closed.expected;
+    const gap = (closed.total || 0) - (closed.expected || 0);
+    const closedAccounts = Array.isArray(closed.accounts) && closed.accounts.length
+      ? closed.accounts
+      : [
+          { label: 'Cash', amount: closed.cash || 0 },
+          { label: 'Digital', amount: closed.digital || 0 },
+        ];
     return (
       <div style={{ padding: '0 16px 14px' }}>
         <SectionHead title={isHi ? 'दिन का हिसाब' : 'End of day'} action={
           <button onClick={reopen} style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Reopen</button>
         } />
         <Card padding={14}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: closedAccounts.length > 0 ? 10 : 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: T.okLt, color: T.ok, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="check" size={16} stroke={2.4} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Closed at <span className="tnum">{closed.closedAt}</span></div>
               <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>
-                ₹{closed.cash.toLocaleString('en-IN')} cash · ₹{closed.digital.toLocaleString('en-IN')} digital
-                {Math.abs(gap) > 0 && expected > 0 && (
+                Total ₹{(closed.total || 0).toLocaleString('en-IN')}
+                {Math.abs(gap) > 0 && (closed.expected || 0) > 0 && (
                   <span style={{ color: gap < 0 ? T.danger : T.indigo, marginLeft: 4 }}>
                     · {gap > 0 ? `+₹${gap.toLocaleString('en-IN')}` : `−₹${Math.abs(gap).toLocaleString('en-IN')}`} vs billed
                   </span>
                 )}
               </div>
-              {closed.note && <div style={{ fontSize: 11, color: T.ink2, marginTop: 4, fontStyle: 'italic' }}>"{closed.note}"</div>}
             </div>
           </div>
+          {/* Per-account breakdown rendered as a compact stack. Only
+              accounts with non-zero amounts show up so the card stays
+              tight when only one or two were used today. */}
+          {closedAccounts.filter(a => (a.amount || 0) > 0).length > 0 && (
+            <div style={{ padding: '8px 10px', background: T.bgSoft, borderRadius: 7, marginTop: 4 }}>
+              {closedAccounts.filter(a => (a.amount || 0) > 0).map((a, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 11 }}>
+                  <span style={{ color: T.ink3, fontWeight: 600 }}>{a.label}</span>
+                  <span className="tnum" style={{ color: T.ink, fontWeight: 700 }}>₹{(a.amount || 0).toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {closed.note && <div style={{ fontSize: 11, color: T.ink2, marginTop: 8, fontStyle: 'italic' }}>"{closed.note}"</div>}
         </Card>
       </div>
     );
@@ -134,25 +171,33 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose }) {
         </div>
         {open && (
           <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, marginBottom: 4 }}>CASH IN HAND</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px', background: T.bgSoft, border: `1.5px solid ${T.primary}`, borderRadius: 8 }}>
+            {/* One input row per hotelier-configured account. Caps at
+                whatever the property's cashAccounts list holds; the
+                bigger the list the more vertical space the card eats.
+                Most properties keep it to 2-4 accounts. */}
+            {accounts.map((a, i) => (
+              <div key={a.id}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>{a.label}</span>
+                  <span style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.2 }}>{(a.kind || '').toUpperCase()}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px', background: T.bgSoft, border: `1.5px solid ${i === 0 ? T.primary : T.border}`, borderRadius: 8 }}>
                   <span style={{ fontSize: 14, color: T.ink3, fontWeight: 700 }}>₹</span>
-                  <input type="number" autoFocus value={cash} onChange={(e) => setCash(e.target.value)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                  <input
+                    type="number"
+                    autoFocus={i === 0}
+                    value={amounts[a.id] || ''}
+                    onChange={(e) => setAmounts(x => ({ ...x, [a.id]: e.target.value }))}
+                    placeholder="0"
+                    className="tnum"
+                    style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, fontWeight: 700, color: T.ink, minWidth: 0 }}
+                  />
                 </div>
               </div>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, marginBottom: 4 }}>DIGITAL (UPI / CARD)</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px', background: T.bgSoft, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
-                  <span style={{ fontSize: 14, color: T.ink3, fontWeight: 700 }}>₹</span>
-                  <input type="number" value={digital} onChange={(e) => setDigital(e.target.value)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, fontWeight: 700, color: T.ink, minWidth: 0 }} />
-                </div>
-              </div>
-            </div>
+            ))}
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional) — e.g. ₹500 advance from walk-in" style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '8px 10px', fontSize: 12, color: T.ink, outline: 'none' }} />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setOpen(false); setCash(''); setDigital(''); setNote(''); }} className="atithi-tap" style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => { setOpen(false); setAmounts({}); setNote(''); }} className="atithi-tap" style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
               <button onClick={submit} className="atithi-tap" style={{ flex: 2, padding: '10px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Close day</button>
             </div>
           </div>
@@ -985,7 +1030,7 @@ ${arrivingTomorrow.map(b => {
         );
       })()}
 
-      <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} />
+      <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />
 
       {statSheet && (() => {
         const map = {

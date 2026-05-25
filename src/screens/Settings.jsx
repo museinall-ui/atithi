@@ -194,6 +194,17 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // summary. Empty array by default; hotelier adds codes in the
   // dedicated accordion below.
   const [coupons, setCoupons] = useState(Array.isArray(property.coupons) ? property.coupons : []);
+  // Hotelier-defined payment accounts for the daily close-out. Default
+  // is the two legacy buckets (Cash + Digital) so an existing property
+  // doesn't see any behaviour change until they customise.
+  const [cashAccounts, setCashAccounts] = useState(
+    Array.isArray(property.cashAccounts) && property.cashAccounts.length
+      ? property.cashAccounts
+      : [
+          { id: 'cash',    label: 'Cash drawer',         kind: 'cash' },
+          { id: 'digital', label: 'Digital (UPI / Card)', kind: 'upi' },
+        ]
+  );
   // Saved extras live at the App level (not on property), but the PropertyProfile
   // sheet edits them in-line and commits on Save. Local-state pattern mirrors
   // the other in-sheet collections so cancel-without-save discards changes.
@@ -259,6 +270,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
       mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
       coupons,
+      cashAccounts,
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
@@ -1526,6 +1538,62 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               </>
             )}
           </div>
+        </Card>
+
+        {/* Cash accounts — drives the Dashboard 'Close today's cash' UI.
+            Hotelier defines N accounts (owner UPI, manager UPI, cash
+            drawer, bank deposit, card terminal) and the close-day card
+            asks for amounts per-account. Useful when the front desk
+            has multiple people / instruments collecting payments through
+            the day and you need to reconcile by whom + how. */}
+        <SectionHead title="Cash accounts" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Payment instruments your front desk handles through the day. Each appears as its own input on the Dashboard's "Close today's cash" card so you can reconcile by person + method. Default is one cash + one digital bucket; add more if your property has multiple UPI handles, a card terminal, or separate cash drawers.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {cashAccounts.map((a, i) => (
+              <div key={a.id || i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 8, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7 }}>
+                <input
+                  value={a.label || ''}
+                  placeholder="Label (e.g. Manager UPI)"
+                  onChange={e => setCashAccounts(arr => arr.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                  style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: T.ink, padding: '6px 8px', border: `1px solid ${T.border}`, borderRadius: 5, background: T.card }}
+                />
+                <select
+                  value={a.kind || 'upi'}
+                  onChange={e => setCashAccounts(arr => arr.map((x, j) => j === i ? { ...x, kind: e.target.value } : x))}
+                  style={{ fontSize: 11, fontWeight: 700, color: T.ink2, padding: '6px 8px', border: `1px solid ${T.border}`, borderRadius: 5, background: T.card }}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="bank">Bank</option>
+                </select>
+                <button
+                  onClick={() => setCashAccounts(arr => arr.length > 1 ? arr.filter((_, j) => j !== i) : arr)}
+                  disabled={cashAccounts.length <= 1}
+                  title={cashAccounts.length <= 1 ? "Keep at least one account" : "Remove"}
+                  style={{ background: 'none', border: 'none', color: cashAccounts.length <= 1 ? T.ink4 : T.ink3, cursor: cashAccounts.length <= 1 ? 'not-allowed' : 'pointer', padding: 2 }}
+                ><Icon name="x" size={12} /></button>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setCashAccounts(arr => [...arr, { id: 'acct_' + Date.now().toString(36), label: '', kind: 'upi' }])}
+            disabled={cashAccounts.length >= 8}
+            style={{
+              marginTop: 10, width: '100%',
+              padding: '8px 12px', borderRadius: 8,
+              border: `1.5px dashed ${T.border}`, background: T.card,
+              color: cashAccounts.length >= 8 ? T.ink3 : T.ink2, fontSize: 12, fontWeight: 700,
+              cursor: cashAccounts.length >= 8 ? 'not-allowed' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Icon name="plus" size={12} color={cashAccounts.length >= 8 ? T.ink3 : T.ink2} />
+            {cashAccounts.length >= 8 ? '8-account limit reached' : 'Add account'}
+          </button>
         </Card>
 
         {plan === 'invoicing' && (

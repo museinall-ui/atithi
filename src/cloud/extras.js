@@ -174,6 +174,19 @@ export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value
 // cash_closes
 // ----------------------------------------------------------------------------
 
+// Sum a per-account accounts array into the legacy cash + digital
+// columns for backward-compat. kind === 'cash' adds to cash; anything
+// else adds to digital.
+function sumAccountsToLegacy(accounts) {
+  let cash = 0, digital = 0;
+  (accounts || []).forEach(a => {
+    const amt = +a.amount || 0;
+    if (a.kind === 'cash') cash += amt;
+    else digital += amt;
+  });
+  return { cash, digital };
+}
+
 export async function loadCashCloses(propertyId) {
   const { data, error } = await supabase
     .from('cash_closes')
@@ -182,10 +195,20 @@ export async function loadCashCloses(propertyId) {
   if (error) throw error;
   const map = {};
   (data || []).forEach(r => {
+    // Prefer the new accounts[] when present; fall back to cash + digital
+    // for legacy rows so older closes still render correctly.
+    const accounts = Array.isArray(r.accounts) && r.accounts.length ? r.accounts : null;
+    const legacyCash = r.cash || 0;
+    const legacyDigital = r.digital || 0;
     map[r.date] = {
-      cash: r.cash || 0,
-      digital: r.digital || 0,
-      total: (r.cash || 0) + (r.digital || 0),
+      // Keep cash + digital top-level for callers that still read them
+      // (Dashboard sparkline math, expenses-vs-revenue tie-out, etc).
+      cash: accounts ? sumAccountsToLegacy(accounts).cash : legacyCash,
+      digital: accounts ? sumAccountsToLegacy(accounts).digital : legacyDigital,
+      total: accounts
+        ? accounts.reduce((s, a) => s + (+a.amount || 0), 0)
+        : (legacyCash + legacyDigital),
+      accounts: accounts || [],
       // The local shape used to carry expected + closedAt computed at close
       // time. We don't persist those server-side (expected is re-derivable
       // and closedAt = closed_at). Re-derive on load.
@@ -204,11 +227,14 @@ export async function seedCashCloses(propertyId, userId, localMap) {
   const rows = [];
   for (const date of Object.keys(localMap)) {
     const v = localMap[date] || {};
+    const accounts = Array.isArray(v.accounts) ? v.accounts : [];
+    const legacy = accounts.length ? sumAccountsToLegacy(accounts) : { cash: v.cash || 0, digital: v.digital || 0 };
     rows.push({
       property_id: propertyId,
       date,
-      cash: v.cash || 0,
-      digital: v.digital || 0,
+      cash: legacy.cash,
+      digital: legacy.digital,
+      accounts,
       note: v.note || '',
       closed_by: userId || null,
     });
@@ -230,11 +256,14 @@ export async function setCashCloseCloud(propertyId, userId, date, value) {
     if (error) throw error;
     return;
   }
+  const accounts = Array.isArray(value.accounts) ? value.accounts : [];
+  const legacy = accounts.length ? sumAccountsToLegacy(accounts) : { cash: value.cash || 0, digital: value.digital || 0 };
   const row = {
     property_id: propertyId,
     date,
-    cash: value.cash || 0,
-    digital: value.digital || 0,
+    cash: legacy.cash,
+    digital: legacy.digital,
+    accounts,
     note: value.note || '',
     closed_by: userId || null,
   };

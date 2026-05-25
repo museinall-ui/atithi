@@ -233,6 +233,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     accountant: false,
     bookingLink: false,
     coupons: false,
+    teamAlerts: false,
     houseRules: false,
   });
   const toggleGroup = (key) => setOpenGroups(s => ({ ...s, [key]: !s[key] }));
@@ -1918,6 +1919,66 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               <Icon name="plus" size={12} color={T.ink2} />
               Add coupon
             </button>
+          </Card>
+        </AccordionGroup>
+
+        <AccordionGroup title="Team alerts" open={openGroups.teamAlerts} onToggle={() => toggleGroup('teamAlerts')} hint={Array.isArray(profile.arrivalsRecipients) && profile.arrivalsRecipients.length > 0 ? `${profile.arrivalsRecipients.length} recipient${profile.arrivalsRecipients.length === 1 ? '' : 's'}` : 'None yet'}>
+          <SectionHead title="Send tomorrow's arrivals on WhatsApp" style={{ marginTop: 0 }} />
+          <Card padding={12}>
+            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+              Phone numbers that should receive tomorrow's arrival list each day. The Dashboard surfaces a one-tap 'Send arrivals' card when there are check-ins ahead, opening pre-filled WhatsApp messages for each recipient (guest name, dates, room, balance, special requests).
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(profile.arrivalsRecipients || []).length === 0 && (
+                <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '4px 2px' }}>
+                  No recipients yet. Add yourself, your reception manager, or the housekeeper.
+                </div>
+              )}
+              {(profile.arrivalsRecipients || []).map((r, i) => (
+                <div key={r.id || i} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: 10, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
+                }}>
+                  <input
+                    value={r.label || ''}
+                    placeholder="Label (e.g. Manager)"
+                    onChange={(e) => setProfile({ ...profile, arrivalsRecipients: (profile.arrivalsRecipients || []).map((x, j) => j === i ? { ...x, label: e.target.value } : x) })}
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: T.ink, padding: '6px 9px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card }}
+                  />
+                  <input
+                    value={r.phone || ''}
+                    placeholder="+91 98100 12345"
+                    inputMode="tel"
+                    onChange={(e) => setProfile({ ...profile, arrivalsRecipients: (profile.arrivalsRecipients || []).map((x, j) => j === i ? { ...x, phone: e.target.value } : x) })}
+                    style={{ flex: 1.4, minWidth: 0, fontSize: 12, fontWeight: 700, color: T.ink, padding: '6px 9px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, fontFamily: 'JetBrains Mono, monospace' }}
+                  />
+                  <button
+                    onClick={() => setProfile({ ...profile, arrivalsRecipients: (profile.arrivalsRecipients || []).filter((_, j) => j !== i) })}
+                    title="Remove"
+                    style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2, flexShrink: 0 }}
+                  ><Icon name="x" size={13} /></button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                const id = 'rec_' + Date.now().toString(36);
+                setProfile({ ...profile, arrivalsRecipients: [...(profile.arrivalsRecipients || []), { id, label: '', phone: '' }] });
+              }}
+              style={{
+                marginTop: 10, width: '100%',
+                padding: '9px 12px', borderRadius: 8,
+                border: `1.5px dashed ${T.border}`, background: T.card,
+                color: T.ink2, fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+            >
+              <Icon name="plus" size={12} color={T.ink2} />
+              Add recipient
+            </button>
+            <div style={{ marginTop: 10, padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
+              <strong>Note:</strong> WhatsApp opens with the pre-filled message — you tap Send. Truly automatic sending without your tap needs the WhatsApp Business Cloud API (Phase 3).
+            </div>
           </Card>
         </AccordionGroup>
 

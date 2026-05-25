@@ -703,6 +703,139 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         </div>
       </div>
 
+      {/* Tomorrow's arrivals — share to the team via WhatsApp. Only
+          rendered when:
+            1. There ARE arrivals tomorrow (otherwise nothing to share)
+            2. The hotelier has configured at least one recipient
+               (Settings → Team alerts)
+          One tap opens WhatsApp pre-filled with the arrivals digest for
+          each recipient in sequence. True auto-send awaits Phase 3
+          WhatsApp Cloud API. */}
+      {arrivingTomorrow.length > 0 && Array.isArray(property?.profile?.arrivalsRecipients) && property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length > 0 && (
+        <div style={{ padding: '0 16px 14px' }}>
+          <SectionHead title={isHi ? 'कल आ रहे हैं · टीम को भेजें' : "Tomorrow's arrivals · share with team"} />
+          <Card padding={0}>
+            <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${T.borderSoft}` }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'oklch(96% 0.04 145)', color: 'oklch(35% 0.13 145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="wa" size={18} stroke={2} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>
+                  {arrivingTomorrow.length} guest{arrivingTomorrow.length > 1 ? 's' : ''} arriving tomorrow
+                </div>
+                <div className="tnum" style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
+                  Goes to {property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length} recipient{property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length === 1 ? '' : 's'}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              // Build the digest message (shared text for every recipient).
+              const propName = property?.profile?.name || 'Property';
+              const lines = [
+                `*Tomorrow's arrivals · ${propName}*`,
+                '',
+                ...arrivingTomorrow.map(b => {
+                  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+                  const checkIn = new Date(ANCHOR);
+                  checkIn.setDate(checkIn.getDate() + b.startIdx);
+                  const checkInLbl = checkIn.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+                  const balance = (b.total || 0) - (b.paid || 0);
+                  return [
+                    `*${b.guest}* (${b.id})`,
+                    `📅 ${checkInLbl} · ${b.nights}N · ${rt?.name || 'Room'}`,
+                    `👥 ${b.guests || ''} · 📞 ${b.phone || ''}`,
+                    balance > 0 ? `💰 Balance ₹${balance.toLocaleString('en-IN')}` : `✅ Paid in full · ₹${(b.total || 0).toLocaleString('en-IN')}`,
+                    b.notes ? `📝 ${b.notes}` : '',
+                  ].filter(Boolean).join('\n');
+                }),
+              ].join('\n\n');
+              const recipients = property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7);
+              const openAllWa = () => {
+                // Open WhatsApp for each recipient in sequence. Modern
+                // browsers will only allow the first window.open() without
+                // user-gesture chaining, so we offset each subsequent
+                // open by 300ms which keeps Chrome / Safari happy.
+                recipients.forEach((r, i) => {
+                  setTimeout(() => {
+                    const phone = (r.phone || '').replace(/\D/g, '');
+                    const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines)}`;
+                    window.open(url, '_blank', 'noopener');
+                  }, i * 300);
+                });
+              };
+              const downloadHtml = () => {
+                // Printable HTML summary the hotelier can save as PDF
+                // or forward manually. Matches the voucher styling so
+                // it feels like part of the same product.
+                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Tomorrow's arrivals · ${propName}</title>
+<style>
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 32px; max-width: 760px; margin: 0 auto; color: #1a1a1a; }
+  h1 { font-size: 22pt; margin-bottom: 4px; }
+  .sub { color: #777; font-size: 10pt; margin-bottom: 22px; }
+  .arrival { padding: 14px 16px; border: 1px solid #E8E0D8; border-radius: 10px; margin-bottom: 12px; background: #FBF7F3; }
+  .name { font-size: 14pt; font-weight: 700; }
+  .meta { font-size: 11pt; color: #555; margin-top: 6px; line-height: 1.6; }
+  .balance { color: #c8553d; font-weight: 700; }
+  .paid { color: #0E8A5F; font-weight: 700; }
+  .actions { margin-top: 20px; text-align: center; }
+  .actions button { padding: 10px 20px; border-radius: 8px; border: 1px solid #c8553d; background: #c8553d; color: #fff; font-weight: 700; cursor: pointer; }
+  @media print { .actions { display: none; } }
+</style></head><body>
+<h1>Tomorrow's arrivals</h1>
+<div class="sub">${propName} · ${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} expected</div>
+${arrivingTomorrow.map(b => {
+  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+  const checkIn = new Date(ANCHOR);
+  checkIn.setDate(checkIn.getDate() + b.startIdx);
+  const checkInLbl = checkIn.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+  const balance = (b.total || 0) - (b.paid || 0);
+  return `<div class="arrival">
+  <div class="name">${b.guest || ''} · ${b.id}</div>
+  <div class="meta">
+    <strong>Check-in:</strong> ${checkInLbl} · ${b.nights} night${b.nights > 1 ? 's' : ''}<br/>
+    <strong>Room:</strong> ${rt?.name || 'Room'} · ${b.guests || ''}<br/>
+    <strong>Phone:</strong> ${b.phone || ''}<br/>
+    <strong>Status:</strong> ${balance > 0 ? `<span class="balance">Balance ₹${balance.toLocaleString('en-IN')}</span>` : `<span class="paid">Paid in full · ₹${(b.total || 0).toLocaleString('en-IN')}</span>`}
+    ${b.notes ? `<br/><strong>Note:</strong> ${b.notes}` : ''}
+  </div>
+</div>`;
+}).join('')}
+<div class="actions"><button onclick="window.print()">Save as PDF / Print</button></div>
+</body></html>`;
+                const w = window.open('', '_blank', 'width=820,height=900');
+                if (w) { w.document.write(html); w.document.close(); }
+              };
+              return (
+                <div style={{ padding: '10px 14px 14px', display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={openAllWa}
+                    style={{
+                      flex: 1, padding: '10px 12px', borderRadius: 8,
+                      border: 'none', background: '#25D366', color: '#fff',
+                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <Icon name="wa" size={13} color="#fff" stroke={2} /> Send on WhatsApp
+                  </button>
+                  <button
+                    onClick={downloadHtml}
+                    style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <Icon name="download" size={12} stroke={2} color={T.ink2} /> PDF
+                  </button>
+                </div>
+              );
+            })()}
+          </Card>
+        </div>
+      )}
+
       {/* Channel mix donut — only relevant when the hotelier has actual
           OTA channels syncing. On the Engine tier (no channel manager)
           this card was confusing decoration, so we hide it. Returns on

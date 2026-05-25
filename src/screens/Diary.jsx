@@ -141,7 +141,14 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   let usedBadgeW = 0;
   let badgeMode = 'hidden'; // 'full' | 'icon' | 'hidden'
   if (badge) {
-    if (totalW - fixedChrome - fullBadgeW >= 42) {
+    // Very narrow pills (1-night at default zoom is ~52px): hide the
+    // badge entirely so the guest's initials get the full pill width.
+    // The pill's bg tint + matching border still convey status (green
+    // = confirmed, indigo = checked-in, etc) without the explicit
+    // badge competing for space.
+    if (totalW < 62) {
+      badgeMode = 'hidden';
+    } else if (totalW - fixedChrome - fullBadgeW >= 42) {
       badgeMode = 'full';
       usedBadgeW = fullBadgeW;
     } else if (totalW - fixedChrome - iconBadgeW >= 36) {

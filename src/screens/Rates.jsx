@@ -1054,9 +1054,22 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                           width: '100%', textAlign: 'center',
                           fontSize: 34, fontWeight: 800, color: T.ink,
                           lineHeight: 1.05, letterSpacing: -0.5,
-                          background: 'transparent', border: 'none', outline: 'none', padding: 0,
+                          background: 'transparent', border: 'none',
+                          // Explicit visible caret so the hotelier
+                          // knows the number is editable. The dashed
+                          // underline below the digit doubles down on
+                          // the "this is a text input" signal.
+                          caretColor: T.indigo,
+                          cursor: 'text',
+                          outline: 'none', padding: '0 0 2px',
+                          borderBottom: `1px dashed ${T.borderSoft}`,
                         }}
+                        onMouseOver={(e) => { e.currentTarget.style.borderBottom = `1px dashed ${T.indigo}`; }}
+                        onMouseOut={(e) => { e.currentTarget.style.borderBottom = `1px dashed ${T.borderSoft}`; }}
                       />
+                      <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600, marginTop: 2, fontStyle: 'italic', letterSpacing: 0.2 }}>
+                        ↑ tap to type, or use − + buttons
+                      </div>
                       <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2 }}>of {total} {rt.name}</div>
                     </div>
                     <button

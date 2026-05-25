@@ -707,18 +707,31 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   const ea = c.extraAdult || { mode: 'flat', value: 0 };
                   const ec = c.extraChild || { mode: 'flat', value: 0 };
                   const updateRule = (key, patch) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, [key]: { ...(x[key] || { mode: 'flat', value: 0 }), ...patch } } : x));
-                  const modeBtn = (rule, mode, label) => (
-                    <button
-                      onClick={() => updateRule(rule, { mode })}
-                      style={{
-                        padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-                        border: `1px solid ${(c[rule]?.mode || 'flat') === mode ? T.indigo : T.border}`,
-                        background: (c[rule]?.mode || 'flat') === mode ? T.indigoLt : T.card,
-                        color: (c[rule]?.mode || 'flat') === mode ? T.indigo : T.ink3,
-                        fontSize: 10, fontWeight: 700,
-                      }}
-                    >{label}</button>
-                  );
+                  const modeBtn = (rule, mode, label) => {
+                    const sel = (c[rule]?.mode || 'flat') === mode;
+                    return (
+                      <button
+                        onClick={() => updateRule(rule, { mode })}
+                        style={{
+                          // Sliding-segmented-control feel: selected gets
+                          // bold indigo background + check icon + shadow.
+                          // Unselected stays muted with no fill so the
+                          // contrast between "this is active" and "this
+                          // is the alternative" reads at a glance.
+                          padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                          border: `1.5px solid ${sel ? T.indigo : T.border}`,
+                          background: sel ? T.indigo : T.card,
+                          color: sel ? '#fff' : T.ink3,
+                          fontSize: 10.5, fontWeight: 800, letterSpacing: 0.2,
+                          boxShadow: sel ? '0 1px 3px rgba(70,80,180,0.25)' : 'none',
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                        }}
+                      >
+                        {sel && <Icon name="check" size={10} color="#fff" stroke={3} />}
+                        {label}
+                      </button>
+                    );
+                  };
                   const previewFor = (rule) => {
                     const r = c[rule];
                     if (!r || !r.value) return null;

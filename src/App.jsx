@@ -328,6 +328,51 @@ export default function App() {
   const needsOnboarding = !onboardingDismissed
     && (!property?.profile?.name?.trim() || !(Array.isArray(property?.categories) && property.categories.length > 0));
   const [editing, setEditing] = useState(null);
+
+  // Undo snackbar — set when a destructive action just fired
+  // (cancellation, auto-release). Shape: { kind, bookingId, guest,
+  // previousStatus, previousReleaseTs, previousReleaseAt,
+  // previousAutoReleased, expiresAt }. Snackbar component below the
+  // tab bar consumes this; tapping "Undo" calls undoLast().
+  const [undoState, setUndoState] = useState(null);
+  // Auto-dismiss the snackbar at expiresAt. Updates whenever a new
+  // undo is queued or the current one expires.
+  useEffect(() => {
+    if (!undoState) return;
+    const ms = undoState.expiresAt - Date.now();
+    if (ms <= 0) { setUndoState(null); return; }
+    const id = setTimeout(() => setUndoState(null), ms);
+    return () => clearTimeout(id);
+  }, [undoState]);
+  const undoLast = () => {
+    if (!undoState) return;
+    const { bookingId, previousStatus, previousReleaseTs, previousReleaseAt, previousAutoReleased } = undoState;
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const evt = { kind: 'status', text: `Restored from cancellation (was ${previousStatus})`, time: new Date().toISOString() };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return {
+        ...b,
+        status: previousStatus,
+        releaseTs: previousReleaseTs,
+        releaseAt: previousReleaseAt,
+        autoReleased: previousAutoReleased,
+        events: nextEvents,
+      };
+    }));
+    if (cloudReady && propertyId) {
+      const patch = {
+        status: previousStatus,
+        releaseTs: previousReleaseTs || null,
+        releaseAt: previousReleaseAt || null,
+        autoReleased: previousAutoReleased,
+      };
+      if (nextEvents) patch.events = nextEvents;
+      syncFire('Undo cancellation', updateBookingCloud(bookingId, patch));
+    }
+    setUndoState(null);
+  };
   const [searchOpen, setSearchOpen] = useState(false);
   // Auth: session is null until Supabase tells us whether the user is signed
   // in. authReady gates the initial render so we don't briefly flash SignIn
@@ -589,26 +634,56 @@ export default function App() {
   useEffect(() => {
     const tick = () => {
       const now = Date.now();
-      const changedIds = [];
+      const changed = [];
       setBookings(arr => {
         const next = arr.map(b => {
           if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && (b.paid || 0) < (b.total || 0)) {
-            changedIds.push(b.id);
+            // Snapshot the previous state so the hotelier can undo if
+            // they catch the auto-release in time. We give it a longer
+            // 30-second window than manual cancels because the user
+            // may not have been on the screen when it fired.
+            changed.push({
+              id: b.id,
+              guest: b.guest,
+              previousStatus: b.status,
+              previousReleaseTs: b.releaseTs,
+              previousReleaseAt: b.releaseAt,
+            });
             return { ...b, status: 'cancelled', autoReleased: true };
           }
           return b;
         });
-        return changedIds.length ? next : arr;
+        return changed.length ? next : arr;
       });
-      if (cloudReadyRef.current && propertyIdRef.current && changedIds.length) {
-        changedIds.forEach(id => {
-          syncFire('Auto-release booking', updateBookingCloud(id, { status: 'cancelled', autoReleased: true }));
+      if (cloudReadyRef.current && propertyIdRef.current && changed.length) {
+        changed.forEach(c => {
+          syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true }));
+        });
+      }
+      // Surface an undo snackbar for the FIRST one (if multiple fired
+      // in the same tick — rare). The hotelier seeing the snackbar
+      // is the trigger to open the diary and review the rest.
+      if (changed.length > 0) {
+        const c = changed[0];
+        setUndoState({
+          kind: 'autoRelease',
+          bookingId: c.id,
+          guest: c.guest,
+          previousStatus: c.previousStatus,
+          previousReleaseTs: c.previousReleaseTs,
+          previousReleaseAt: c.previousReleaseAt,
+          previousAutoReleased: false,
+          // 30s window — twice the manual cancel because the auto-
+          // release surprised them.
+          expiresAt: Date.now() + 30 * 1000,
+          extraCount: changed.length - 1,
         });
       }
     };
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const go = (name, arg = null) => {
@@ -673,6 +748,10 @@ export default function App() {
   const setStatus = (bookingId, status) => {
     const clearRelease = status === 'confirmed' || status === 'cancelled' || status === 'checkedin';
     let nextEvents = null;
+    // Snapshot what we're overwriting — used by the undo snackbar so
+    // the hotelier has 10 seconds to reverse a cancellation (or any
+    // status change) without losing the previous release timer.
+    const existing = bookings.find(b => b.id === bookingId);
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
       const next = { ...b, status };
@@ -699,6 +778,25 @@ export default function App() {
       }
       if (nextEvents) patch.events = nextEvents;
       syncFire('Update booking status', updateBookingCloud(bookingId, patch));
+    }
+
+    // Surface a snackbar with Undo when we're cancelling. Other
+    // status changes don't need undo (check-in / check-out / hold-
+    // reverts are non-destructive and easily redone by tapping the
+    // status pill again).
+    if (status === 'cancelled' && existing && existing.status !== 'cancelled') {
+      setUndoState({
+        kind: 'cancel',
+        bookingId,
+        guest: existing.guest,
+        previousStatus: existing.status,
+        previousReleaseTs: existing.releaseTs,
+        previousReleaseAt: existing.releaseAt,
+        previousAutoReleased: existing.autoReleased || false,
+        // 10s window — long enough for an "oh wait I clicked the wrong
+        // button" recovery, short enough not to interrupt anything else.
+        expiresAt: Date.now() + 10 * 1000,
+      });
     }
   };
 
@@ -1232,6 +1330,46 @@ export default function App() {
         property={property}
         go={go}
       />
+      {/* Undo snackbar — surfaces after a cancellation / auto-release.
+          Floats above the tab bar (which is 78px tall). Tapping Undo
+          reverts the change; otherwise it auto-dismisses at the
+          expiresAt deadline. */}
+      {undoState && (() => {
+        const isAuto = undoState.kind === 'autoRelease';
+        const guestLabel = undoState.guest || 'Booking';
+        const extra = undoState.extraCount ? ` (+${undoState.extraCount} more)` : '';
+        return (
+          <div
+            style={{
+              position: 'absolute', left: 12, right: 12,
+              bottom: (route.name === 'booking' || route.name === 'new' || route.name === 'booking-confirmed') ? 12 : 90,
+              zIndex: 60,
+              background: T.ink, color: '#fff',
+              borderRadius: 10, padding: '10px 12px',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.28)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            <Icon name={isAuto ? 'clock' : 'x'} size={15} color="#fff" stroke={2.2} />
+            <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600 }}>
+              {isAuto ? `Auto-released · ${guestLabel}${extra}` : `Cancelled · ${guestLabel}`}
+            </div>
+            <button
+              onClick={undoLast}
+              style={{
+                padding: '6px 14px', borderRadius: 7,
+                border: 'none', background: T.primary, color: '#fff',
+                fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: 0.3,
+              }}
+            >Undo</button>
+            <button
+              onClick={() => setUndoState(null)}
+              title="Dismiss"
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}
+            ><Icon name="x" size={13} color="rgba(255,255,255,0.6)" /></button>
+          </div>
+        );
+      })()}
       <SyncOverlay t={t} />
     </div>
   );

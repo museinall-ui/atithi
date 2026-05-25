@@ -285,6 +285,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
       <div>
         <div class="brand-name">${esc(p.name)}</div>
         <div class="brand-sub">${esc(addressLine)}${p.phone ? ' · ' + esc(p.phone) : ''}</div>
+        ${p.email || p.website ? `<div class="brand-sub" style="margin-top:1px;">${p.email ? esc(p.email) : ''}${p.email && p.website ? ' · ' : ''}${p.website ? `<a href="${esc(p.website)}" style="color:${BRAND}; text-decoration:none; font-weight:600;">${esc(p.website.replace(/^https?:\/\//, ''))}</a>` : ''}</div>` : ''}
         ${p.landmark ? `<div class="brand-sub" style="margin-top:1px;">📍 ${esc(p.landmark)}</div>` : ''}
         ${p.mapUrl ? `<div class="brand-sub" style="margin-top:2px;"><a href="${esc(p.mapUrl)}" style="color:${BRAND}; text-decoration:none; font-weight:600;">View on map →</a></div>` : ''}
         ${prop.gstin ? `<div class="brand-sub" style="margin-top:2px;"><strong>GSTIN:</strong> ${esc(prop.gstin)}</div>` : ''}

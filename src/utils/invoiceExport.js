@@ -169,7 +169,11 @@ export function emailToAccountant(invoices, property) {
   const period = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const total = invoices.reduce((s, i) => s + (i.amount || 0), 0);
   const subject = `Monthly invoice list · ${property?.profile?.name || 'Property'} · ${period}`;
-  const greeting = acc.name ? `Hi ${acc.name},` : 'Hi,';
+  // Greet by CA name + firm when both available. Falls back gracefully
+  // when the hotelier only filled one (or neither).
+  const greeting = acc.name
+    ? (acc.firm ? `Hi ${acc.name} (${acc.firm}),` : `Hi ${acc.name},`)
+    : (acc.firm ? `Hi (${acc.firm} team),` : 'Hi,');
   const body = [
     greeting,
     '',

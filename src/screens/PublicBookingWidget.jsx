@@ -361,7 +361,15 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   };
 
   const propName = property?.profile?.name || 'Our property';
-  const propAddr = [property?.profile?.city, property?.profile?.state].filter(Boolean).join(', ');
+  // Property type label used in the header subtitle so guests see
+  // 'Resort · Jaisalmer' instead of just 'Jaisalmer'. The picker on
+  // Settings → Basics writes profile.type as a slug ('resort' etc).
+  const propTypeLabel = (() => {
+    const t = (property?.profile?.type || '').toLowerCase();
+    const map = { resort: 'Resort', hotel: 'Hotel', homestay: 'Homestay', villa: 'Villa', guesthouse: 'Guest house', camp: 'Camp' };
+    return map[t] || '';
+  })();
+  const propAddr = [propTypeLabel, property?.profile?.city, property?.profile?.state].filter(Boolean).join(' · ');
   const brandHue = property?.theme?.hue ?? 38;
   const brandColor = property?.theme?.color || `oklch(70% 0.15 ${brandHue})`;
 
@@ -1172,9 +1180,17 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               </div>
             )}
 
-            {property?.profile?.phone && (
-              <div style={{ marginTop: 20, fontSize: 12, color: T.ink2 }}>
-                Questions? Call or WhatsApp <strong className="tnum">{property.profile.phone}</strong>
+            {(property?.profile?.phone || property?.profile?.email || property?.profile?.website) && (
+              <div style={{ marginTop: 20, fontSize: 12, color: T.ink2, lineHeight: 1.6 }}>
+                {property?.profile?.phone && (
+                  <div>Questions? Call or WhatsApp <strong className="tnum">{property.profile.phone}</strong></div>
+                )}
+                {property?.profile?.email && (
+                  <div>Email <a href={`mailto:${property.profile.email}`} style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.email}</a></div>
+                )}
+                {property?.profile?.website && (
+                  <div>Web <a href={property.profile.website} target="_blank" rel="noopener" style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.website.replace(/^https?:\/\//, '')}</a></div>
+                )}
               </div>
             )}
           </div>

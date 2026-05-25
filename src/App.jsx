@@ -17,6 +17,7 @@ import {
 import {
   loadExpenses, seedExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
 } from './cloud/expenses.js';
+import { acceptPendingInvitesForUser } from './cloud/team.js';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
@@ -452,6 +453,17 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
+        // Accept any pending invites for this email FIRST. Each match
+        // turns into a membership row, so the immediately-following
+        // loadCurrentProperty() call finds it. Silent-fail: invite
+        // problems shouldn't block sign-in.
+        try {
+          await acceptPendingInvitesForUser(session.user);
+        } catch (e) {
+          // Surface to console but don't block — the existing
+          // owner / bootstrap path still works.
+          console.warn('[atithi] could not accept pending invites', e);
+        }
         let result = await loadCurrentProperty(session.user.id);
         const isFirstTime = !result;
         if (isFirstTime) {
@@ -1226,7 +1238,7 @@ export default function App() {
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} onSignOut={supaSignOut} />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} />; break;
     case 'expenses':          screen = <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
+import TeamSection from '../components/TeamSection.jsx';
 
 // Format the FY code stored in invoiceCounters ('2627') as a human-readable
 // label ('2026-27') for use on labels and hints.
@@ -148,7 +149,7 @@ function AccordionGroup({ title, hint, open, onToggle, children }) {
   );
 }
 
-function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras }) {
+function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, session, propertyId }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
@@ -244,6 +245,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     accountant: false,
     bookingLink: false,
     coupons: false,
+    teamMembers: false,
     teamAlerts: false,
     houseRules: false,
   });
@@ -1997,6 +1999,13 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </Card>
         </AccordionGroup>
 
+        <AccordionGroup title="Team members" open={openGroups.teamMembers} onToggle={() => toggleGroup('teamMembers')} hint={session ? 'Live' : 'Sign-in required'}>
+          <SectionHead title="People with access to this property" style={{ marginTop: 0 }} />
+          <Card padding={12}>
+            <TeamSection session={session} propertyId={propertyId} />
+          </Card>
+        </AccordionGroup>
+
         <AccordionGroup title="Team alerts" open={openGroups.teamAlerts} onToggle={() => toggleGroup('teamAlerts')} hint={Array.isArray(profile.arrivalsRecipients) && profile.arrivalsRecipients.length > 0 ? `${profile.arrivalsRecipients.length} recipient${profile.arrivalsRecipients.length === 1 ? '' : 's'}` : 'None yet'}>
           <SectionHead title="Send tomorrow's arrivals on WhatsApp" style={{ marginTop: 0 }} />
           <Card padding={12}>
@@ -2142,7 +2151,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, onSignOut }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, propertyId, onSignOut }) {
   const [showProfile, setShowProfile] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
@@ -2309,7 +2318,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         )}
       </div>
 
-      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
     </div>
   );
 }

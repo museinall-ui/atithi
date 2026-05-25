@@ -746,9 +746,17 @@ export default function App() {
   };
 
   const setBookingGst = (bookingId, value) => {
-    setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, gstApplies: !!value } : b));
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const evt = { kind: 'edit', text: value ? 'GST flag: ON (include in invoice register)' : 'GST flag: OFF (skip invoice register)', time: new Date().toISOString() };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, gstApplies: !!value, events: nextEvents };
+    }));
     if (cloudReady && propertyId) {
-      syncFire('Update invoice flag', updateBookingCloud(bookingId, { gstApplies: !!value }));
+      const patch = { gstApplies: !!value };
+      if (nextEvents) patch.events = nextEvents;
+      syncFire('Update invoice flag', updateBookingCloud(bookingId, patch));
     }
   };
 
@@ -756,9 +764,17 @@ export default function App() {
   // and Dashboard, the 'Whale' / 'Repeat VIP' derivations in Guests,
   // and the VIP filter. Manual flag — no auto-derivation here.
   const setBookingVip = (bookingId, value) => {
-    setBookings(arr => arr.map(b => b.id === bookingId ? { ...b, vip: !!value } : b));
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const evt = { kind: 'vip', text: value ? 'Marked VIP ★' : 'VIP flag removed', time: new Date().toISOString() };
+      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      return { ...b, vip: !!value, events: nextEvents };
+    }));
     if (cloudReady && propertyId) {
-      syncFire('Update VIP flag', updateBookingCloud(bookingId, { vip: !!value }));
+      const patch = { vip: !!value };
+      if (nextEvents) patch.events = nextEvents;
+      syncFire('Update VIP flag', updateBookingCloud(bookingId, patch));
     }
   };
 
@@ -892,6 +908,22 @@ export default function App() {
       const existing = bookings.find(b => b.id === editing);
       const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
       const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
+      // Build a brief diff summary for the activity feed — only the
+      // fields that actually changed. Keeps the changelog auditable
+      // without pushing noise events for re-saves with no changes.
+      const diff = [];
+      if (existing) {
+        if (existing.guest !== (data.name || existing.guest)) diff.push(`guest: ${existing.guest} → ${data.name}`);
+        if ((existing.nights || 0) !== (data.nights || 0)) diff.push(`nights: ${existing.nights} → ${data.nights}`);
+        if ((existing.total || 0) !== total) diff.push(`total: ₹${(existing.total || 0).toLocaleString('en-IN')} → ₹${total.toLocaleString('en-IN')}`);
+        if (existing.roomTypeId !== data.roomTypeId) diff.push(`room type: ${existing.roomTypeId} → ${data.roomTypeId}`);
+        if ((existing.mealPlanId || 'ep') !== (data.mealPlanId || 'ep')) diff.push(`meal plan: ${existing.mealPlanId || 'ep'} → ${data.mealPlanId || 'ep'}`);
+        if ((existing.ratePlanId || 'standard') !== (data.ratePlanId || 'standard')) diff.push(`rate plan: ${existing.ratePlanId || 'standard'} → ${data.ratePlanId || 'standard'}`);
+        if ((existing.guests || '') !== guestsStr) diff.push(`guests: ${existing.guests || '—'} → ${guestsStr}`);
+        if ((existing.email || '') !== (data.email || '')) diff.push('email updated');
+        if ((existing.phone || '') !== phone) diff.push('phone updated');
+        if ((existing.notes || '') !== (data.notes || '')) diff.push('note updated');
+      }
       const patch = {
         roomTypeId: data.roomTypeId, nights: data.nights,
         guest: data.name || (existing && existing.guest) || '',
@@ -909,12 +941,27 @@ export default function App() {
         patch.releaseTs = releaseTs;
         patch.releaseAt = releaseAt;
       }
-      setBookings(arr => arr.map(b => b.id === editing ? { ...b, ...patch } : b));
+      // Append an edit event with the diff so the activity feed
+      // shows what changed and when. Empty diff → no event (saving
+      // without changes shouldn't pollute the log).
+      let nextEvents = null;
+      setBookings(arr => arr.map(b => {
+        if (b.id !== editing) return b;
+        const merged = { ...b, ...patch };
+        if (diff.length > 0) {
+          const evt = { kind: 'edit', text: 'Edited: ' + diff.join(' · '), time: new Date().toISOString() };
+          nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+          merged.events = nextEvents;
+        }
+        return merged;
+      }));
       setEditing(null);
       setRoute({ name: 'booking', arg: editing });
 
       if (cloudReady && propertyId) {
-        syncFire('Update booking', updateBookingCloud(editing, patch));
+        const cloudPatch = { ...patch };
+        if (nextEvents) cloudPatch.events = nextEvents;
+        syncFire('Update booking', updateBookingCloud(editing, cloudPatch));
       }
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);

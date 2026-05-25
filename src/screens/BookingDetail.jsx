@@ -897,8 +897,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // still cover the final-state case so freshly-imported
               // bookings without an events[] still render correctly.
               (b.events || []).forEach(ev => {
-                const iconMap = { hold: 'clock', status: 'sync', move: 'arrow' };
-                const toneMap = { hold: 'oklch(48% 0.14 75)', status: T.indigo, move: T.teal };
+                const iconMap = { hold: 'clock', status: 'sync', move: 'arrow', edit: 'edit', vip: 'star' };
+                const toneMap = { hold: 'oklch(48% 0.14 75)', status: T.indigo, move: T.teal, edit: 'oklch(50% 0.10 280)', vip: T.warn };
                 items.push({
                   icon: iconMap[ev.kind] || 'info',
                   tone: toneMap[ev.kind] || T.ink3,

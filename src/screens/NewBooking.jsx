@@ -191,10 +191,13 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <MiniStep label={t('adults')} value={r.adults} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, adults: Math.max(1, v) } : x))} />
+                {/* Both children buckets are ALWAYS visible side-by-side so
+                    a guest travelling with only an under-5 kid can put 1 in
+                    'Free' without having to first add a 5+ kid. Previously
+                    the Free bucket only appeared once children > 0, which
+                    silently broke this case. */}
                 <MiniStep label={`${t('children')} ${childFreeAge}–${childHalfAge - 1}y`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
-                {(r.children > 0 || r.childrenFree > 0) && (
-                  <MiniStep label={`Free <${childFreeAge}y`} value={r.childrenFree || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFree: Math.max(0, v) } : x))} />
-                )}
+                <MiniStep label={`Free <${childFreeAge}y`} value={r.childrenFree || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFree: Math.max(0, v) } : x))} />
               </div>
             </div>
           ))}

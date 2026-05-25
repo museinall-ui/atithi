@@ -187,16 +187,35 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
         background: bg,
         border,
         borderRadius: 8,
+        // Stronger default shadow + a hover lift so the pill clearly
+        // reads as a draggable object, not a static block. While
+        // dragging, scale up + lift further so the cursor target
+        // stays clear over the destination slot.
         boxShadow: isHold ? 'none' : '0 1px 2px rgba(20,15,10,.06)',
         padding: `0 ${padX}px 0 ${padX}px`,
         display: 'flex', alignItems: 'center', gap,
         cursor: 'grab', userSelect: 'none', overflow: 'hidden',
         touchAction: 'none',
         zIndex: dx !== 0 ? 5 : 2,
-        transform: dx !== 0 ? 'scale(1.02)' : 'none',
-        transition: dx === 0 ? 'transform .12s' : 'none',
+        transform: dx !== 0 ? 'scale(1.04) translateY(-2px)' : 'none',
+        transition: dx === 0 ? 'transform .12s, box-shadow .12s' : 'none',
         opacity: isCancelled ? 0.55 : 1,
         textDecoration: isCancelled ? 'line-through' : 'none',
+      }}
+      onMouseEnter={(e) => {
+        // Subtle lift on hover so the hotelier sees the pill is
+        // interactive — desktop users especially can otherwise miss
+        // that it's draggable.
+        if (dx === 0) {
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = '0 3px 8px rgba(20,15,10,.14)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (dx === 0) {
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.boxShadow = isHold ? 'none' : '0 1px 2px rgba(20,15,10,.06)';
+        }
       }}
     >
       <span style={{ width: stripeW, alignSelf: 'stretch', borderRadius: 2, flexShrink: 0, background: ch.color, marginTop: 4, marginBottom: 4 }} />

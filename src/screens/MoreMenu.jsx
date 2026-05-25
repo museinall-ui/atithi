@@ -8,6 +8,7 @@ export default function MoreMenu({ go, t }) {
     { id: 'rates',    icon: 'tag',   color: T.primary, title: t('ratesTitle'),    sub: 'Daily rates · close-outs' },
     { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'OTAs · coming soon' },
     { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: 'Money earned · rooms full · invoicing' },
+    { id: 'expenses', icon: 'inr',   color: 'oklch(55% 0.15 30)', title: 'Expenses', sub: 'Daily costs · ledger · by category' },
     { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: 'Property · plan · accountant · language' },
   ];
   return (

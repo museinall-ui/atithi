@@ -99,7 +99,7 @@ function fmtINR(n) {
   return '₹' + Math.round(n).toLocaleString('en-IN');
 }
 
-export default function Reports({ go, t, bookings = [], plan = 'engine', property }) {
+export default function Reports({ go, t, bookings = [], plan = 'engine', property, expenses = [] }) {
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
   const caEmail = property?.accountant?.email || '';
@@ -244,8 +244,15 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const gapCount = reconciliationGaps.length + overdueArrivals.length;
     const gapAmount = [...reconciliationGaps, ...overdueArrivals].reduce((s, b) => s + (b.total - b.paid), 0);
 
-    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays };
-  }, [bookings, ROOM_TYPES, rangeStartIdx, rangeEndIdx, rangeDays, property]);
+    // Expenses inside the picked range. Range-filter by expense date
+    // (YYYY-MM-DD); a stay-overlap check makes no sense here because
+    // expenses are point-in-time, not stays.
+    const expensesInRange = (expenses || []).filter(e => e.date >= rangeStart && e.date <= rangeEnd);
+    const totalExpenses = expensesInRange.reduce((s, e) => s + (e.amount || 0), 0);
+    const netAfterExpenses = Math.max(0, netRevenue - totalExpenses);
+
+    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays, totalExpenses, netAfterExpenses, expensesCount: expensesInRange.length };
+  }, [bookings, ROOM_TYPES, rangeStartIdx, rangeEndIdx, rangeDays, property, expenses, rangeStart, rangeEnd]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -321,6 +328,14 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
               <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
                 <BreakdownRow label="Net to you" value={fmtINR(stats.netRevenue)} color={T.primaryDk} bold />
               </div>
+              {stats.totalExpenses > 0 && (
+                <>
+                  <BreakdownRow label={`Operating expenses (${stats.expensesCount} entr${stats.expensesCount === 1 ? 'y' : 'ies'})`} value={`− ${fmtINR(stats.totalExpenses)}`} color={T.ink3} />
+                  <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
+                    <BreakdownRow label="After expenses" value={fmtINR(stats.netAfterExpenses)} color={T.ok} bold />
+                  </div>
+                </>
+              )}
             </div>
             {stats.totalCommission === 0 && (
               <div style={{ marginTop: 10, fontSize: 10.5, color: T.ink3, lineHeight: 1.4 }}>

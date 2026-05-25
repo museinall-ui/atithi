@@ -14,6 +14,9 @@ import {
   loadRateOverrides, seedRateOverrides, setRateOverrideCloud,
   loadCashCloses, seedCashCloses, setCashCloseCloud,
 } from './cloud/extras.js';
+import {
+  loadExpenses, seedExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
+} from './cloud/expenses.js';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
@@ -33,6 +36,7 @@ import Settings from './screens/Settings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
 import Onboarding from './screens/Onboarding.jsx';
+import Expenses from './screens/Expenses.jsx';
 
 // DEMO_MODE: skip the Supabase magic-link sign-in gate and run entirely off
 // localStorage so the app is immediately usable (no email round-trip, no
@@ -94,11 +98,13 @@ const LS_KEYS = {
   customExtras: 'atithi.customExtras.v1',
   overrides: 'atithi.rateOverrides.v1',
   cashCloses: 'atithi.cashCloses.v1',
+  expenses: 'atithi.expenses.v1',               // daily expense ledger
   plan: 'atithi.plan.v1',
   lang: 'atithi.lang.v1',
   property: 'atithi.property.v1',
   bookingsSeeded: 'atithi.bookings.seeded.v1',  // set once cloud bookings have been seeded for this browser
   extrasSeeded: 'atithi.extras.seeded.v1',      // set once cloud saved_extras/rate_overrides/cash_closes have been seeded
+  expensesSeeded: 'atithi.expenses.seeded.v1',  // set once cloud expenses have been seeded
   onboarded: 'atithi.onboarded.v1',             // first-run wizard dismissed (one-way flag)
   demoSession: 'atithi.demo.v1',                // per-browser demo opt-in flag
 };
@@ -319,6 +325,7 @@ export default function App() {
   const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
   const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
+  const [expenses, setExpenses] = useState(() => loadLS(LS_KEYS.expenses, []));
   const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
   // First-run onboarding state. Auto-shows on first launch when the
   // property is empty (no name OR no room categories) and the dismissed
@@ -401,6 +408,7 @@ export default function App() {
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
   useEffect(() => { saveLS(LS_KEYS.overrides, rateOverrides); }, [rateOverrides]);
   useEffect(() => { saveLS(LS_KEYS.cashCloses, cashCloses); }, [cashCloses]);
+  useEffect(() => { saveLS(LS_KEYS.expenses, expenses); }, [expenses]);
   useEffect(() => { saveLS(LS_KEYS.plan, plan); }, [plan]);
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
   useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
@@ -515,6 +523,19 @@ export default function App() {
           saveLS(LS_KEYS.extrasSeeded, true);
         }
 
+        // Expenses — load + optional one-time seed from localStorage on
+        // first cloud sign-in. Independent of the extras-seeded flag
+        // because they're a separate ledger.
+        let cloudExpensesData = await loadExpenses(result.id);
+        const expensesSeededBefore = !!loadLS(LS_KEYS.expensesSeeded, false);
+        if (cloudExpensesData.length === 0 && expenses && expenses.length > 0 && (isFirstTime || !expensesSeededBefore)) {
+          await seedExpenses(result.id, session.user.id, expenses);
+          saveLS(LS_KEYS.expensesSeeded, true);
+          cloudExpensesData = await loadExpenses(result.id);
+        } else if (cloudExpensesData.length > 0 && !expensesSeededBefore) {
+          saveLS(LS_KEYS.expensesSeeded, true);
+        }
+
         if (cancelled) return;
         setPropertyId(result.id);
         setProperty(result.property);
@@ -522,6 +543,7 @@ export default function App() {
         setSavedCustomExtras(cloudExtras);
         setRateOverrides(cloudOverrides);
         setCashCloses(cloudCloses);
+        setExpenses(cloudExpensesData);
         setCloudReady(true);
       } catch (err) {
         notifySyncFailure('Load from cloud', err);
@@ -858,6 +880,36 @@ export default function App() {
     }
   };
 
+  // Expense ledger actions. Each fires the local state update
+  // optimistically + the cloud add/remove/update through syncCloud
+  // so transient failures surface via the SyncOverlay toast.
+  const addExpense = async (expense) => {
+    // Local: prepend to the list (newest first). Cloud assigns the
+    // canonical uuid; if cloud succeeds we swap the local id for the
+    // cloud one. If cloud fails the local entry stays.
+    setExpenses(arr => [expense, ...arr]);
+    if (cloudReady && propertyId) {
+      try {
+        const created = await syncCloud('Add expense', addExpenseCloud(propertyId, session && session.user && session.user.id, expense));
+        if (created && created.id !== expense.id) {
+          setExpenses(arr => arr.map(e => e.id === expense.id ? created : e));
+        }
+      } catch {}
+    }
+  };
+  const removeExpense = (expenseId) => {
+    setExpenses(arr => arr.filter(e => e.id !== expenseId));
+    if (cloudReady && propertyId) {
+      syncFire('Remove expense', removeExpenseCloud(expenseId));
+    }
+  };
+  const updateExpense = (expenseId, patch) => {
+    setExpenses(arr => arr.map(e => e.id === expenseId ? { ...e, ...patch } : e));
+    if (cloudReady && propertyId) {
+      syncFire('Update expense', updateExpenseCloud(expenseId, patch));
+    }
+  };
+
   // Append a voice note to a booking. The note is an object
   // { id, dataUrl, durationSec, createdAt } — recorded by the
   // VoiceRecorder component on BookingDetail. We cap at 3 notes per
@@ -1173,8 +1225,9 @@ export default function App() {
     case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
-    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} />; break;
+    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} onSignOut={supaSignOut} />; break;
+    case 'expenses':          screen = <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
   }

@@ -51,6 +51,12 @@ export default function SearchOverlay({ open, onClose, bookings = [], property, 
       if ((b.id || '').toLowerCase().includes(needle)) return true;
       if ((b.guest || '').toLowerCase().includes(needle)) return true;
       if ((b.email || '').toLowerCase().includes(needle)) return true;
+      // Notes / special-request field — covers ad-hoc detail the
+      // hotelier remembers about a stay ("anniversary", "early
+      // check-in", "nut allergy") that doesn't fit any structured
+      // field. Worth indexing because hoteliers often search for
+      // these snippets.
+      if ((b.notes || '').toLowerCase().includes(needle)) return true;
       // Phone match: strip non-digits from both sides so spaces / + / · don't
       // throw off comparison. Skip if needle has no digits at all.
       if (digits.length >= 3) {
@@ -94,7 +100,7 @@ export default function SearchOverlay({ open, onClose, bookings = [], property, 
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search booking ID, name, phone or email…"
+            placeholder="Search ID, name, phone, email or notes…"
             style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, fontWeight: 600, color: T.ink, padding: '10px 0', minWidth: 0 }}
           />
           {q && (
@@ -116,7 +122,7 @@ export default function SearchOverlay({ open, onClose, bookings = [], property, 
             <Icon name="search" size={32} color={T.ink4} />
             <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: T.ink2 }}>Find any booking</div>
             <div style={{ fontSize: 11, marginTop: 6, lineHeight: 1.5, maxWidth: 280, margin: '6px auto 0' }}>
-              Type a booking ID (e.g. <strong>BK-2841</strong>), guest name, phone number, or email. Past, future, cancelled — everything in your diary is searchable.
+              Type a booking ID (e.g. <strong>BK-2841</strong>), guest name, phone, email, or any word from the special-request notes. Past, future, cancelled — everything in your diary is searchable.
             </div>
           </div>
         )}

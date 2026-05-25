@@ -1989,42 +1989,71 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </Card>
         </AccordionGroup>
 
-        <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')}>
-        <SectionHead title={t('houseRules')} style={{ marginTop: 0 }} />
+        <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')} hint={`Free <${accountant.childFreeBelowAge ?? 5}y · Half ≤${(accountant.childAgeBelow ?? 12) - 1}y`}>
+        {/* Capacity + child-age tiers that drive extra-guest pricing.
+            The category-level "Extra adult" + "Extra child" rates
+            (inside Rooms + amenities) reference these. */}
+        <SectionHead title="Child age policy" style={{ marginTop: 0 }} />
         <Card padding={12}>
-          {/* Capacity + child-age tiers that drive extra-guest pricing.
-              The category-level "Extra adult" + "Extra child" rates
-              (inside Rooms + amenities) reference these. */}
-          <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${T.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Field
-              label="Adults included in the base rate"
-              type="number"
-              value={baseCapacityAdults}
-              onChange={e => setBaseCapacityAdults(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              placeholder="2"
-              hint="Standard occupancy. Extra adults above this count are charged the per-category extra-adult rate."
-              prefix={<Icon name="users" size={12} color={T.ink3} />}
-            />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Field
-                label="Children FREE below age"
-                type="number"
-                value={accountant.childFreeBelowAge ?? 5}
-                onChange={e => setAccountant({ ...accountant, childFreeBelowAge: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                placeholder="5"
-              />
-              <Field
-                label="Half rate up to age"
-                type="number"
-                value={accountant.childAgeBelow ?? 12}
-                onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                placeholder="12"
-              />
-            </div>
-            <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
-              Under {accountant.childFreeBelowAge ?? 5}: free. {accountant.childFreeBelowAge ?? 5}–{(accountant.childAgeBelow ?? 12) - 1}: half the extra-child rate. {accountant.childAgeBelow ?? 12}+: full extra-child rate.
-            </div>
+          <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>
+            Set your property's child policy. Some properties let kids stay free up to 10 or 12 years — set whatever fits your rate sheet. Used everywhere kids are counted: New Booking, the public widget, the voucher.
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <Field
+              label="Stay FREE under age"
+              type="number"
+              value={accountant.childFreeBelowAge ?? 5}
+              onChange={e => setAccountant({ ...accountant, childFreeBelowAge: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+              placeholder="5"
+              hint="No charge for kids below this age"
+            />
+            <Field
+              label="HALF rate under age"
+              type="number"
+              value={accountant.childAgeBelow ?? 12}
+              onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+              placeholder="12"
+              hint="Half the extra-child rate up to this age"
+            />
+          </div>
+          {/* Live preview — concrete example rendered in the hotelier's
+              current numbers. Helps catch off-by-one mistakes (e.g. 'I
+              set Half to 12, does a 12-year-old pay full or half?'). */}
+          <div style={{ padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8, fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, marginBottom: 5, textTransform: 'uppercase' }}>Your policy</div>
+            {(() => {
+              const free = accountant.childFreeBelowAge ?? 5;
+              const half = accountant.childAgeBelow ?? 12;
+              const rows = [
+                { label: `0 – ${free - 1}y old`, charge: 'Free', color: T.ok },
+                free < half && { label: `${free} – ${half - 1}y old`, charge: 'Half the extra-child rate', color: T.indigo },
+                { label: `${half}y and above`, charge: 'Full extra-child rate', color: T.warn },
+              ].filter(Boolean);
+              return rows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0' }}>
+                  <span>{r.label}</span>
+                  <span style={{ color: r.color, fontWeight: 700 }}>{r.charge}</span>
+                </div>
+              ));
+            })()}
+          </div>
+        </Card>
+
+        <SectionHead title="Adults included in the base rate" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <Field
+            label="Standard occupancy"
+            type="number"
+            value={baseCapacityAdults}
+            onChange={e => setBaseCapacityAdults(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            placeholder="2"
+            hint="Adults above this count are charged the per-category extra-adult rate."
+            prefix={<Icon name="users" size={12} color={T.ink3} />}
+          />
+        </Card>
+
+        <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
+        <Card padding={12}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bgSoft, borderRadius: 8 }}>

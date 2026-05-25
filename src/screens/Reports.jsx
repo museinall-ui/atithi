@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount } from '../data.js';
+import { DAYS, ANCHOR, ymd, idxToDate, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
 import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
+import { buildCsv, downloadCsv } from '../utils/csv.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
@@ -187,6 +188,180 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           </Card>
         )}
 
+        {/* Downloadable Excel/CSV reports — opens directly in Excel /
+            Google Sheets / Numbers. Available to every plan; the
+            invoice-register CSV is plan-gated below since it's a
+            tax-filing artefact. */}
+        <SectionHead title="Downloadable reports" />
+        <Card padding={0} style={{ marginBottom: 16 }}>
+          {(() => {
+            const reports = [
+              {
+                id: 'occupancy',
+                icon: 'bed',
+                color: T.indigo,
+                title: 'Occupancy report',
+                sub: `Daily occupancy across the next ${DAYS.length} days + ADR + RevPAR`,
+                onClick: () => {
+                  const rows = [];
+                  const active = bookings.filter(b => b.status !== 'cancelled');
+                  for (let i = 0; i < DAYS.length; i++) {
+                    const d = DAYS[i];
+                    const iso = idxToDate(i);
+                    let occupied = 0;
+                    const perType = {};
+                    for (const rt of ROOM_TYPES) perType[rt.id] = 0;
+                    for (const b of active) {
+                      if (b.startIdx <= i && i < b.startIdx + b.nights) {
+                        const items = Array.isArray(b.roomItems) && b.roomItems.length ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
+                        for (const it of items) {
+                          const tid = it.roomTypeId || b.roomTypeId;
+                          if (tid in perType) perType[tid] += 1;
+                          occupied += 1;
+                        }
+                      }
+                    }
+                    const totalUnits = ROOM_TYPES.reduce((s, r) => s + r.units, 0);
+                    const pct = totalUnits ? Math.round((occupied / totalUnits) * 100) : 0;
+                    rows.push([iso, d.dow, occupied, totalUnits, pct + '%', ...ROOM_TYPES.map(rt => perType[rt.id])]);
+                  }
+                  // Summary footer
+                  rows.push([]);
+                  rows.push(['Average occupancy', '', '', '', stats.avgOccPct + '%']);
+                  rows.push(['ADR (avg daily rate)', '', '', '', '', stats.adr]);
+                  rows.push(['RevPAR (revenue per available room)', '', '', '', '', stats.revpar]);
+                  const header = ['Date', 'Day', 'Occupied', 'Available', 'Occupancy %', ...ROOM_TYPES.map(rt => rt.name)];
+                  downloadCsv(`atithi-occupancy-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                },
+              },
+              {
+                id: 'payments',
+                icon: 'inr',
+                color: 'oklch(58% 0.13 155)',
+                title: 'Payment reconciliation',
+                sub: 'Every payment recorded, grouped by method (cash / UPI / card / bank)',
+                onClick: () => {
+                  const rows = [];
+                  const methodTotals = {};
+                  bookings.forEach(b => {
+                    (b.payments || []).forEach(p => {
+                      const method = p.method || 'unspecified';
+                      const amt = (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+                      rows.push([
+                        p.date ? new Date(p.date).toLocaleDateString('en-IN') : '',
+                        b.id, b.guest || '', b.phone || '',
+                        method, p.kind || 'payment', amt, p.note || '',
+                      ]);
+                      methodTotals[method] = (methodTotals[method] || 0) + amt;
+                    });
+                  });
+                  // Sort by date
+                  rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+                  // Summary footer per method
+                  if (Object.keys(methodTotals).length) {
+                    rows.push([]);
+                    rows.push(['SUMMARY BY METHOD']);
+                    Object.entries(methodTotals).forEach(([m, total]) => {
+                      rows.push(['', '', '', '', m, '', total]);
+                    });
+                  }
+                  const header = ['Date', 'Booking ID', 'Guest', 'Phone', 'Method', 'Kind', 'Amount (₹)', 'Note'];
+                  downloadCsv(`atithi-payments-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                },
+              },
+              {
+                id: 'ota',
+                icon: 'sync',
+                color: 'oklch(60% 0.16 38)',
+                title: 'OTA booking report',
+                sub: 'Bookings grouped by channel (MMT / Booking / Goibibo / Agoda / Airbnb / Direct / Website)',
+                onClick: () => {
+                  const rows = [];
+                  const channelTotals = {};
+                  bookings.filter(b => b.status !== 'cancelled').forEach(b => {
+                    const ch = b.channel || 'direct';
+                    const label = (CHANNELS[ch] && CHANNELS[ch].label) || ch;
+                    rows.push([
+                      b.id, b.guest || '', label,
+                      b.startIdx != null ? idxToDate(b.startIdx) : '',
+                      b.nights || 1,
+                      b.total || 0, b.paid || 0, (b.total || 0) - (b.paid || 0),
+                      b.status, b.formC ? 'yes' : 'no',
+                    ]);
+                    channelTotals[label] = channelTotals[label] || { count: 0, total: 0, paid: 0 };
+                    channelTotals[label].count += 1;
+                    channelTotals[label].total += b.total || 0;
+                    channelTotals[label].paid += b.paid || 0;
+                  });
+                  // Sort by check-in date
+                  rows.sort((a, b) => String(a[3]).localeCompare(String(b[3])));
+                  // Per-channel summary
+                  rows.push([]);
+                  rows.push(['SUMMARY BY CHANNEL']);
+                  rows.push(['Channel', 'Bookings', 'Total billed (₹)', 'Total paid (₹)']);
+                  Object.entries(channelTotals).forEach(([ch, v]) => {
+                    rows.push([ch, v.count, v.total, v.paid]);
+                  });
+                  const header = ['Booking ID', 'Guest', 'Channel', 'Check-in', 'Nights', 'Total (₹)', 'Paid (₹)', 'Balance (₹)', 'Status', 'Form C'];
+                  downloadCsv(`atithi-ota-bookings-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                },
+              },
+              ...(plan === 'invoicing' ? [{
+                id: 'invoices',
+                icon: 'tag',
+                color: T.indigo,
+                title: 'Invoice register (Invoicing tier)',
+                sub: `${issuedInvoices.length} invoice${issuedInvoices.length === 1 ? '' : 's'} issued — CSV for your CA's records`,
+                onClick: () => {
+                  const rows = issuedInvoices.map(inv => [
+                    inv.number, inv.fy, inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : '',
+                    inv.bookingId || '', inv.guest || '',
+                    inv.recipient?.name || '', inv.recipient?.gstin || '',
+                    inv.amount || 0, inv.voided ? 'VOIDED' : 'active', inv.note || '',
+                  ]);
+                  const header = ['Invoice #', 'FY', 'Issue date', 'Booking ID', 'Guest', 'Bill recipient', 'Recipient GSTIN', 'Amount (₹)', 'Status', 'Note'];
+                  downloadCsv(`atithi-invoices-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                },
+                disabled: issuedInvoices.length === 0,
+              }] : []),
+            ];
+            return reports.map((r, i) => (
+              <button
+                key={r.id}
+                onClick={r.disabled ? undefined : r.onClick}
+                disabled={r.disabled}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 14px', background: T.card,
+                  border: 'none',
+                  borderBottom: i < reports.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
+                  cursor: r.disabled ? 'not-allowed' : 'pointer',
+                  textAlign: 'left', opacity: r.disabled ? 0.55 : 1,
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  background: `color-mix(in oklch, ${r.color} 14%, white)`, color: r.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <Icon name={r.icon} size={17} stroke={2} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{r.title}</div>
+                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>{r.sub}</div>
+                </div>
+                <Icon name="download" size={14} color={T.ink3} />
+              </button>
+            ));
+          })()}
+        </Card>
+
+        {/* Invoicing-tier-only: month-end CA email + invoice register +
+            invoicing summary. Engine / Channels properties don't issue
+            invoices in-app, so these sections are hidden for them
+            (preventing confusion and an empty 'Send to CA' button). */}
+        {plan === 'invoicing' && (
+        <>
         <Card padding={14} style={{ marginBottom: 16, borderColor: stats.gapCount > 0 ? 'oklch(85% 0.10 75)' : 'oklch(85% 0.06 175)', background: stats.gapCount > 0 ? 'oklch(98% 0.018 75)' : 'oklch(98% 0.014 175)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Icon name="download" size={14} color={T.teal} stroke={2} />
@@ -283,6 +458,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             Bookings included in your monthly export to the CA. Default is OTA-yes / direct-no — flip per booking via "Include in invoice" on its detail page.
           </div>
         </Card>
+        </>
+        )}
 
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'baseline' }}>

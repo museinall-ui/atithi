@@ -836,42 +836,86 @@ ${arrivingTomorrow.map(b => {
         </div>
       )}
 
-      {/* Channel mix donut — only relevant when the hotelier has actual
-          OTA channels syncing. On the Engine tier (no channel manager)
-          this card was confusing decoration, so we hide it. Returns on
-          Channels / Invoicing tiers. */}
-      {plan !== 'engine' && (
-        <div style={{ padding: '0 16px 16px' }}>
-          <SectionHead title={t('channelMix')} />
-          <Card>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ position: 'relative', width: 70, height: 70 }}>
-                <svg width="70" height="70" viewBox="0 0 70 70">
-                  <circle cx="35" cy="35" r="28" fill="none" stroke={T.bgSoft} strokeWidth="10"/>
-                  <circle cx="35" cy="35" r="28" fill="none" stroke={T.primary} strokeWidth="10" strokeDasharray={`${0.55 * 175.9} 175.9`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                  <circle cx="35" cy="35" r="28" fill="none" stroke="#EB2026" strokeWidth="10" strokeDasharray={`${0.20 * 175.9} 175.9`} strokeDashoffset={`${-0.55 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                  <circle cx="35" cy="35" r="28" fill="none" stroke="#003580" strokeWidth="10" strokeDasharray={`${0.15 * 175.9} 175.9`} strokeDashoffset={`${-0.75 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                  <circle cx="35" cy="35" r="28" fill="none" stroke="#F0728F" strokeWidth="10" strokeDasharray={`${0.10 * 175.9} 175.9`} strokeDashoffset={`${-0.90 * 175.9}`} transform="rotate(-90 35 35)" strokeLinecap="round"/>
-                </svg>
+      {/* Channel mix donut — computed from real bookings[].channel.
+          Surfaces only on Channels / Invoicing tiers because Engine
+          properties don't sync OTAs so the donut would always be 100%
+          direct. Wedges + legend rows are derived live: ring is drawn
+          from the largest slice clockwise, legend is sorted same way. */}
+      {plan !== 'engine' && (() => {
+        const liveActive = (bookings || []).filter(b => b.status !== 'cancelled');
+        if (liveActive.length === 0) return null;
+        const tally = new Map();
+        for (const b of liveActive) {
+          const ch = b.channel || 'direct';
+          tally.set(ch, (tally.get(ch) || 0) + 1);
+        }
+        const palette = {
+          direct:  { color: T.primary, label: isHi ? 'डायरेक्ट' : 'Direct' },
+          website: { color: 'oklch(58% 0.16 200)', label: isHi ? 'वेबसाइट' : 'Website' },
+          mmt:     { color: '#EB2026', label: 'MakeMyTrip' },
+          booking: { color: '#003580', label: 'Booking.com' },
+          goibibo: { color: '#F0728F', label: 'Goibibo' },
+          agoda:   { color: '#5392F9', label: 'Agoda' },
+          airbnb:  { color: '#FF5A5F', label: 'Airbnb' },
+        };
+        const total = liveActive.length;
+        const slices = Array.from(tally.entries())
+          .map(([ch, count]) => ({
+            id: ch,
+            count,
+            pct: Math.round((count / total) * 100),
+            color: (palette[ch] && palette[ch].color) || T.ink3,
+            label: (palette[ch] && palette[ch].label) || ch,
+          }))
+          .sort((a, b) => b.count - a.count);
+        // SVG ring math — circumference of r=28 ≈ 175.9. We walk clockwise
+        // from 12 o'clock, each slice occupying (count / total) of the
+        // ring. Use unrounded ratios for the dash math so the wedges
+        // sum exactly to the full ring even when displayed percentages
+        // are rounded.
+        const C = 175.9;
+        let offsetRatio = 0;
+        const wedges = slices.map(s => {
+          const ratio = s.count / total;
+          const w = { color: s.color, dash: ratio * C, offset: -offsetRatio * C };
+          offsetRatio += ratio;
+          return w;
+        });
+        return (
+          <div style={{ padding: '0 16px 16px' }}>
+            <SectionHead title={t('channelMix')} />
+            <Card>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ position: 'relative', width: 70, height: 70 }}>
+                  <svg width="70" height="70" viewBox="0 0 70 70">
+                    <circle cx="35" cy="35" r="28" fill="none" stroke={T.bgSoft} strokeWidth="10"/>
+                    {wedges.map((w, i) => (
+                      <circle
+                        key={i}
+                        cx="35" cy="35" r="28" fill="none"
+                        stroke={w.color} strokeWidth="10"
+                        strokeDasharray={`${w.dash} ${C}`}
+                        strokeDashoffset={w.offset}
+                        transform="rotate(-90 35 35)"
+                        strokeLinecap="butt"
+                      />
+                    ))}
+                  </svg>
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {slices.map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
+                      <span style={{ flex: 1, color: T.ink2 }}>{s.label}</span>
+                      <span className="tnum" style={{ fontWeight: 700, color: T.ink }}>{s.pct}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {[
-                  [isHi ? 'डायरेक्ट' : 'Direct', 55, T.primary],
-                  ['MakeMyTrip', 20, '#EB2026'],
-                  ['Booking.com', 15, '#003580'],
-                  ['Goibibo', 10, '#F0728F'],
-                ].map(([n, p, c]) => (
-                  <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
-                    <span style={{ flex: 1, color: T.ink2 }}>{n}</span>
-                    <span className="tnum" style={{ fontWeight: 700, color: T.ink }}>{p}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
+            </Card>
+          </div>
+        );
+      })()}
 
       <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} />
 

@@ -185,6 +185,35 @@ Don't build these until basics are stable.
 
 ---
 
+## Hotelier audit findings (May 25, 2026)
+
+Walking through every screen as a real hotelier surfaced these gaps. Items still open are flagged ⏳; resolved ones get ✅ when shipped.
+
+### Functionally missing (no UI)
+- ⏳ **Multi-month / date-range Reports** — Reports show only the 14-day diary window. Needs a From→To picker.
+- ⏳ **PWA install-to-home-screen** — no `public/manifest.json`, no service worker. Phase 1 close-out task.
+- ⏳ **Booking edit history / audit trail** — `booking.events[]` log exists internally; not surfaced as a readable changelog.
+- ⏳ **Voice notes on bookings** — browser MediaRecorder API.
+- ⏳ **Undo for cancellations / auto-releases** — currently terminal.
+- ⏳ **Today's check-outs / housekeeping prep card** — explicitly deprioritized by owner.
+
+### Subtly misleading (looks functional, isn't)
+- ⏳ **Reports → Compliance → "Form C filed: N of N"** — implies Form C has been filed. Nothing is actually filed (no e-FRRO API). Fix: rename to "Form C required" + add manual-filing note.
+- ⏳ **Dashboard → Channel mix donut** — uses hardcoded `[55, 20, 15, 10]` percentages even when Channels/Invoicing tier is active. Should compute from real `bookings[].channel`.
+- ⏳ **Public widget hold-time policy is invisible to the hotelier** — widget auto-applies 12h hold (when check-in > 48h away) or 4h hold (when check-in ≤ 48h). Settings → Booking link doesn't explain this. Hoteliers will be surprised when their guests' bookings auto-release. Fix: surface in Settings → Booking link "How it works" line.
+
+### Owner-added next-up (May 25, 2026)
+1. ⏳ **Configurable "free child age" threshold** — currently defaults to `<5y free`, `<12y half-rate`. Some properties allow up to 10y free. Hotelier should be able to set both thresholds in Settings. The inputs already exist (`accountant.childFreeBelowAge` + `accountant.childAgeBelow`); verify they're prominently visible + properly flow through to booking math.
+2. ⏳ **In-app notifications** —
+   - Notify the hotelier when a booking lands via the public widget (channel:'website')
+   - Notify 10 minutes before any auto-release timer expires
+   - For now: in-app dashboard banners. True push (when app is closed) waits on PWA + push backend.
+
+### Pre-flip readiness checklist (DEMO_MODE → real auth)
+The Phase-1 close-out section above (under "Public booking engine widget") and the existing CLAUDE.md "DEMO_MODE flip" notes cover the migration paste-in steps + anon RLS policy. Confirm that list is complete before flipping.
+
+---
+
 ## How to use this file
 
 - When you remove a mock, add an entry here pointing at where it lived.

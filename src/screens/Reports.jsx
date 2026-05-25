@@ -512,7 +512,12 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         <SectionHead title="Compliance" style={{ marginTop: 18 }} />
         <Card>
           <Row label="Tax inside invoices" value={fmtINR(stats.gstCollected)} />
-          <Row label="Form C filed" value={`${stats.formC} of ${stats.formC}`} />
+          <Row label="Form C required" value={`${stats.formC} booking${stats.formC === 1 ? '' : 's'}`} />
+          {stats.formC > 0 && (
+            <div style={{ padding: '6px 12px 0', fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
+              Atithi flags foreign-passport guests as needing Form C. Actual e-FRRO filing is still manual — submit at <strong>indianfrro.gov.in/frro</strong> per stay.
+            </div>
+          )}
         </Card>
       </div>
     </div>

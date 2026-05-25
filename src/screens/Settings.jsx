@@ -1782,7 +1782,14 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
 
                 <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
-                  <strong>How it works:</strong> Customer picks dates + room, fills in name + WhatsApp, taps Confirm. Booking saves to your Diary as <strong>tentative</strong> with a 24-hour hold so you can verify by phone. You then confirm or release in the booking detail.
+                  <strong>How it works:</strong> Customer picks dates + room, fills in name + WhatsApp, taps Confirm. Booking lands in your Diary marked <strong>tentative</strong>. You confirm (or release) in the booking detail.
+                  <br/><br/>
+                  <strong>Hold policy:</strong> Widget bookings auto-release if you don't confirm:
+                  <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                    <li><strong>12 hours</strong> if the check-in date is more than 48 hours away — comfortable window to chase payment by WhatsApp / phone.</li>
+                    <li><strong>4 hours</strong> if check-in is within 48 hours — tight window so you don't tie up inventory you can still sell.</li>
+                  </ul>
+                  Tap an on-hold booking on the Diary to extend by 2h / 1 day / 2 days / custom.
                 </div>
               </>
             );

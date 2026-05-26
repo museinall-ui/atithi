@@ -44,11 +44,17 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 - **Needs:** Razorpay webhook → mint a payment ledger entry with the real txn ID + timestamp.
 - **Phase:** 2
 
-### Email-to-CA (mailto only)
-- **At:** `src/utils/invoiceExport.js` → `emailToAccountant()` opens a `mailto:` link with subject/body prefilled.
-- **State:** Works but requires the hotelier to manually attach the printed PDF in their email client.
-- **Needs:** Resend (or similar) SMTP API to send the invoice register as an attachment directly, no user action required after tapping "Send".
-- **Phase:** 3
+### Email-to-CA via Resend (WIRED; configurable per deployment)
+- **At:** `api/send-to-ca.js` (Vercel serverless function) + `src/utils/invoiceExport.js` → `sendInvoiceListViaResend()` + `Reports.jsx` handleSendToCA.
+- **State:** Wired end-to-end. "Send to CA" now tries the Resend backend first; on success the CA gets a fully-formatted email with the invoice register inline (no manual attach). Falls back to the legacy mailto + print flow automatically when the backend isn't configured (RESEND_API_KEY env var missing) or the call fails for any reason. Snackbar surfaces the result either way.
+- **Owner-side setup** (one-time, ~5 min — see header comment in `api/send-to-ca.js`):
+  1. Sign up at resend.com (free tier: 100 emails/day, 3k/month)
+  2. Verify a sending domain or use `onboarding@resend.dev` while testing
+  3. Create an API key
+  4. Vercel → Settings → Environment Variables: add `RESEND_API_KEY` (and optionally `RESEND_FROM`)
+  5. Push any commit so Vercel redeploys with the env vars
+- **Auth:** function verifies the caller via their Supabase access token + membership row before sending; non-members get a 403.
+- **Future polish:** real PDF attachment instead of inline HTML, webhook listener for bounce/complaint signals so the hotelier knows if a CA's mailbox is rejecting Atithi's domain.
 
 ---
 

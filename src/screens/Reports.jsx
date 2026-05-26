@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react';
 import { T } from '../tokens.js';
 import { DAYS, ANCHOR, ymd, idxToDate, dateToIdx, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
-import { exportInvoiceList, emailToAccountant } from '../utils/invoiceExport.js';
+import { exportInvoiceList, emailToAccountant, sendInvoiceListViaResend } from '../utils/invoiceExport.js';
 import { buildCsv, downloadCsv } from '../utils/csv.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -400,7 +400,11 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
   );
 }
 
-export default function Reports({ go, t, bookings = [], plan = 'engine', property, expenses = [] }) {
+export default function Reports({ go, t, bookings = [], plan = 'engine', property, expenses = [], session, propertyId }) {
+  // Snackbar state for the "Sent to CA" / "Send failed" toast. Auto-
+  // dismisses after 5s. Kept local since it only fires from one place.
+  const [sendStatus, setSendStatus] = useState(null);
+  // { kind: 'ok' | 'err' | 'fallback', message }
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
   const caEmail = property?.accountant?.email || '';
@@ -453,7 +457,13 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     return bStart <= rangeEndIdx && bEnd > rangeStartIdx;
   };
 
-  const handleSendToCA = () => {
+  // Send the invoice register to the CA. Prefers the Resend-backed
+  // serverless function (api/send-to-ca.js) so the CA gets a fully
+  // formatted email with the register inline — no manual attach
+  // step. Falls back to the legacy mailto + print workflow when the
+  // backend isn't configured yet (RESEND_API_KEY missing) or the
+  // call fails for any reason.
+  const handleSendToCA = async () => {
     if (issuedInvoices.length === 0) {
       alert('No invoices to send yet. Open any booking and tap "Issue invoice" first.');
       return;
@@ -462,8 +472,32 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
       alert('Add your CA\'s email in Settings → Property profile → Accountant before sending.');
       return;
     }
+    // Try Resend first (requires signed-in user + configured backend).
+    if (session && propertyId) {
+      setSendStatus({ kind: 'sending', message: `Sending ${issuedInvoices.length} invoice${issuedInvoices.length === 1 ? '' : 's'} to ${caEmail}…` });
+      const result = await sendInvoiceListViaResend({
+        invoices: issuedInvoices,
+        property,
+        propertyId,
+        session,
+      });
+      if (result.ok) {
+        setSendStatus({ kind: 'ok', message: `Sent to ${caEmail}. The CA will reply from their inbox.` });
+        setTimeout(() => setSendStatus(null), 6000);
+        return;
+      }
+      // Specific helpful messages for the common fail modes.
+      if (result.code === 'no_resend') {
+        setSendStatus({ kind: 'fallback', message: "Atithi's email service isn't set up on this deployment yet — opening your email client instead. Owner: add RESEND_API_KEY in Vercel to enable direct send." });
+      } else if (result.code === 'no_session') {
+        setSendStatus({ kind: 'fallback', message: 'Sign-in required for direct send — opening your email client instead.' });
+      } else {
+        setSendStatus({ kind: 'fallback', message: 'Direct send failed — opening your email client instead. ' + (result.error || '') });
+      }
+      setTimeout(() => setSendStatus(null), 8000);
+    }
+    // Fallback path (always runs when direct send is unavailable).
     exportInvoiceList(bookings, property);
-    // Give the printable window a moment to open before triggering mailto.
     setTimeout(() => emailToAccountant(issuedInvoices, property), 600);
   };
   const stats = useMemo(() => {
@@ -1107,6 +1141,49 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           )}
         </Card>
       </div>
+      {/* Send-to-CA snackbar. Sits above the bottom tab bar so it
+          doesn't get obscured. Auto-dismisses on a timer set in
+          handleSendToCA, or stays for the "sending..." phase. */}
+      {sendStatus && (
+        <div style={{
+          position: 'absolute', bottom: 24, left: 12, right: 12, zIndex: 50,
+          padding: '12px 14px', borderRadius: 10,
+          background:
+            sendStatus.kind === 'ok' ? 'oklch(95% 0.06 155)' :
+            sendStatus.kind === 'err' ? 'oklch(95% 0.06 30)' :
+            sendStatus.kind === 'fallback' ? 'oklch(95% 0.06 75)' :
+            'oklch(95% 0.012 70)',
+          border: `1px solid ${
+            sendStatus.kind === 'ok' ? T.ok :
+            sendStatus.kind === 'err' ? T.danger :
+            sendStatus.kind === 'fallback' ? 'oklch(70% 0.14 75)' :
+            T.border
+          }`,
+          color:
+            sendStatus.kind === 'ok' ? 'oklch(30% 0.13 155)' :
+            sendStatus.kind === 'err' ? T.danger :
+            sendStatus.kind === 'fallback' ? 'oklch(35% 0.14 75)' :
+            T.ink2,
+          fontSize: 12, fontWeight: 600, lineHeight: 1.5,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.10)',
+        }}>
+          <Icon
+            name={sendStatus.kind === 'ok' ? 'check' : sendStatus.kind === 'sending' ? 'sync' : 'info'}
+            size={14}
+            stroke={2}
+            color={sendStatus.kind === 'ok' ? T.ok : sendStatus.kind === 'err' ? T.danger : 'oklch(45% 0.14 75)'}
+          />
+          <span style={{ flex: 1 }}>{sendStatus.message}</span>
+          {sendStatus.kind !== 'sending' && (
+            <button
+              onClick={() => setSendStatus(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', opacity: 0.6, fontSize: 16, lineHeight: 1 }}
+              aria-label="Dismiss"
+            >×</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

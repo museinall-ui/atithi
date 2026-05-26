@@ -162,6 +162,89 @@ export function exportInvoiceList(bookings, property) {
   return all;
 }
 
+// Same HTML as the printable register, returned as a string so it can
+// be sent inline as the email body (instead of as an attachment) by
+// the Resend send path. The CA gets a fully-formatted register that
+// renders inside Gmail / Outlook with the same layout the print view
+// uses; they can print-to-PDF from their inbox if they want a file.
+export function buildInvoiceListHtml(invoices, property, period) {
+  return buildHtml(invoices || [], property || {}, period || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }));
+}
+
+// Send the invoice register straight to the CA's inbox via the
+// Vercel serverless function (api/send-to-ca.js). Resolves to
+// { ok: true } on success, or { ok: false, code, error } on failure
+// — including `code: 'no_resend'` when the deployment hasn't been
+// configured yet. The caller decides whether to fall back to the
+// mailto flow.
+//
+// `session` is the Supabase session object from useSession / App.jsx;
+// we only need its access_token.
+export async function sendInvoiceListViaResend({ invoices, property, propertyId, session }) {
+  if (!session || !session.access_token) {
+    return { ok: false, code: 'no_session', error: 'Sign in required' };
+  }
+  if (!propertyId) {
+    return { ok: false, code: 'no_property', error: 'Property not loaded' };
+  }
+  const acc = property?.accountant || {};
+  const email = acc.email;
+  if (!email) {
+    return { ok: false, code: 'no_ca_email', error: "Add your CA's email in Property profile → Accountant first" };
+  }
+  const list = Array.isArray(invoices) ? invoices : [];
+  const period = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const html = buildInvoiceListHtml(list, property, period);
+  const subject = `Monthly invoice list · ${property?.profile?.name || 'Property'} · ${period}`;
+  // Plain-text greeting prepended to the HTML so the CA sees a
+  // personal note above the table. Renders in any email client.
+  const greeting = acc.name
+    ? (acc.firm ? `Hi ${acc.name} (${acc.firm}),` : `Hi ${acc.name},`)
+    : (acc.firm ? `Hi (${acc.firm} team),` : 'Hi,');
+  const total = list.reduce((s, i) => s + (i.amount || 0), 0);
+  const intro = `<div style="font-family: Helvetica, Arial, sans-serif; padding: 20px 24px; font-size: 11pt; color: #1a1a1a; max-width: 900px; margin: 0 auto;">
+    <p>${greeting}</p>
+    <p>Attached is the list of invoices issued for <strong>${period}</strong> from <strong>${property?.profile?.name || 'our property'}</strong>.</p>
+    <p>${list.length} invoice${list.length === 1 ? '' : 's'} · ₹${total.toLocaleString('en-IN')} total billed.</p>
+    <p>Full breakdown below. Reply with any questions.</p>
+    <p>Regards,<br/>${property?.profile?.name || ''}</p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+  </div>`;
+  // Inline the table after the greeting. We keep the full
+  // print-style page (including the header / summary boxes) so the
+  // CA can save the whole email as PDF and get the same artifact.
+  const body = intro + html;
+
+  try {
+    const resp = await fetch('/api/send-to-ca', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + session.access_token,
+      },
+      body: JSON.stringify({
+        to: email,
+        subject,
+        html: body,
+        replyTo: property?.profile?.email || undefined,
+        propertyId,
+      }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return { ok: true, id: data?.id };
+    }
+    let detail = '';
+    try { const j = await resp.json(); detail = j.error || j.detail || ''; } catch { detail = await resp.text(); }
+    return { ok: false, code: resp.status === 503 ? 'no_resend' : ('http_' + resp.status), error: detail || 'Send failed' };
+  } catch (e) {
+    // Network error, no server reachable (e.g. local dev where the
+    // /api function doesn't exist), CORS, etc. Treat as unavailable
+    // so the caller falls back to mailto.
+    return { ok: false, code: 'unreachable', error: String(e?.message || e) };
+  }
+}
+
 export function emailToAccountant(invoices, property) {
   const acc = property?.accountant || {};
   const email = acc.email;

@@ -280,9 +280,14 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // Accordion open/closed state for the 9 grouped sections of this sheet.
   // Branding + Basics start expanded (most-edited on first setup); the
   // rest stay collapsed so the sheet fits on roughly 1 phone screen.
+  // All accordions start CLOSED. Earlier we opened Branding + Basics by
+  // default to nudge first-run setup, but hoteliers reported that
+  // having two big open sections + 9 closed ones created visual
+  // confusion (asymmetric, hard to scan). Calm closed list is the
+  // right default; the hotelier opens what they want to edit.
   const [openGroups, setOpenGroups] = useState({
-    branding: true,
-    basics: true,
+    branding: false,
+    basics: false,
     paymentQr: false,
     rooms: false,
     pricing: false,
@@ -2394,12 +2399,25 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 <div style={{ width: '100%', height: '100%', borderRadius: 11, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(property.profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{property.profile.name}</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8, gap: 8 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{property.profile.name}</div>
                 <div style={{ fontSize: 11, color: T.ink3 }}>{locationLabel} · {totalUnits} units</div>
               </div>
-              <Icon name="chev" size={14} color={T.ink3} />
+              {/* Unambiguous Edit affordance. The bare > chevron was so
+                  subtle that hoteliers didn't realise the card was
+                  tappable. Solid pill with an edit-pencil icon + the
+                  word EDIT reads as a real button. */}
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 999,
+                background: T.primary, color: '#fff',
+                fontSize: 11, fontWeight: 800, letterSpacing: 0.4,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.12)', flexShrink: 0,
+              }}>
+                <Icon name="edit" size={12} color="#fff" stroke={2.4} />
+                EDIT
+              </span>
             </div>
             {/* Honest status chips — show the GSTIN only when the hotelier
                 has actually entered one in Property Profile. The earlier

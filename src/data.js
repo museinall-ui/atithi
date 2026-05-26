@@ -470,14 +470,20 @@ export function extraGuestCostForItem(item, property, category, nights, booking)
   const childrenFree = +item.childrenFree || 0;
   const childrenFull = +item.childrenFull || 0;
   const baseRate = (item.rate != null ? item.rate : (category.base || 0)) || 0;
-  // Season override (e.g. "in peak winter, extra adult costs +₹1,500
-  // instead of the category default ₹800"). Falls back per-rule —
-  // a season can override just extraAdult or just extraChild.
+  // Resolution chain for the per-guest rate:
+  //   1. item.extraAdultRate / extraChildRate — per-booking override
+  //      the hotelier explicitly set in NewBooking (a plain ₹ number)
+  //   2. matching season's extraAdult / extraChild rule object
+  //   3. category default extraAdult / extraChild rule object
+  // Per-booking overrides win because they were entered intentionally
+  // for THIS guest; seasons + categories are defaults.
   const season = booking ? seasonOverrideFor(property, booking) : null;
   const adultRule = (season && season.extraAdult) ? season.extraAdult : category.extraAdult;
   const childRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
-  const adultPer = resolveExtraRate(adultRule, baseRate);
-  const childPer = resolveExtraRate(childRule, baseRate);
+  const autoAdultPer = resolveExtraRate(adultRule, baseRate);
+  const autoChildPer = resolveExtraRate(childRule, baseRate);
+  const adultPer = (typeof item.extraAdultRate === 'number') ? Math.max(0, item.extraAdultRate) : autoAdultPer;
+  const childPer = (typeof item.extraChildRate === 'number') ? Math.max(0, item.extraChildRate) : autoChildPer;
   const extraAdults = Math.max(0, adults - cap);
   const adultCost = extraAdults * adultPer * (nights || 1);
   const halfCost = Math.round(childrenHalf * childPer * 0.5 * (nights || 1));

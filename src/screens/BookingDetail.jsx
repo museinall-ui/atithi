@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
 import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
-import { bookingShareWaUrl } from '../utils/share.js';
+import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
 // or "23 May 2026". Was previously hardcoded as `{4 + b.startIdx} May`
@@ -15,7 +15,7 @@ function fmtStayDay(startIdx, withYear) {
     : { day: 'numeric', month: 'short' };
   return d.toLocaleDateString('en-IN', opts);
 }
-import { generateVoucher } from '../utils/voucher.js';
+import { generateVoucher, voucherHtmlString } from '../utils/voucher.js';
 import Toggle from '../components/Toggle.jsx';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -446,6 +446,14 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   // an optional invoice to render in tax-invoice mode.
   const [voucherLangSheet, setVoucherLangSheet] = useState(null);
   const openVoucherSheet = (invoice = null) => setVoucherLangSheet({ invoice });
+  // Share-booking flow snackbar. Set to true on the fallback path
+  // (Web Share API unsupported / no files); auto-dismisses after 5s.
+  const [shareHint, setShareHint] = useState(false);
+  useEffect(() => {
+    if (!shareHint) return;
+    const tid = setTimeout(() => setShareHint(false), 5000);
+    return () => clearTimeout(tid);
+  }, [shareHint]);
   const downloadVoucherIn = (voucherLang) => {
     if (!voucherLangSheet) return;
     generateVoucher(b, rt, property, voucherLangSheet.invoice || undefined, voucherLang);
@@ -777,9 +785,27 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 icon="wa"
                 size="sm"
                 disabled={!b.phone}
-                onClick={() => {
-                  const url = bookingShareWaUrl(b, property, t('home') === 'होम' ? 'hi' : 'en');
-                  if (url) window.open(url, '_blank', 'noopener');
+                onClick={async () => {
+                  const lang = t('home') === 'होम' ? 'hi' : 'en';
+                  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+                  // Try the Web Share API first (mobile Chrome / Safari)
+                  // — that path attaches the voucher HTML as a file in
+                  // one tap. If unsupported or it fails, fall back to
+                  // opening the voucher in a new window + wa.me with
+                  // a small toast telling the hotelier to attach the
+                  // saved voucher manually.
+                  const html = voucherHtmlString(b, rt, property, undefined, lang);
+                  const shared = await shareBookingWithVoucher(b, property, lang, html);
+                  if (shared) return;
+                  // Fallback path. Open the voucher (which auto-prompts
+                  // print/save-as-PDF), then open WhatsApp with the
+                  // pre-filled message.
+                  generateVoucher(b, rt, property, undefined, lang);
+                  const url = bookingShareWaUrl(b, property, lang);
+                  setTimeout(() => {
+                    if (url) window.open(url, '_blank', 'noopener');
+                    setShareHint(true);
+                  }, 600);
                 }}
               >Share booking</Btn>
               {balance > 0 && (
@@ -806,6 +832,26 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             )}
           </Card>
         </div>
+
+        {shareHint && (
+          <div style={{
+            position: 'absolute', bottom: 90, left: 12, right: 12, zIndex: 60,
+            display: 'flex', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              maxWidth: 360,
+              padding: '10px 14px', borderRadius: 10,
+              background: T.ink, color: '#fff',
+              fontSize: 12, fontWeight: 600, lineHeight: 1.4,
+              boxShadow: '0 6px 24px rgba(0,0,0,0.28)',
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+            }}>
+              <Icon name="info" size={14} color="#fff" stroke={2.2} />
+              <span>Voucher opened — <strong>save as PDF</strong> from the print dialog, then <strong>attach it</strong> in WhatsApp before sending.</span>
+            </div>
+          </div>
+        )}
 
         {payOpen && (
           <PaymentSheet

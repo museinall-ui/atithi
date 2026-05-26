@@ -101,3 +101,36 @@ export function bookingShareWaUrl(booking, property, lang = 'en') {
   const msg = bookingShareMessage(booking, property, lang);
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
+
+// Share booking text + the voucher as a file in one go using the Web
+// Share API. Works on mobile Chrome / Android / iOS Safari 15+; the
+// caller falls back to opening the voucher print window + wa.me side
+// by side when this returns false.
+//
+// voucherHtml: full HTML string of the voucher (from voucherHtmlString())
+// Returns true if the share dialog opened, false otherwise.
+export async function shareBookingWithVoucher(booking, property, lang, voucherHtml) {
+  if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare) return false;
+  const msg = bookingShareMessage(booking, property, lang);
+  const propName = (property && property.profile && property.profile.name) || 'Property';
+  const file = new File(
+    [voucherHtml],
+    `voucher-${booking.id || 'booking'}.html`,
+    { type: 'text/html' }
+  );
+  // canShare with files isn't supported on all platforms — fall back
+  // when the OS doesn't accept HTML files via the share sheet.
+  if (!navigator.canShare({ files: [file] })) return false;
+  try {
+    await navigator.share({
+      title: `Booking at ${propName}`,
+      text: msg,
+      files: [file],
+    });
+    return true;
+  } catch (e) {
+    // User cancelled the share sheet. Treat as a no-op (don't fall
+    // back to wa.me, since they explicitly dismissed).
+    return e && e.name === 'AbortError' ? true : false;
+  }
+}

@@ -494,4 +494,30 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
 
   const w = window.open('', '_blank', 'width=820,height=900');
   if (w) { w.document.write(html); w.document.close(); }
+  return html;
+}
+
+// Return the voucher HTML as a string without opening a window. Used by
+// the Share booking flow to attach the voucher as a file via the Web
+// Share API (mobile Chrome / iOS Safari support sharing files
+// natively). For desktop fall-back we still call generateVoucher()
+// which opens the print window.
+export function voucherHtmlString(b, rt, property, invoice, lang = 'en') {
+  // Re-uses generateVoucher's HTML build but swallows the window.open
+  // side-effect. We monkey-patch window.open briefly so the existing
+  // function doesn't pop a window when we just want the string.
+  const realOpen = typeof window !== 'undefined' ? window.open : null;
+  if (typeof window !== 'undefined') {
+    window.open = () => ({
+      document: { write: () => {}, close: () => {} },
+      print: () => {},
+      close: () => {},
+    });
+  }
+  try {
+    const html = generateVoucher(b, rt, property, invoice, lang);
+    return html;
+  } finally {
+    if (realOpen && typeof window !== 'undefined') window.open = realOpen;
+  }
 }

@@ -270,7 +270,7 @@ function itemSubtotal(item, type, nights, rateForNight) {
   return perNight ? nightRates.reduce((s, v) => s + (+v || 0), 0) : uniform * nights;
 }
 
-function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onChange }) {
+function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onChange, property }) {
   const selectedType = item.roomTypeId ? roomTypes.find(rt => rt.id === item.roomTypeId) : null;
   const tagColor = selectedType ? T[selectedType.tag] : null;
   const { defaults: defaultNightRates, uniform: uniformDefault, perNight, nightRates } = nightRatesForItem(item, selectedType, nights, rateForNight);
@@ -296,6 +296,13 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {roomTypes.map(rt => {
             const sel = item.roomTypeId === rt.id;
+            // Show the actual computed rate (calendar override + weekend
+            // uplift) for THIS booking's first night, not the bare category
+            // base. Previously the chip said '₹4,500' while the rate input
+            // below showed '₹14,400' (override) — visually contradictory.
+            // Now they match. If no override / no uplift, the chip equals
+            // the base anyway.
+            const chipRate = rateForNight(rt.id, 0);
             return (
               <button
                 key={rt.id}
@@ -312,7 +319,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
               >
                 <span style={{ width: 6, height: 6, borderRadius: 3, background: T[rt.tag] }} />
                 {rt.name}
-                <span className="tnum" style={{ fontSize: 10, color: sel ? T.primaryDk : T.ink3, fontWeight: 700 }}>₹{rt.base.toLocaleString('en-IN')}</span>
+                <span className="tnum" style={{ fontSize: 10, color: sel ? T.primaryDk : T.ink3, fontWeight: 700 }}>₹{chipRate.toLocaleString('en-IN')}</span>
               </button>
             );
           })}
@@ -444,6 +451,101 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
               </>
             );
           })()}
+
+          {/* Extra-guest charges editor. Shows the per-night charge for
+              any adults above baseCapacityAdults + any children, and lets
+              the hotelier override the rate for THIS specific booking
+              (e.g. give a regular guest a discount on their extra-bed
+              charge). Default is auto-computed from category extraAdult /
+              extraChild rules — kept in sync with the season override if
+              the booking falls inside one. */}
+          {(() => {
+            const cap = Math.max(1, property?.baseCapacityAdults ?? 2);
+            const extraAdults = Math.max(0, (item.adults || 0) - cap);
+            const halfChildren = item.children || 0;
+            const fullChildren = item.childrenFull || 0;
+            const hasAnyExtra = extraAdults + halfChildren + fullChildren > 0;
+            if (!hasAnyExtra) return null;
+            // Compute auto rates from category (mode flat = ₹ value;
+            // mode pct = % of category base).
+            const baseRate = (item.rate != null ? item.rate : (selectedType.base || 0)) || 0;
+            const resolveRate = (rule) => {
+              if (!rule || typeof rule !== 'object') return 0;
+              const v = +rule.value || 0;
+              if (v <= 0) return 0;
+              if (rule.mode === 'pct') return Math.max(0, Math.round((baseRate || 0) * v / 100));
+              return Math.round(v);
+            };
+            const autoAdult = resolveRate(selectedType.extraAdult);
+            const autoChild = resolveRate(selectedType.extraChild);
+            const adultRate = (typeof item.extraAdultRate === 'number') ? item.extraAdultRate : autoAdult;
+            const childRate = (typeof item.extraChildRate === 'number') ? item.extraChildRate : autoChild;
+            const adultLine = extraAdults * adultRate * nights;
+            const childLine = Math.round(halfChildren * childRate * 0.5 * nights) + fullChildren * childRate * nights;
+            const isAdultOverride = typeof item.extraAdultRate === 'number';
+            const isChildOverride = typeof item.extraChildRate === 'number';
+            const fmt = (n) => '₹' + (n || 0).toLocaleString('en-IN');
+            return (
+              <div style={{ marginTop: 8, padding: '8px 10px', background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 7 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>
+                  Extra-guest charges
+                </div>
+                {extraAdults > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', flexWrap: 'wrap' }}>
+                    <span style={{ color: T.ink2, fontWeight: 600, minWidth: 84 }}>Extra adult{extraAdults > 1 ? 's' : ''}</span>
+                    <span style={{ color: T.ink3, fontSize: 10, fontWeight: 600 }}>{extraAdults} ×</span>
+                    <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      onFocus={(e) => e.target.select()}
+                      value={adultRate}
+                      onChange={(ev) => onChange({ extraAdultRate: Math.max(0, +ev.target.value || 0) })}
+                      className="tnum"
+                      style={{ width: 70, border: `1px solid ${isAdultOverride ? T.primary : T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: isAdultOverride ? T.primary : T.ink, background: T.card }}
+                    />
+                    <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/ night × {nights}N</span>
+                    {isAdultOverride && (
+                      <button
+                        onClick={() => onChange({ extraAdultRate: undefined })}
+                        title="Reset to category default"
+                        style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 9, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                      >Reset</button>
+                    )}
+                    <span className="tnum" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.ink }}>{fmt(adultLine)}</span>
+                  </div>
+                )}
+                {halfChildren > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', flexWrap: 'wrap' }}>
+                    <span style={{ color: T.ink2, fontWeight: 600, minWidth: 84 }}>Child{halfChildren > 1 ? 'ren' : ''} (half)</span>
+                    <span style={{ color: T.ink3, fontSize: 10, fontWeight: 600 }}>{halfChildren} ×</span>
+                    <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      onFocus={(e) => e.target.select()}
+                      value={childRate}
+                      onChange={(ev) => onChange({ extraChildRate: Math.max(0, +ev.target.value || 0) })}
+                      className="tnum"
+                      style={{ width: 70, border: `1px solid ${isChildOverride ? T.primary : T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: isChildOverride ? T.primary : T.ink, background: T.card }}
+                    />
+                    <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>× 0.5 × {nights}N</span>
+                    {isChildOverride && (
+                      <button
+                        onClick={() => onChange({ extraChildRate: undefined })}
+                        title="Reset to category default"
+                        style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 9, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                      >Reset</button>
+                    )}
+                    <span className="tnum" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.ink }}>{fmt(childLine)}</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 }}>
+                  Edit the rate to override for this booking only. Reset clears the override.
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
       {!selectedType && (
@@ -487,6 +589,7 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans 
           nights={data.nights}
           rateForNight={rateForNight}
           onChange={(patch) => setItem(idx, patch)}
+          property={property}
         />
       ))}
       {/* Rate plan picker — only when more than one is enabled. The

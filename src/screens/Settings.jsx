@@ -1,7 +1,52 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
 import TeamSection from '../components/TeamSection.jsx';
+
+// Click-anywhere date cell for the Seasons editor. Wraps a hidden
+// (opacity:0) date input under a labelled overlay so tapping anywhere
+// in the cell opens the native picker. Picked date renders in the
+// cell formatted; doesn't depend on the global .atithi-date-overlay
+// rule (uses opacity:0 directly).
+function SeasonDateCell({ label, value, onChange }) {
+  const ref = useRef(null);
+  const open = () => {
+    const el = ref.current;
+    if (el && typeof el.showPicker === 'function') {
+      try { el.showPicker(); } catch {}
+    }
+  };
+  const filled = !!value;
+  const display = filled
+    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    : 'Tap to pick';
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 2 }}>{label}</div>
+      <div
+        onClick={open}
+        style={{
+          position: 'relative', height: 30,
+          border: `1px solid ${filled ? T.primary : T.border}`,
+          background: filled ? T.primaryLt : T.card,
+          borderRadius: 5, cursor: 'pointer',
+        }}
+      >
+        <input
+          ref={ref}
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0, margin: 0 }}
+        />
+        <div style={{ position: 'absolute', inset: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 5, pointerEvents: 'none', fontSize: 11, fontWeight: 700, color: filled ? T.primaryDk : T.ink3, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <Icon name="cal" size={10} color={filled ? T.primaryDk : T.ink3} />
+          {display}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Format the FY code stored in invoiceCounters ('2627') as a human-readable
 // label ('2026-27') for use on labels and hints.
@@ -268,6 +313,34 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // (which felt punitive — hotelier loses their place + can't see
   // whether their changes actually persisted).
   const [savedAt, setSavedAt] = useState(0);
+
+  // Track the most-recently-added item id across the Seasons / Rate
+  // plans / Coupons / Meal plans / Cash accounts editors. When set,
+  // we scroll the matching row into view + focus its first input +
+  // flash a brief green outline so the hotelier sees the Add button
+  // actually did something (the add button sits at the bottom of
+  // each list and the new row appears at the very end — easy to
+  // miss without the scroll). Auto-clears after 2.5s.
+  const [justAddedId, setJustAddedId] = useState(null);
+  useEffect(() => {
+    if (!justAddedId) return;
+    // Defer one tick so the new row is in the DOM before we query.
+    const tid = setTimeout(() => {
+      const row = document.querySelector(`[data-added-id="${justAddedId}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = row.querySelector('input, select, textarea');
+        if (input) {
+          try { input.focus(); } catch {}
+        }
+      }
+    }, 50);
+    const clearId = setTimeout(() => setJustAddedId(null), 2500);
+    return () => { clearTimeout(tid); clearTimeout(clearId); };
+  }, [justAddedId]);
+  // Helper: returns the highlight style for a row when it matches the
+  // just-added id. Used as an inline ...spread on the row container.
+  const justAddedStyle = (id) => id === justAddedId ? { outline: `2px solid ${T.ok}`, outlineOffset: 2, transition: 'outline 0.3s' } : {};
   const handleSave = () => {
     // Functional update so we don't accidentally clobber any property fields
     // we don't know about (the partial here only enumerates the editable ones).
@@ -699,11 +772,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('units')}:</span>
-                    <input type="number" value={c.units} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: +e.target.value || 1 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                    <input onFocus={(e) => e.target.select()} type="number" value={c.units} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: +e.target.value || 1 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
                   </div>
                   <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('baseRateLabel')}: ₹</span>
-                    <input type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                    <input onFocus={(e) => e.target.select()} type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
                   </div>
                 </div>
                 {/* GST rate for this category. Auto-picked from the slab
@@ -716,7 +789,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '6px 8px', background: T.indigoLt, borderRadius: 7 }}>
                       <span style={{ fontSize: 10, color: T.indigo, fontWeight: 700 }}>GST:</span>
-                      <input
+                      <input onFocus={(e) => e.target.select()}
                         type="number"
                         value={effective}
                         onChange={e => {
@@ -793,7 +866,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                             {modeBtn(rule, 'flat', '₹')}
                             {modeBtn(rule, 'pct', '% of base')}
                           </div>
-                          <input
+                          <input onFocus={(e) => e.target.select()}
                             type="number"
                             min={0}
                             value={val.value || 0}
@@ -949,7 +1022,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </div>
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>WEEKEND UPLIFT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
+            <input onFocus={(e) => e.target.select()}
               type="number"
               value={weekendRules.upliftPct ?? 20}
               onChange={(e) => setWeekendRules(prev => ({ ...prev, upliftPct: Math.max(0, Math.min(200, parseInt(e.target.value, 10) || 0)) }))}
@@ -982,9 +1055,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {seasons.map((s, i) => (
-              <div key={s.id} style={{
+              <div key={s.id} data-added-id={s.id} style={{
                 display: 'flex', flexDirection: 'column', gap: 8, padding: 10,
                 background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8,
+                ...justAddedStyle(s.id),
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
@@ -1004,28 +1078,20 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   ><Icon name="x" size={12} /></button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  <div>
-                    <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 2 }}>FROM</div>
-                    <input
-                      type="date"
-                      value={s.startIso || ''}
-                      onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, startIso: ev.target.value } : x))}
-                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, color: T.ink, background: T.card }}
-                    />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 2 }}>TO</div>
-                    <input
-                      type="date"
-                      value={s.endIso || ''}
-                      onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, endIso: ev.target.value } : x))}
-                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, color: T.ink, background: T.card }}
-                    />
-                  </div>
+                  <SeasonDateCell
+                    label="FROM"
+                    value={s.startIso || ''}
+                    onChange={(v) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, startIso: v } : x))}
+                  />
+                  <SeasonDateCell
+                    label="TO"
+                    value={s.endIso || ''}
+                    onChange={(v) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, endIso: v } : x))}
+                  />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>MULTIPLIER</span>
-                  <input
+                  <input onFocus={(e) => e.target.select()}
                     type="number"
                     value={s.multiplierPct ?? 0}
                     onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(500, parseInt(ev.target.value, 10) || 0)) } : x))}
@@ -1076,7 +1142,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                                 {modeBtn(rule, 'flat', '₹')}
                                 {modeBtn(rule, 'pct', '% of base')}
                               </div>
-                              <input
+                              <input onFocus={(e) => e.target.select()}
                                 type="number"
                                 min={0}
                                 value={val.value || 0}
@@ -1109,6 +1175,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             onClick={() => {
               const id = 'season_' + Date.now().toString(36);
               setSeasons(arr => [...arr, { id, name: '', startIso: '', endIso: '', multiplierPct: 20 }]);
+              setJustAddedId(id);
             }}
             style={{
               marginTop: 10, width: '100%',
@@ -1172,7 +1239,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <input
+                          <input onFocus={(e) => e.target.select()}
                             type="number"
                             value={v}
                             onChange={(e) => setChannelMarkups(prev => ({ ...prev, [c.id]: Math.max(-50, Math.min(100, parseInt(e.target.value, 10) || 0)) }))}
@@ -1214,7 +1281,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <input
+                          <input onFocus={(e) => e.target.select()}
                             type="number"
                             value={v}
                             onChange={(e) => setChannelCommissions(prev => ({ ...prev, [c.id]: Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)) }))}
@@ -1235,17 +1302,21 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <SectionHead title="Rate plans" style={{ marginTop: 16 }} />
         <Card padding={12}>
           <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-            Offer different price tiers for the same room — e.g. Standard (flexible cancel), Non-refundable (-10% off), Long-stay discount. Standard is always on at 0% and is the calendar rate. Turn extra plans on to show a plan picker at booking time.
+            Offer different price tiers for the same room — e.g. Standard (flexible cancel), Non-refundable (-10% off), Long-stay discount.
+          </div>
+          <div style={{ fontSize: 10.5, color: T.indigo, fontWeight: 600, lineHeight: 1.5, marginBottom: 10, padding: '8px 10px', background: T.indigoLt, borderRadius: 7 }}>
+            <strong>Standard plan</strong> is your baseline — always 0%, always on. To offer cheaper or pricier alternatives, tap <strong>Add rate plan</strong> below and set THAT plan's %.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ratePlans.map((p, i) => {
               const isStd = p.id === 'standard';
               return (
-                <div key={p.id} style={{
+                <div key={p.id} data-added-id={p.id} style={{
                   display: 'flex', flexDirection: 'column', gap: 6, padding: 10,
                   background: p.enabled ? T.bgSoft : T.card,
                   border: `1px solid ${p.enabled ? T.borderSoft : T.border}`,
                   borderRadius: 8,
+                  ...justAddedStyle(p.id),
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -1275,7 +1346,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>RATE</span>
-                    <input
+                    <input onFocus={(e) => e.target.select()}
                       type="number"
                       value={p.multiplierPct ?? 0}
                       onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(200, parseInt(ev.target.value, 10) || 0)) } : x))}
@@ -1309,19 +1380,56 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       );
                     })}
                   </div>
-                  {(p.cancellation || 'flexible') !== 'non-refundable' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>FREE CANCEL UPTO</span>
-                      <input
-                        type="number"
-                        value={p.refundHours ?? 48}
-                        onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, refundHours: Math.max(0, Math.min(720, parseInt(ev.target.value, 10) || 0)) } : x))}
-                        className="tnum"
-                        style={{ width: 60, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
-                      />
-                      <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>hours before arrival</span>
-                    </div>
-                  )}
+                  {(p.cancellation || 'flexible') !== 'non-refundable' && (() => {
+                    // Persist refundUnit on the plan so the picker remembers
+                    // hours-vs-days choice across save/reload. Default unit
+                    // is 'hours' for back-compat with plans created before
+                    // this UI shipped. refundHours stays the canonical
+                    // value the booking-cancellation math reads (multiply
+                    // by 24 when the user picked days).
+                    const unit = p.refundUnit || 'hours';
+                    const totalHrs = p.refundHours ?? 48;
+                    const displayedValue = unit === 'days' ? Math.round(totalHrs / 24) : totalHrs;
+                    const setValue = (v) => {
+                      const num = Math.max(0, parseInt(v, 10) || 0);
+                      const asHours = unit === 'days' ? num * 24 : Math.min(720, num);
+                      setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, refundHours: asHours, refundUnit: unit } : x));
+                    };
+                    const setUnit = (newUnit) => {
+                      setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, refundUnit: newUnit } : x));
+                    };
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>FREE CANCEL UPTO</span>
+                        <input onFocus={(e) => e.target.select()}
+                          type="number"
+                          value={displayedValue}
+                          onChange={(ev) => setValue(ev.target.value)}
+                          className="tnum"
+                          style={{ width: 60, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
+                        />
+                        <div style={{ display: 'inline-flex', gap: 3 }}>
+                          {['hours', 'days'].map(u => {
+                            const sel = unit === u;
+                            return (
+                              <button
+                                key={u}
+                                onClick={() => setUnit(u)}
+                                style={{
+                                  padding: '4px 9px', borderRadius: 5,
+                                  border: `1px solid ${sel ? T.indigo : T.border}`,
+                                  background: sel ? T.indigoLt : T.card,
+                                  color: sel ? T.indigo : T.ink3,
+                                  fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                                }}
+                              >{u}</button>
+                            );
+                          })}
+                        </div>
+                        <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>before arrival</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -1329,7 +1437,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           <button
             onClick={() => {
               const id = 'rp_' + Date.now().toString(36);
-              setRatePlans(arr => [...arr, { id, label: '', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, enabled: true }]);
+              setRatePlans(arr => [...arr, { id, label: '', multiplierPct: 0, cancellation: 'flexible', refundHours: 48, refundUnit: 'hours', enabled: true }]);
+              setJustAddedId(id);
             }}
             style={{
               marginTop: 10, width: '100%',
@@ -1435,7 +1544,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                       <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                      <input
+                      <input onFocus={(e) => e.target.select()}
                         type="number"
                         value={mp.price}
                         onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
@@ -1522,7 +1631,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                  <input
+                  <input onFocus={(e) => e.target.select()}
                     type="number"
                     value={e.price}
                     onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: Math.max(0, +ev.target.value || 0) } : x))}
@@ -1975,11 +2084,12 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
               )}
               {coupons.map((c, i) => (
-                <div key={c.id || i} style={{
+                <div key={c.id || i} data-added-id={c.id} style={{
                   display: 'flex', flexDirection: 'column', gap: 8,
                   padding: 10, background: c.enabled === false ? T.card : T.bgSoft,
                   border: `1px solid ${c.enabled === false ? T.border : T.borderSoft}`,
                   borderRadius: 8, opacity: c.enabled === false ? 0.65 : 1,
+                  ...justAddedStyle(c.id),
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -2018,7 +2128,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         );
                       })}
                     </div>
-                    <input
+                    <input onFocus={(e) => e.target.select()}
                       type="number"
                       min={0}
                       value={c.discount?.value || 0}
@@ -2039,7 +2149,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>MIN NIGHTS</span>
-                    <input
+                    <input onFocus={(e) => e.target.select()}
                       type="number"
                       min={0}
                       value={c.minNights || 0}
@@ -2048,7 +2158,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       style={{ width: 56, fontSize: 11, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
                     />
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginLeft: 6 }}>MAX USES</span>
-                    <input
+                    <input onFocus={(e) => e.target.select()}
                       type="number"
                       min={0}
                       value={c.maxUses || 0}
@@ -2079,6 +2189,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   usedCount: 0,
                   enabled: true,
                 }]);
+                setJustAddedId(id);
               }}
               style={{
                 marginTop: 10, width: '100%',

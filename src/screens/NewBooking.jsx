@@ -324,7 +324,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
             {!perNight && (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${overridden ? T.primary : T.border}`, borderRadius: 7, padding: '0 8px', height: 32 }}>
                 <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>₹</span>
-                <input type="number" value={uniformDefault} onChange={(e) => onChange({ rate: +e.target.value || 0 })} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
+                <input onFocus={(e) => e.target.select()} type="number" value={uniformDefault} onChange={(e) => onChange({ rate: +e.target.value || 0 })} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
                 <span style={{ fontSize: 9, color: T.ink3 }}>/night</span>
               </div>
             )}
@@ -426,7 +426,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', height: 30 }}>
                           <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                          <input
+                          <input onFocus={(e) => e.target.select()}
                             type="number"
                             value={rate}
                             onChange={(e) => onChange({ nightRates: nightRates.map((nr, k) => k === ni ? +e.target.value || 0 : nr) })}
@@ -759,7 +759,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
           <div style={{ marginBottom: 10, padding: 8, background: T.primaryLt, borderRadius: 8 }}>
             <div style={{ display: 'flex', gap: 6 }}>
               <input autoFocus placeholder="e.g. Bonfire dinner" value={newEx.label} onChange={e => setNewEx({ ...newEx, label: e.target.value })} style={{ flex: 1, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 600, background: T.card }} />
-              <input type="number" placeholder="₹" value={newEx.price} onChange={e => setNewEx({ ...newEx, price: e.target.value })} className="tnum" style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 700, background: T.card }} />
+              <input onFocus={(e) => e.target.select()} type="number" placeholder="₹" value={newEx.price} onChange={e => setNewEx({ ...newEx, price: e.target.value })} className="tnum" style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 700, background: T.card }} />
               <button onClick={addCustom} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 6, padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Add</button>
             </div>
             <div style={{ marginTop: 6, fontSize: 10, color: T.primaryDk, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -800,7 +800,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                       <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                      <input type="number" autoFocus value={ex.price} onChange={e => set('extraPrices', { ...data.extraPrices, [ex.id]: +e.target.value || 0 })} className="tnum" style={{ width: 60, border: `1px solid ${T.primary}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.primary }} />
+                      <input onFocus={(e) => e.target.select()} type="number" autoFocus value={ex.price} onChange={e => set('extraPrices', { ...data.extraPrices, [ex.id]: +e.target.value || 0 })} className="tnum" style={{ width: 60, border: `1px solid ${T.primary}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.primary }} />
                       <button onClick={() => setEditingPriceId(null)} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 5, padding: '3px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>OK</button>
                       {!ex.custom && data.extraPrices[ex.id] != null && (
                         <button onClick={() => { const { [ex.id]: _, ...rest } = data.extraPrices; set('extraPrices', rest); setEditingPriceId(null); }} style={{ border: 'none', background: 'none', color: T.ink3, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Reset</button>
@@ -893,7 +893,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
             <span style={{ fontSize: 11, fontWeight: 700, color: T.primaryDk }}>Custom amount</span>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1.5px solid ${T.primary}`, borderRadius: 7, padding: '0 10px', height: 36 }}>
               <span style={{ fontSize: 13, color: T.ink3, fontWeight: 600 }}>₹</span>
-              <input type="number" autoFocus value={data.payCustom || ''} onChange={e => set('payCustom', +e.target.value || 0)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 700, color: T.ink }} />
+              <input onFocus={(e) => e.target.select()} type="number" autoFocus value={data.payCustom || ''} onChange={e => set('payCustom', +e.target.value || 0)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 700, color: T.ink }} />
               <span style={{ fontSize: 10, color: T.ink3 }}>of ₹{total.toLocaleString('en-IN')}</span>
             </div>
           </div>

@@ -191,7 +191,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
           {/* Big amount input — the focal point. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: T.bgSoft, border: `1.5px solid ${T.primary}`, borderRadius: 10, marginBottom: 12 }}>
             <span style={{ fontSize: 20, color: T.ink3, fontWeight: 700 }}>₹</span>
-            <input
+            <input onFocus={(e) => e.target.select()}
               type="number"
               inputMode="numeric"
               autoFocus

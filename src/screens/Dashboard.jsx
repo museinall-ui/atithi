@@ -183,7 +183,7 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px', background: T.bgSoft, border: `1.5px solid ${i === 0 ? T.primary : T.border}`, borderRadius: 8 }}>
                   <span style={{ fontSize: 14, color: T.ink3, fontWeight: 700 }}>₹</span>
-                  <input
+                  <input onFocus={(e) => e.target.select()}
                     type="number"
                     autoFocus={i === 0}
                     value={amounts[a.id] || ''}

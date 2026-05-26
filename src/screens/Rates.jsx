@@ -1016,7 +1016,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14 }}>{selCount} dates · {rt.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, background: T.bgSoft, border: `1.5px solid ${T.primary}`, borderRadius: 10, padding: '0 12px', height: 48 }}>
                   <span style={{ fontSize: 18, color: T.ink2, fontWeight: 700 }}>₹</span>
-                  <input autoFocus type="number" value={bulkVal} onChange={e => setBulkVal(e.target.value)} placeholder={rt.base.toString()} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 18, fontWeight: 700, color: T.ink }} />
+                  <input onFocus={(e) => e.target.select()} autoFocus type="number" value={bulkVal} onChange={e => setBulkVal(e.target.value)} placeholder={rt.base.toString()} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 18, fontWeight: 700, color: T.ink }} />
                   <span style={{ fontSize: 11, color: T.ink3 }}>{t('perNight')}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -1216,7 +1216,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                     <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>Or custom:</span>
-                    <input
+                    <input onFocus={(e) => e.target.select()}
                       type="number"
                       step="0.05"
                       value={copyState.multiplier}

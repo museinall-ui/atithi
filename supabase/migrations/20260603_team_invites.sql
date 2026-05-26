@@ -15,7 +15,11 @@
 --
 --   pending_invites
 --     id            uuid primary key
---     email         citext  (case-insensitive match on sign-in)
+--     email         text (lowercased by the app before insert + a
+--                    unique index on lower(email) keeps it
+--                    case-insensitive without needing the citext
+--                    extension, which Supabase blocks from regular
+--                    SQL-Editor sessions)
 --     property_id   uuid
 --     role          membership_role
 --     invited_by    uuid (the existing owner)
@@ -28,22 +32,27 @@
 -- pending_invites by the signed-in user's email, creates memberships
 -- for each match, then deletes the invite rows. Standard atomic flow.
 
-create extension if not exists citext;
-
 create table if not exists pending_invites (
   id uuid primary key default gen_random_uuid(),
-  email citext not null,
+  email text not null,
   property_id uuid not null references properties(id) on delete cascade,
   role membership_role not null default 'reception',
   invited_by uuid references auth.users(id),
   invited_at timestamptz not null default now(),
   token text not null default encode(gen_random_bytes(12), 'hex'),
-  expires_at timestamptz not null default (now() + interval '14 days'),
-  unique (email, property_id)
+  expires_at timestamptz not null default (now() + interval '14 days')
 );
 
-create index if not exists pending_invites_email_idx on pending_invites(email);
-create index if not exists pending_invites_property_idx on pending_invites(property_id);
+-- Case-insensitive uniqueness via a functional unique index. Same
+-- semantics as the old citext column + unique(email, property_id)
+-- constraint, without the extension dependency.
+create unique index if not exists pending_invites_email_property_idx
+  on pending_invites (lower(email), property_id);
+
+create index if not exists pending_invites_email_lower_idx
+  on pending_invites (lower(email));
+create index if not exists pending_invites_property_idx
+  on pending_invites (property_id);
 
 alter table pending_invites enable row level security;
 
@@ -64,13 +73,13 @@ do $$ begin
   if not exists (select 1 from pg_policies where tablename = 'pending_invites' and policyname = 'self read by email') then
     create policy "self read by email" on pending_invites
       for select to authenticated
-      using (email = (select email from auth.users where id = auth.uid())::citext);
+      using (lower(email) = lower((select email from auth.users where id = auth.uid())));
   end if;
   -- And delete their own invites once accepted (the App.jsx flow
   -- creates the membership then removes the invite).
   if not exists (select 1 from pg_policies where tablename = 'pending_invites' and policyname = 'self delete by email') then
     create policy "self delete by email" on pending_invites
       for delete to authenticated
-      using (email = (select email from auth.users where id = auth.uid())::citext);
+      using (lower(email) = lower((select email from auth.users where id = auth.uid())));
   end if;
 end $$;

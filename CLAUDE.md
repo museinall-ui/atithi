@@ -528,7 +528,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 
 ### Phase-1 close-out — owner-visible, queued before going live
 - **DEMO_MODE flip** — `src/App.jsx` line ~42. `HARDCODED_DEMO_MODE = true` currently; flip to `false` to re-enable Supabase magic-link sign-in. SignIn screen + per-browser demo opt-in already live, so flip is a one-line change. Once flipped:
-  - Paste `supabase/migrations/20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, `20260525_extra_guest_pricing.sql`, `20260526_booking_meal_rate_email_events.sql`, `20260527_room_and_property_photos.sql`, and `20260528_coupons.sql` into the Supabase SQL editor (idempotent).
+  - Paste all the May 2026 + June 2026 migration files into the Supabase SQL editor (all idempotent — safe to re-run): `20260520_meal_plans_payment_qr_gst.sql`, `20260524_default_meal_plan_and_commissions.sql`, `20260525_extra_guest_pricing.sql`, `20260526_booking_meal_rate_email_events.sql`, `20260527_room_and_property_photos.sql`, `20260528_coupons.sql`, `20260529_voice_notes.sql`, `20260530_widget_fields_and_closed_units.sql`, `20260601_expenses.sql`, `20260602_multi_account_close.sql`, `20260603_team_invites.sql`. The full ordered list lives in [DEMO_MODE_FLIP_CHECKLIST.md](./DEMO_MODE_FLIP_CHECKLIST.md) along with the post-flip smoke-test query.
   - Write a Supabase anon-RLS policy allowing INSERT into `bookings` where `status = 'tentative' AND channel = 'website'` for the public widget. Rate-limit via Edge Function.
 - **Source-order tidy for Pricing / Meals accordions** — owner's preferred order has Pricing rules at 5 and Meal plans + saved extras at 6; the accordion currently has them swapped. Trivial source-block swap.
 

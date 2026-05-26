@@ -263,6 +263,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     setCategories(arr => arr.map(c => ({ ...c, amenityIds: (c.amenityIds || []).filter(x => x !== id) })));
   };
 
+  // 'Saved!' confirmation chip. Auto-dismisses after 2s. Replaces the
+  // old behaviour where tapping Save closed the entire profile sheet
+  // (which felt punitive — hotelier loses their place + can't see
+  // whether their changes actually persisted).
+  const [savedAt, setSavedAt] = useState(0);
   const handleSave = () => {
     // Functional update so we don't accidentally clobber any property fields
     // we don't know about (the partial here only enumerates the editable ones).
@@ -276,8 +281,13 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
-    onClose();
+    setSavedAt(Date.now());
   };
+  useEffect(() => {
+    if (!savedAt) return;
+    const id = setTimeout(() => setSavedAt(0), 2000);
+    return () => clearTimeout(id);
+  }, [savedAt]);
   const propTypes = [
     { id: 'resort',     label: t('ptResort') },
     { id: 'hotel',      label: t('ptHotel') },
@@ -288,6 +298,23 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   return (
     <div style={{ position: 'absolute', inset: 0, background: T.bg, zIndex: 40, display: 'flex', flexDirection: 'column' }}>
       <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
+      {savedAt > 0 && (
+        <div style={{
+          position: 'absolute', top: 60, left: 0, right: 0,
+          display: 'flex', justifyContent: 'center', zIndex: 50,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 999,
+            background: T.ok, color: '#fff',
+            fontSize: 12, fontWeight: 700, letterSpacing: 0.2,
+            boxShadow: '0 4px 14px rgba(14, 138, 95, 0.35)',
+          }}>
+            <Icon name="check" size={13} color="#fff" stroke={2.4} /> Saved · your changes are live
+          </div>
+        </div>
+      )}
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 80 }}>
 
         <AccordionGroup title="Branding" open={openGroups.branding} onToggle={() => toggleGroup('branding')}>
@@ -2178,7 +2205,15 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
           </div>
           <div style={{ padding: 14, marginTop: -30, position: 'relative' }}>
             <div style={{ width: 56, height: 56, borderRadius: 14, background: T.card, padding: 3, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-              <div style={{ width: '100%', height: '100%', borderRadius: 11, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(property.profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
+              {property.profile.logoDataUrl ? (
+                <img
+                  src={property.profile.logoDataUrl}
+                  alt="Property logo"
+                  style={{ width: '100%', height: '100%', borderRadius: 11, objectFit: 'contain', background: '#fff' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', borderRadius: 11, background: `repeating-linear-gradient(45deg, ${T.tagSaffron} 0 6px, oklch(80% 0.10 65) 6px 12px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'rgba(0,0,0,0.4)', fontWeight: 800 }}>{(property.profile.name || 'Y').trim().charAt(0).toUpperCase()}</div>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
               <div>
@@ -2265,33 +2300,20 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
           })}
         </Card>
 
-        <SectionHead title={t('integrations')} />
-        <Card padding={0}>
-          {/* Honest status: each row carries a real `status` chip rather than
-              a blanket green "Active" lie. Right now none of these are wired
-              to external services — Razorpay/WhatsApp/Channel-manager/FRRO
-              are all on the production roadmap. The "Manual" pill flags that
-              the hotelier does the work themselves today (record payments
-              by hand, send WhatsApp from their phone, file Form C manually).
-              Switches to "Connected" when each integration goes live. */}
-          {[
-            { icon: 'inr',  tone: T.indigo,              title: 'Razorpay payments',     sub: 'Record payments by hand for now',           status: 'Manual' },
-            { icon: 'wa',   tone: '#25D366',             title: 'WhatsApp messaging',    sub: 'Buttons open wa.me — no auto-send yet',     status: 'Manual' },
-            { icon: 'plug', tone: T.primary,             title: 'Channel manager',       sub: 'OTAs (MMT, Booking, Goibibo, Agoda)',       status: 'Coming soon' },
-            { icon: 'flag', tone: 'oklch(48% 0.13 230)', title: 'Form C / FRRO',         sub: 'Submit foreign-guest details manually',     status: 'Manual' },
-          ].map((it, i, arr) => (
-            <div key={i} style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
-              <div style={{ width: 32, height: 32, borderRadius: 9, background: `color-mix(in oklch, ${it.tone} 14%, white)`, color: it.tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name={it.icon} size={15} stroke={2} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink }}>{it.title}</div>
-                <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 1 }}>{it.sub}</div>
-              </div>
-              <Chip color={it.status === 'Coming soon' ? 'indigo' : 'warn'} style={{ fontSize: 9 }}>{it.status}</Chip>
-            </div>
-          ))}
-        </Card>
+        {/* Integrations card removed June 2026 per owner. The list felt
+            apologetic ("we don't have X yet") even with honest status
+            chips. Status of each integration is tracked in
+            CLAUDE.md + NOT_WIRED.md for our records. The actually
+            useful, hotelier-facing surface for each:
+              - Razorpay / payments → Settings → Property profile →
+                Payment QR (the chosen UPI flow)
+              - WhatsApp → wa.me buttons on BookingDetail + Dashboard
+                nudges + Public widget. Phase 3 will auto-send.
+              - Channel manager → Channels screen (Coming soon).
+                Phase 5 — STAAH partnership in progress.
+              - Form C / FRRO → "Form C required" pills on the diary
+                + Reports. Hotelier files manually at indianfrro.gov.in.
+        */}
 
         {session && (
           <>

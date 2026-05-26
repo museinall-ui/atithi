@@ -164,7 +164,14 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   // name into "Kart…" — initials always render whole even at 22px innerW.
   const firstName = (b.guest || '').split(/\s+/)[0] || '';
   const firstNameW = firstName.length * 6 + 4;
-  const showInitials = innerW < Math.min(firstNameW + 4, 44);
+  // 1-night pills are ~52px wide at default zoom. Even "Aanya"
+  // (5×6=30px) technically fits but the actual font glyph widths vary
+  // and the result looks cramped + uneven across pills. Force initials
+  // mode for single-night stays — "AS" in bold 12px is always
+  // legible, the full name still lives in the title= tooltip and on
+  // the booking detail.
+  const isSingleNight = (b.nights || 1) === 1;
+  const showInitials = isSingleNight || innerW < Math.min(firstNameW + 4, 44);
   const showFirstNameOnly = !showInitials && innerW < 80;
   const showVipStar = innerW >= 50;
   const displayName = showInitials

@@ -194,6 +194,7 @@ export default function Guests({ go, bookings = [], t }) {
               if (el && typeof el.showPicker === 'function') { try { el.showPicker(); } catch {} }
             }}
             aria-label="Filter by stay date"
+            className="atithi-date-overlay"
             style={{
               width: '100%', height: '100%',
               padding: '6px 10px', minHeight: 32,

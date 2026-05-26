@@ -636,6 +636,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               if (el && typeof el.showPicker === 'function') { try { el.showPicker(); } catch {} }
             }}
             aria-label="Jump to date"
+            className="atithi-date-overlay"
             style={{
               width: '100%', height: '100%',
               padding: '11px 14px', minHeight: 46,

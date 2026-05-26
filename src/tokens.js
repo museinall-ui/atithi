@@ -119,26 +119,37 @@ export function injectBaseStyles() {
     @keyframes atithi-spin { to { transform: rotate(360deg) } }
     .spin { animation: atithi-spin 1s linear infinite; }
     .atithi-tap:active { transform: scale(.97); transition: transform .1s; }
-    /* Date pickers — the actual <input type="date"> is what opens the
-       native picker reliably on every browser (transparent / opacity:0
-       inputs don't work on some mobile browsers). We render the input
-       full-size, hide its text + native icon, and overlay a custom
-       label + icon on top via pointer-events:none. */
-    .atithi input[type="date"] {
+    /* Date pickers — opt-in 'overlay' treatment via the
+       .atithi-date-overlay class on the input. With the class, the
+       input renders full-size but its native text + icon are hidden
+       so a custom overlay div on top can show the formatted label
+       (the Diary jump bar / NewBooking check-in / Rates / Guests /
+       Public widget all use this pattern).
+
+       Date inputs WITHOUT the class render natively — their text
+       shows like any normal input. That's what plain inputs in
+       Settings (Season From/To, Coupon expiry) need so the hotelier
+       can SEE the date they picked.
+
+       Lesson learned the hard way: making the rule unconditional
+       made every date input invisible, and the picker-indicator
+       overlay leaked into ancestors making whole sections un-
+       clickable. */
+    .atithi input.atithi-date-overlay[type="date"] {
       -webkit-appearance: none;
       -moz-appearance: none;
       appearance: none;
       color: transparent;
       caret-color: transparent;
-      /* CRITICAL: position: relative contains the picker-indicator
-         pseudo-element below. Without it, the indicator's
-         position: absolute escapes to the nearest positioned
-         ancestor — which can be the entire screen or a card,
-         making the whole region open the date picker on tap.
-         This was the 'every click opens calendar' bug in Seasons. */
+      /* position: relative contains the picker-indicator below.
+         Without it, the indicator's position: absolute escapes to
+         the nearest positioned ancestor — which can be the entire
+         screen or a card, making the whole region open the date
+         picker on tap (the original Seasons 'every click opens
+         calendar' bug). */
       position: relative;
     }
-    .atithi input[type="date"]::-webkit-calendar-picker-indicator {
+    .atithi input.atithi-date-overlay[type="date"]::-webkit-calendar-picker-indicator {
       opacity: 0;
       cursor: pointer;
       width: 100%;
@@ -147,9 +158,9 @@ export function injectBaseStyles() {
       left: 0; top: 0;
       padding: 0;
     }
-    .atithi input[type="date"]::-webkit-inner-spin-button,
-    .atithi input[type="date"]::-webkit-clear-button { display: none; }
-    .atithi input[type="date"]::-webkit-datetime-edit { color: transparent; }
+    .atithi input.atithi-date-overlay[type="date"]::-webkit-inner-spin-button,
+    .atithi input.atithi-date-overlay[type="date"]::-webkit-clear-button { display: none; }
+    .atithi input.atithi-date-overlay[type="date"]::-webkit-datetime-edit { color: transparent; }
   `;
   document.head.appendChild(s);
 }

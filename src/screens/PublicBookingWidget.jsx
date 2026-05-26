@@ -463,6 +463,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     onChange={(e) => set('checkIn', e.target.value)}
                     onClick={openCheckInPicker}
                     aria-label="Check-in date"
+                    className="atithi-date-overlay"
                     style={{
                       width: '100%', height: '100%',
                       border: 'none', outline: 'none', background: 'transparent',

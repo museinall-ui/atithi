@@ -139,6 +139,7 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
                 onChange={(e) => set('checkIn', e.target.value)}
                 onClick={openPicker}
                 aria-label="Check-in date"
+                className="atithi-date-overlay"
                 style={{
                   width: '100%', height: '100%',
                   border: 'none', outline: 'none', background: 'transparent',

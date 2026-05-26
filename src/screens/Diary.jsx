@@ -430,7 +430,13 @@ function isoToDayIdx(iso) {
   return dateToIdx(iso);
 }
 
-export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property }) {
+export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property, can = () => true }) {
+  // RBAC. Empty-cell tap → New Booking screen needs create_bookings.
+  // Drag-and-drop a pill to another date / room needs edit_bookings.
+  // We gate the *initiation* of the action here so the user gets quick
+  // feedback; App.jsx also gates the new-booking route as a backstop.
+  const canCreate = can('create_bookings');
+  const canEdit   = can('edit_bookings');
   const [zoom, setZoom] = useState(58);
   // Default to a 30-day forward window. The 14-day default was too short
   // Fixed 180-day forward window — see DEFAULT_HORIZON. Jumping to a date

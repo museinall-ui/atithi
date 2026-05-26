@@ -2362,7 +2362,14 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, propertyId, onSignOut }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, propertyId, onSignOut, can = () => true }) {
+  // RBAC. manage_settings gates the property-profile EDIT sheet; the
+  // card itself stays visible so non-settings members still see basic
+  // property info (name, GSTIN status, room count). Plan picker stays
+  // unrestricted — that's an Atithi-tier decision the property owner
+  // makes, not a per-staff permission. Account section (sign out)
+  // stays unrestricted too.
+  const canEditSettings = can('manage_settings');
   const [showProfile, setShowProfile] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
@@ -2381,7 +2388,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
       <ScreenHeader title={t('settings')} subtitle={property.profile.name} onBack={() => go('home')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 100 }}>
 
-        <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, cursor: 'pointer' }} onClick={() => setShowProfile(true)}>
+        <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, cursor: canEditSettings ? 'pointer' : 'default' }} onClick={canEditSettings ? () => setShowProfile(true) : undefined}>
           <div style={{ height: 80, background: `linear-gradient(135deg, ${T.primary}, ${T.primaryDk})`, position: 'relative' }}>
             <svg style={{ position: 'absolute', right: -10, bottom: -20, opacity: 0.18 }} width="180" height="120" viewBox="0 0 180 120">
               <path d="M0 100 L30 60 L60 90 L90 40 L120 80 L150 50 L180 100" stroke="#fff" strokeWidth="2" fill="none"/>
@@ -2408,16 +2415,22 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                   subtle that hoteliers didn't realise the card was
                   tappable. Solid pill with an edit-pencil icon + the
                   word EDIT reads as a real button. */}
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '6px 12px', borderRadius: 999,
-                background: T.primary, color: '#fff',
-                fontSize: 11, fontWeight: 800, letterSpacing: 0.4,
-                boxShadow: '0 2px 6px rgba(0,0,0,0.12)', flexShrink: 0,
-              }}>
-                <Icon name="edit" size={12} color="#fff" stroke={2.4} />
-                EDIT
-              </span>
+              {canEditSettings ? (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '6px 12px', borderRadius: 999,
+                  background: T.primary, color: '#fff',
+                  fontSize: 11, fontWeight: 800, letterSpacing: 0.4,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.12)', flexShrink: 0,
+                }}>
+                  <Icon name="edit" size={12} color="#fff" stroke={2.4} />
+                  EDIT
+                </span>
+              ) : (
+                <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, padding: '4px 8px', background: T.bgSoft, borderRadius: 6, flexShrink: 0 }}>
+                  View only
+                </span>
+              )}
             </div>
             {/* Honest status chips — show the GSTIN only when the hotelier
                 has actually entered one in Property Profile. The earlier

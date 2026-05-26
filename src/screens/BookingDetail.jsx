@@ -416,7 +416,16 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onChangeProperty, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onChangeProperty, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice, can = () => true }) {
+  // RBAC gates. New-staff role typically has create_bookings only —
+  // they can take phone reservations but can't edit, cancel, or change
+  // status on anyone's booking. Manage_payments + manage_invoices are
+  // independent of edit_bookings: a receptionist can take a payment on
+  // a stay they otherwise can't edit.
+  const canEdit    = can('edit_bookings');
+  const canCancel  = can('cancel_bookings');
+  const canPay     = can('manage_payments');
+  const canInvoice = can('manage_invoices');
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
@@ -500,13 +509,15 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             }}>
               <Icon name="download" size={14} stroke={2} />
             </button>
-            <button onClick={() => onEdit(b.id)} className="atithi-tap" style={{
-              height: 36, padding: '0 12px', borderRadius: 10, border: `1px solid ${T.border}`,
-              background: T.card, display: 'inline-flex', alignItems: 'center', gap: 5,
-              cursor: 'pointer', color: T.primary, fontSize: 12, fontWeight: 700,
-            }}>
-              <Icon name="edit" size={13} stroke={2} /> {t('edit')}
-            </button>
+            {canEdit && (
+              <button onClick={() => onEdit(b.id)} className="atithi-tap" style={{
+                height: 36, padding: '0 12px', borderRadius: 10, border: `1px solid ${T.border}`,
+                background: T.card, display: 'inline-flex', alignItems: 'center', gap: 5,
+                cursor: 'pointer', color: T.primary, fontSize: 12, fontWeight: 700,
+              }}>
+                <Icon name="edit" size={13} stroke={2} /> {t('edit')}
+              </button>
+            )}
           </div>
         }
       />
@@ -526,7 +537,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               <div style={{ fontSize: 12, color: T.ink2, marginTop: 2, lineHeight: 1.4 }}>
                 ₹{balance.toLocaleString('en-IN')} due before <span className="tnum" style={{ fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{fmtRelease(b)}</span>, otherwise the booking will be released automatically and the inventory re-opened.
               </div>
-              {onExtendHold && (
+              {onExtendHold && canEdit && (
                 <ExtendOptions
                   onExtend={(hours) => onExtendHold(b.id, hours)}
                   colors={{ border: 'oklch(75% 0.10 75)', text: 'oklch(40% 0.14 75)' }}
@@ -549,8 +560,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       (auto tags like 'Repeat' / 'Whale' are derived
                       separately in Guests). */}
                   <button
-                    onClick={() => onSetVip && onSetVip(b.id, !b.vip)}
-                    title={b.vip ? 'Marked VIP — tap to unmark' : 'Tap to mark this booking VIP'}
+                    onClick={() => canEdit && onSetVip && onSetVip(b.id, !b.vip)}
+                    disabled={!canEdit}
+                    title={!canEdit ? "You don't have permission to edit bookings" : (b.vip ? 'Marked VIP — tap to unmark' : 'Tap to mark this booking VIP')}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '3px 9px', borderRadius: 999,
@@ -649,7 +661,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       : `No — direct/cash booking, kept out of the CA export.`}
                   </div>
                 </div>
-                {onSetGst && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
+                {onSetGst && canEdit && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
               </div>
             )}
             {b.notes && (
@@ -770,7 +782,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 three-column grid earlier crammed Payment/Refund/Credit-note
                 side-by-side on every booking; most of the time the hotelier
                 just wants to record a payment, so make THAT the big button. */}
-            {balance !== 0 && (
+            {balance !== 0 && canPay && (
               <div style={{ marginTop: 12 }}>
                 {balance > 0 ? (
                   <Btn variant="primary" icon="plus" full onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Add payment · ₹{balance.toLocaleString('en-IN')}</Btn>
@@ -783,11 +795,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 here too rather than as full-width buttons; it kept stealing
                 attention from the primary payment action. */}
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {balance === 0 && (
+              {balance === 0 && canPay && (
                 <Btn variant="ghost" icon="plus" size="sm" onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Payment</Btn>
               )}
-              <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund</Btn>
-              <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit</Btn>
+              {canPay && <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund</Btn>}
+              {canPay && <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit</Btn>}
               <Btn
                 variant="wa"
                 icon="wa"
@@ -986,7 +998,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               <div style={{ padding: '10px 14px', background: T.bgSoft, fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
                 Confirm this tentative booking before issuing an invoice.
               </div>
-            ) : remainingToInvoice > 0 ? (
+            ) : remainingToInvoice > 0 && canInvoice ? (
               <div style={{ padding: 12, background: T.bgSoft, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <button
                   onClick={() => setInvoiceOpen(true)}
@@ -1016,16 +1028,21 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             below logs each add / delete so the audit trail stays
             complete. Capped sizes keep localStorage + the row's
             voice_notes jsonb bounded. */}
-        <div style={{ padding: '0 16px 16px' }}>
-          <SectionHead title="Voice notes" />
-          <Card padding={12}>
-            <VoiceRecorder
-              notes={b.voiceNotes || []}
-              onAdd={(note) => onAddVoiceNote && onAddVoiceNote(b.id, note)}
-              onRemove={(id) => onRemoveVoiceNote && onRemoveVoiceNote(b.id, id)}
-            />
-          </Card>
-        </div>
+        {/* Voice notes are an "edit" to the booking record, so we gate
+            them by edit_bookings. View-only members still see the
+            existing notes from the activity feed below if needed. */}
+        {canEdit && (
+          <div style={{ padding: '0 16px 16px' }}>
+            <SectionHead title="Voice notes" />
+            <Card padding={12}>
+              <VoiceRecorder
+                notes={b.voiceNotes || []}
+                onAdd={(note) => onAddVoiceNote && onAddVoiceNote(b.id, note)}
+                onRemove={(id) => onRemoveVoiceNote && onRemoveVoiceNote(b.id, id)}
+              />
+            </Card>
+          </div>
+        )}
 
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('activity')} />
@@ -1104,19 +1121,19 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           </div>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
-          {b.status === 'confirmed' && (
+          {b.status === 'confirmed' && canEdit && (
             <Btn variant="soft" icon="door" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Log check-in</Btn>
           )}
-          {b.status === 'checkedin' && (
+          {b.status === 'checkedin' && canEdit && (
             <Btn variant="soft" icon="check" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Log check-out</Btn>
           )}
           {b.status === 'tentative' && (
             <>
-              <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>
-              <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>
+              {canCancel && <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>}
+              {canEdit && <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>}
             </>
           )}
-          {b.status === 'cancelled' && (
+          {b.status === 'cancelled' && canCancel && (
             <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
           )}
           {b.status === 'checkout' && (

@@ -35,7 +35,7 @@ const FILTERS = [
   { id: 'inhouse', label: 'In-house' },
 ];
 
-export default function Guests({ go, bookings = [], t }) {
+export default function Guests({ go, bookings = [], t, can = () => true }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [stayDate, setStayDate] = useState('');
@@ -137,7 +137,7 @@ export default function Guests({ go, bookings = [], t }) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('guests')} subtitle={`${counts.all} contacts · ${counts.inhouse} in-house`}
-        right={<button style={iconBtn2} onClick={() => go('new')} title="New booking"><Icon name="plus" size={18} /></button>}
+        right={can('create_bookings') ? <button style={iconBtn2} onClick={() => go('new')} title="New booking"><Icon name="plus" size={18} /></button> : null}
       />
       <div style={{ padding: '12px 16px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>
         <Field

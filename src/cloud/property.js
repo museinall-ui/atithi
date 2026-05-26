@@ -164,13 +164,15 @@ function cloudToLocalProperty(row, categories) {
 // Public API
 // ----------------------------------------------------------------------------
 
-// Returns { id, role, property } for this user's current property, or null
-// if they don't have a membership yet (in which case the caller should
-// bootstrap one).
+// Returns { id, role, permissions, property } for this user's current
+// property, or null if they don't have a membership yet (in which
+// case the caller should bootstrap one). Permissions is the raw jsonb
+// from the row — empty array means "use the role's defaults" (the
+// app resolves that via effectivePermissions()).
 export async function loadCurrentProperty(userId) {
   const { data: mems, error: memErr } = await supabase
     .from('memberships')
-    .select('property_id, role')
+    .select('property_id, role, permissions')
     .eq('user_id', userId)
     .limit(1);
   if (memErr) throw memErr;
@@ -187,6 +189,7 @@ export async function loadCurrentProperty(userId) {
   return {
     id: propertyId,
     role: mems[0].role,
+    permissions: Array.isArray(mems[0].permissions) ? mems[0].permissions : [],
     property: cloudToLocalProperty(propRes.data, catRes.data || []),
   };
 }

@@ -306,7 +306,15 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose }) {
+export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose, can = () => true }) {
+  // RBAC. Pending payment quick-settle buttons need manage_payments;
+  // the day-close card needs manage_expenses (because the close-out
+  // captures money in/out of the property and rolls into the daily
+  // ledger). New-staff members typically have neither and see the
+  // dashboard purely as a read-only overview.
+  const canPay     = can('manage_payments');
+  const canDayClose = can('manage_expenses');
+  const canExtend  = can('edit_bookings');
   const isHi = lang === 'hi';
   const ROOM_TYPES = effectiveRoomTypes(property);
   const repeats = repeatGuestKeys(bookings);
@@ -734,32 +742,34 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <button
-                      onClick={() => markSettled(b, 'cash')}
-                      className="atithi-tap"
-                      aria-label={isHi ? 'कैश से चुकाया' : 'Mark paid by cash'}
-                      style={{
-                        padding: '7px 12px', borderRadius: 8, border: 'none',
-                        background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {isHi ? 'कैश' : 'Cash'}
-                    </button>
-                    <button
-                      onClick={() => markSettled(b, 'upi')}
-                      className="atithi-tap"
-                      aria-label={isHi ? 'UPI से चुकाया' : 'Mark paid by UPI'}
-                      style={{
-                        padding: '7px 12px', borderRadius: 8, border: 'none',
-                        background: T.ok, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      UPI
-                    </button>
-                  </div>
+                  {canPay && (
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => markSettled(b, 'cash')}
+                        className="atithi-tap"
+                        aria-label={isHi ? 'कैश से चुकाया' : 'Mark paid by cash'}
+                        style={{
+                          padding: '7px 12px', borderRadius: 8, border: 'none',
+                          background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {isHi ? 'कैश' : 'Cash'}
+                      </button>
+                      <button
+                        onClick={() => markSettled(b, 'upi')}
+                        className="atithi-tap"
+                        aria-label={isHi ? 'UPI से चुकाया' : 'Mark paid by UPI'}
+                        style={{
+                          padding: '7px 12px', borderRadius: 8, border: 'none',
+                          background: T.ok, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        UPI
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -796,7 +806,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                     <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('releasesToday')}</div>
                   </div>
                 </div>
-                {onExtendHold && (
+                {onExtendHold && canExtend && (
                   <div style={{ paddingLeft: 48 }}>
                     <ExtendOptions
                       onExtend={(hours) => onExtendHold(b.id, hours)}
@@ -1036,7 +1046,7 @@ ${arrivingTomorrow.map(b => {
         );
       })()}
 
-      <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />
+      {canDayClose && <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />}
 
       {statSheet && (() => {
         const map = {

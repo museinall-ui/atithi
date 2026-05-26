@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx } from './data.js';
@@ -18,6 +18,7 @@ import {
   loadExpenses, seedExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
 } from './cloud/expenses.js';
 import { acceptPendingInvitesForUser } from './cloud/team.js';
+import { effectivePermissions } from './components/TeamSection.jsx';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
@@ -310,6 +311,30 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
   return 0;
 }
 
+// Rendered in place of any screen the current user doesn't have permission
+// to open. Reachable via deep-link / refresh / browser-back rather than a
+// tap (we hide the entry-point buttons elsewhere), but the gate stays here
+// in case the route was reached anyway.
+function PermissionDenied({ go, action }) {
+  return (
+    <div style={{ height: '100%', background: T.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
+      <div style={{ width: 56, height: 56, borderRadius: 14, background: T.bgSoft, color: T.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="lock" size={24} />
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, textAlign: 'center' }}>
+        You don't have permission to {action}
+      </div>
+      <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, textAlign: 'center', lineHeight: 1.5, maxWidth: 280 }}>
+        Ask your property owner to grant this permission in Settings → Property profile → Team members.
+      </div>
+      <button
+        onClick={() => go('home')}
+        style={{ marginTop: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+      >Back to home</button>
+    </div>
+  );
+}
+
 export default function App() {
   const [plan, setPlan] = useState(() => {
     // Default tier is 'engine' — the core booking package: create / store /
@@ -395,6 +420,11 @@ export default function App() {
   // before the cloud has answered.
   const [propertyId, setPropertyId] = useState(null);
   const [cloudReady, setCloudReady] = useState(false);
+  // The signed-in user's membership for the active property: { role,
+  // permissions }. Drives the `can(permission)` helper for RBAC gating.
+  // null while loading or in DEMO mode — `can()` treats that as full
+  // access so a single-user owner / demo session sees everything.
+  const [currentMember, setCurrentMember] = useState(null);
   // Refs mirror state for use inside callbacks that close over older renders
   // (the 30s auto-release ticker, in particular, is registered once on mount
   // and can't depend on cloudReady/propertyId/session changing).
@@ -405,6 +435,26 @@ export default function App() {
   useEffect(() => { cloudReadyRef.current = cloudReady; }, [cloudReady]);
   useEffect(() => { sessionRef.current = session; }, [session]);
   const t = useT(lang);
+
+  // RBAC. `can(permission)` is the single helper every screen calls to
+  // decide whether to show a button / open an action sheet. Resolves
+  // against the current member's stored permissions array, falling
+  // back to the role's defaults via effectivePermissions(). Two
+  // short-circuits make life easier:
+  //   1. DEMO mode (no session) → can() always returns true. Single
+  //      hotelier poking the app needs to see everything.
+  //   2. currentMember not yet loaded → can() returns true. Avoids a
+  //      flash of "you don't have permission" while the cloud fetch
+  //      is in flight; downstream cloud writes are still gated by
+  //      Supabase RLS so this isn't a security hole.
+  const myPerms = useMemo(() => {
+    if (!currentMember) return null; // null = wildcard
+    return new Set(effectivePermissions(currentMember.role, currentMember.permissions));
+  }, [currentMember]);
+  const can = useCallback((perm) => {
+    if (!myPerms) return true;
+    return myPerms.has(perm);
+  }, [myPerms]);
 
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
@@ -449,6 +499,7 @@ export default function App() {
     if (!session) {
       setPropertyId(null);
       setCloudReady(false);
+      setCurrentMember(null);
       return;
     }
     let cancelled = false;
@@ -557,6 +608,7 @@ export default function App() {
         setRateOverrides(cloudOverrides);
         setCashCloses(cloudCloses);
         setExpenses(cloudExpensesData);
+        setCurrentMember({ role: result.role, permissions: result.permissions || [] });
         setCloudReady(true);
       } catch (err) {
         notifySyncFailure('Load from cloud', err);
@@ -1223,26 +1275,35 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />; break;
-    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />; break;
+    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} can={can} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
       // { prefill: { date, roomTypeId } } from a Diary cell quick-create.
       const argIsPrefill = route.arg && typeof route.arg === 'object';
       const prefill = argIsPrefill ? (route.arg.prefill || route.arg) : null;
-      screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
+      // Permission gate at the route level — guards against deep links
+      // (URL hack, prefill object) bypassing the UI buttons we hide.
+      // Edit path needs edit_bookings; create path needs create_bookings.
+      const isEditPath = !!editingBooking;
+      const allowed = isEditPath ? can('edit_bookings') : can('create_bookings');
+      if (!allowed) {
+        screen = <PermissionDenied go={go} t={t} action={isEditPath ? 'edit bookings' : 'create new bookings'} />;
+      } else {
+        screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
+      }
       break;
     }
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onChangeProperty={setProperty} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onChangeProperty={setProperty} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} can={can} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
-    case 'rates':             screen = <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} />; break;
-    case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} />; break;
+    case 'rates':             screen = can('manage_rates')    ? <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} /> : <PermissionDenied go={go} t={t} action="edit the rate calendar" />; break;
+    case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} can={can} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
-    case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} />; break;
-    case 'expenses':          screen = <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} />; break;
-    case 'more':              screen = <MoreMenu go={go} t={t} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
+    case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
+    case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
+    case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />;
   }
 
   // Splash while Supabase tells us whether the user is signed in, and again
@@ -1344,7 +1405,7 @@ export default function App() {
         <TabBar active={route.name} onChange={(id) => {
           if (id === 'new') go('new');
           else go(id);
-        }} t={t} />
+        }} t={t} can={can} />
       )}
       {/* Floating header actions (bell + search) — visible on the four
           tab-bar screens. The bell jumps the dashboard scroll to the

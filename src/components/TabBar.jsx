@@ -1,11 +1,15 @@
 import { T } from '../tokens.js';
 import Icon from './Icon.jsx';
 
-export default function TabBar({ active, onChange, t }) {
+export default function TabBar({ active, onChange, t, can = () => true }) {
+  // Hide the central + FAB for team members who can't create bookings
+  // (e.g. a billing-only role with manage_payments but no create perm).
+  // Filling its slot with a spacer keeps the other 4 tabs evenly spread.
+  const showNew = can('create_bookings');
   const tabs = [
     { id: 'home',   icon: 'home',  label: t ? t('home') : 'Home' },
     { id: 'diary',  icon: 'cal',   label: t ? t('diary') : 'Diary' },
-    { id: 'new',    icon: 'plus',  label: '' },
+    ...(showNew ? [{ id: 'new', icon: 'plus', label: '' }] : [{ id: '__spacer', icon: null, label: '' }]),
     { id: 'guests', icon: 'users', label: t ? t('guests') : 'Guests' },
     { id: 'more',   icon: 'cog',   label: t ? t('more') : 'More' },
   ];
@@ -21,6 +25,7 @@ export default function TabBar({ active, onChange, t }) {
       zIndex: 30,
     }}>
       {tabs.map(tab => {
+        if (tab.id === '__spacer') return <span key="__spacer" style={{ width: 52, height: 52 }} aria-hidden />;
         const isFab = tab.id === 'new';
         const isActive = active === tab.id;
         if (isFab) {

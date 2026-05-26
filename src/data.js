@@ -436,7 +436,33 @@ function resolveExtraRate(rule, baseRate) {
   return Math.round(v);
 }
 
-export function extraGuestCostForItem(item, property, category, nights) {
+// Find a season that fully or partially covers a date range. Returns
+// the first matching season with a non-null extraAdult OR extraChild
+// override (those are the ones we apply). When multiple seasons
+// overlap, the one defined earlier in property.seasons wins —
+// hoteliers can reorder if they want a different priority.
+function seasonOverrideFor(property, booking) {
+  if (!property || !booking || !Array.isArray(property.seasons)) return null;
+  const startDate = booking.startIdx != null ? new Date(ANCHOR) : null;
+  if (!startDate) return null;
+  startDate.setDate(startDate.getDate() + (booking.startIdx || 0));
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + ((booking.nights || 1) - 1));
+  const startIso = ymd(startDate);
+  const endIso = ymd(endDate);
+  for (const s of property.seasons) {
+    if (!s || !s.startIso || !s.endIso) continue;
+    // Overlap test on ISO strings (lexical sort works for YYYY-MM-DD).
+    if (s.startIso > endIso || s.endIso < startIso) continue;
+    // Only return seasons that ACTUALLY override (skip seasons that
+    // exist purely for the multiplier). A season can specify just
+    // one of the two; the other falls back to the category default.
+    if (s.extraAdult || s.extraChild) return s;
+  }
+  return null;
+}
+
+export function extraGuestCostForItem(item, property, category, nights, booking) {
   if (!item || !category) return 0;
   const cap = baseCapacityAdults(property);
   const adults = +item.adults || 0;
@@ -444,8 +470,14 @@ export function extraGuestCostForItem(item, property, category, nights) {
   const childrenFree = +item.childrenFree || 0;
   const childrenFull = +item.childrenFull || 0;
   const baseRate = (item.rate != null ? item.rate : (category.base || 0)) || 0;
-  const adultPer = resolveExtraRate(category.extraAdult, baseRate);
-  const childPer = resolveExtraRate(category.extraChild, baseRate);
+  // Season override (e.g. "in peak winter, extra adult costs +₹1,500
+  // instead of the category default ₹800"). Falls back per-rule —
+  // a season can override just extraAdult or just extraChild.
+  const season = booking ? seasonOverrideFor(property, booking) : null;
+  const adultRule = (season && season.extraAdult) ? season.extraAdult : category.extraAdult;
+  const childRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
+  const adultPer = resolveExtraRate(adultRule, baseRate);
+  const childPer = resolveExtraRate(childRule, baseRate);
   const extraAdults = Math.max(0, adults - cap);
   const adultCost = extraAdults * adultPer * (nights || 1);
   const halfCost = Math.round(childrenHalf * childPer * 0.5 * (nights || 1));
@@ -464,7 +496,7 @@ export function extraGuestCostFor(booking, property) {
   let total = 0;
   for (const it of items) {
     const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
-    if (cat) total += extraGuestCostForItem(it, property, cat, nights);
+    if (cat) total += extraGuestCostForItem(it, property, cat, nights, booking);
   }
   return total;
 }

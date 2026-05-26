@@ -1034,6 +1034,74 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   />
                   <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>% on base rate</span>
                 </div>
+
+                {/* Per-season extra-adult / extra-child overrides.
+                    Each is optional (off = use the category default).
+                    Useful for peak seasons where the property charges
+                    a higher surcharge per extra guest. */}
+                {(() => {
+                  const ea = s.extraAdult;
+                  const ec = s.extraChild;
+                  const updateRule = (key, patch) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, [key]: patch === null ? null : { ...(x[key] || { mode: 'flat', value: 0 }), ...patch } } : x));
+                  const modeBtn = (rule, mode, label) => {
+                    const cur = s[rule];
+                    return (
+                      <button
+                        onClick={() => updateRule(rule, { mode })}
+                        style={{
+                          padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                          border: `1px solid ${(cur?.mode || 'flat') === mode ? T.indigo : T.border}`,
+                          background: (cur?.mode || 'flat') === mode ? T.indigoLt : T.card,
+                          color: (cur?.mode || 'flat') === mode ? T.indigo : T.ink3,
+                          fontSize: 10, fontWeight: 700,
+                        }}
+                      >{label}</button>
+                    );
+                  };
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, padding: '8px 10px', background: T.card, borderRadius: 7, border: `1px dashed ${T.borderSoft}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>Per-season override (optional)</span>
+                        <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600, fontStyle: 'italic' }}>blank = use category default</span>
+                      </div>
+                      {[
+                        { rule: 'extraAdult', label: 'Extra adult', val: ea },
+                        { rule: 'extraChild', label: 'Extra child', val: ec },
+                      ].map(({ rule, label, val }) => (
+                        <div key={rule} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76 }}>{label}</span>
+                          {val ? (
+                            <>
+                              <div style={{ display: 'inline-flex', gap: 3 }}>
+                                {modeBtn(rule, 'flat', '₹')}
+                                {modeBtn(rule, 'pct', '% of base')}
+                              </div>
+                              <input
+                                type="number"
+                                min={0}
+                                value={val.value || 0}
+                                onChange={(ev) => updateRule(rule, { value: Math.max(0, +ev.target.value || 0) })}
+                                className="tnum"
+                                style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }}
+                              />
+                              <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>per night</span>
+                              <button
+                                onClick={() => updateRule(rule, null)}
+                                title={`Remove ${label} override`}
+                                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.ink3, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                              >Clear</button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => updateRule(rule, { mode: 'flat', value: 0 })}
+                              style={{ padding: '3px 8px', borderRadius: 5, border: `1px dashed ${T.border}`, background: T.card, color: T.ink3, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                            >+ Add override</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

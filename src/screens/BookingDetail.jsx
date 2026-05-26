@@ -37,7 +37,7 @@ const METHOD_OPTIONS = [
   { id: 'other',   label: 'Other',    icon: 'plus', hint: 'Voucher / barter / agent' },
 ];
 
-function PaymentSheet({ kind, balance, total, onClose, onSave }) {
+function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty }) {
   const isRefund = kind === 'refund';
   const isCredit = kind === 'credit';
   const defaultAmt = isRefund || isCredit ? (balance < 0 ? Math.abs(balance) : '') : (balance > 0 ? balance : '');
@@ -45,6 +45,40 @@ function PaymentSheet({ kind, balance, total, onClose, onSave }) {
   const [method, setMethod] = useState(isCredit ? 'account' : 'cash');
   const [note, setNote] = useState('');
   const [ref, setRef] = useState('');
+
+  // Hotelier-defined payment methods, stored on accountant jsonb so no
+  // migration is needed. Each: { id, label, icon, hint }. Saved
+  // methods render alongside the 5 defaults; the hotelier picks them
+  // the same way and saves the booking like any other payment.
+  const customMethods = (property?.accountant?.customPaymentMethods || []);
+  const ALL_METHODS = [...METHOD_OPTIONS, ...customMethods];
+  const [addingMethod, setAddingMethod] = useState(false);
+  const [newMethodLabel, setNewMethodLabel] = useState('');
+  const saveNewMethod = () => {
+    const label = newMethodLabel.trim();
+    if (!label) return;
+    const id = 'pm_' + Date.now().toString(36);
+    const next = [...customMethods, { id, label, icon: 'tag', hint: 'Custom · ref / txn id' }];
+    if (onChangeProperty) {
+      onChangeProperty(prev => ({
+        ...prev,
+        accountant: { ...(prev.accountant || {}), customPaymentMethods: next },
+      }));
+    }
+    setMethod(id);
+    setNewMethodLabel('');
+    setAddingMethod(false);
+  };
+  const removeCustomMethod = (id) => {
+    const next = customMethods.filter(m => m.id !== id);
+    if (onChangeProperty) {
+      onChangeProperty(prev => ({
+        ...prev,
+        accountant: { ...(prev.accountant || {}), customPaymentMethods: next },
+      }));
+    }
+    if (method === id) setMethod('cash');
+  };
 
   const title = isRefund ? 'Record refund' : isCredit ? 'Issue credit note' : 'Record payment';
   const cta = isRefund ? 'Save refund' : isCredit ? 'Issue credit' : 'Save payment';
@@ -57,6 +91,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave }) {
     account: 'Bank · UTR / cheque #',
     other: 'Source / agent / voucher #',
   };
+  const placeholderFor = (m) => placeholderForMethod[m] || 'Reference / txn id (optional)';
 
   const save = () => {
     const amt = +amount;
@@ -101,24 +136,73 @@ function PaymentSheet({ kind, balance, total, onClose, onSave }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>
             {isCredit ? 'CREDIT TYPE' : isRefund ? 'REFUND VIA' : 'COLLECTED VIA'}
           </div>
+          {/* Method grid: defaults first, then any saved custom
+              methods, then an 'Add' tile for creating a new one.
+              5 across at default zoom; wraps automatically if the
+              hotelier adds more. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-            {METHOD_OPTIONS.map(m => (
-              <button key={m.id} onClick={() => setMethod(m.id)} style={{
-                border: `1.5px solid ${method === m.id ? tone : T.borderSoft}`,
-                background: method === m.id ? `color-mix(in oklch, ${tone} 10%, white)` : T.card,
+            {ALL_METHODS.map(m => {
+              const isCustom = customMethods.some(x => x.id === m.id);
+              return (
+                <button key={m.id} onClick={() => setMethod(m.id)} style={{
+                  border: `1.5px solid ${method === m.id ? tone : T.borderSoft}`,
+                  background: method === m.id ? `color-mix(in oklch, ${tone} 10%, white)` : T.card,
+                  borderRadius: 9, padding: '8px 4px', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  position: 'relative',
+                }}>
+                  <Icon name={m.icon} size={14} color={method === m.id ? tone : T.ink3} stroke={2} />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: method === m.id ? tone : T.ink2, textAlign: 'center', lineHeight: 1.2 }}>{m.label}</span>
+                  {isCustom && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); removeCustomMethod(m.id); }}
+                      title={`Remove "${m.label}"`}
+                      style={{ position: 'absolute', top: 2, right: 4, fontSize: 12, color: T.ink3, opacity: 0.6, cursor: 'pointer', lineHeight: 1 }}
+                    >×</span>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setAddingMethod(true)}
+              style={{
+                border: `1.5px dashed ${T.border}`,
+                background: T.card,
                 borderRadius: 9, padding: '8px 4px', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              }}>
-                <Icon name={m.icon} size={14} color={method === m.id ? tone : T.ink3} stroke={2} />
-                <span style={{ fontSize: 10, fontWeight: 700, color: method === m.id ? tone : T.ink2 }}>{m.label}</span>
-              </button>
-            ))}
+                color: T.ink3,
+              }}
+            >
+              <Icon name="plus" size={14} color={T.ink3} stroke={2} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3 }}>Add</span>
+            </button>
           </div>
+          {addingMethod && (
+            <div style={{ display: 'flex', gap: 4, marginTop: 8, alignItems: 'center' }}>
+              <input
+                autoFocus
+                value={newMethodLabel}
+                onChange={(e) => setNewMethodLabel(e.target.value.slice(0, 18))}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveNewMethod(); if (e.key === 'Escape') { setAddingMethod(false); setNewMethodLabel(''); } }}
+                placeholder="Method name (e.g. Paytm wallet, Cheque, Razorpay link)"
+                style={{ flex: 1, padding: '7px 10px', border: `1px solid ${tone}`, borderRadius: 7, fontSize: 12, color: T.ink, background: T.card, outline: 'none' }}
+              />
+              <button
+                onClick={saveNewMethod}
+                disabled={!newMethodLabel.trim()}
+                style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newMethodLabel.trim() ? tone : T.bgSoft, color: newMethodLabel.trim() ? '#fff' : T.ink3, fontSize: 11, fontWeight: 700, cursor: newMethodLabel.trim() ? 'pointer' : 'not-allowed' }}
+              >Save</button>
+              <button
+                onClick={() => { setAddingMethod(false); setNewMethodLabel(''); }}
+                style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >Cancel</button>
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>DETAILS</div>
-          <input value={ref} onChange={e => setRef(e.target.value)} placeholder={placeholderForMethod[method]} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', marginBottom: 6 }} />
+          <input value={ref} onChange={e => setRef(e.target.value)} placeholder={placeholderFor(method)} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', marginBottom: 6 }} />
           <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={isCredit ? 'Reason · which future booking this credit is for' : isRefund ? 'Reason for refund' : 'Notes (optional)'} rows={2} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', resize: 'none', fontFamily: 'inherit' }} />
         </div>
 
@@ -324,7 +408,7 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onChangeProperty, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice }) {
   const b = bookings.find(x => x.id === bookingId) || bookings[0];
   const ROOM_TYPES = effectiveRoomTypes(property);
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
@@ -631,7 +715,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               {payments.map(p => {
                 const isOut = p.kind === 'refund' || p.kind === 'credit';
                 const tone = p.kind === 'refund' ? T.danger : p.kind === 'credit' ? T.indigo : T.ok;
-                const methodLabel = METHOD_LABELS[p.method] || p.method;
+                // Resolve method label: defaults from METHOD_LABELS, then
+                // custom methods from property.accountant.customPaymentMethods,
+                // then fall back to the raw id (e.g. 'pm_xyz') if neither
+                // matches (custom method was deleted after the payment).
+                const customMethod = (property?.accountant?.customPaymentMethods || []).find(m => m.id === p.method);
+                const methodLabel = METHOD_LABELS[p.method] || (customMethod && customMethod.label) || p.method;
                 return (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', background: T.bgSoft, borderRadius: 7, borderLeft: `3px solid ${tone}` }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -723,6 +812,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             kind={payKind}
             balance={balance}
             total={b.total}
+            property={property}
+            onChangeProperty={onChangeProperty}
             onClose={() => setPayOpen(false)}
             onSave={(entry) => { onPayment && onPayment(b.id, entry); setPayOpen(false); }}
           />
@@ -896,9 +987,13 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               items.push({ icon: 'tag', tone: T.primary, text: `Booking via ${ch.label}` });
               payments.forEach(p => {
                 const tone = p.kind === 'refund' ? T.danger : p.kind === 'credit' ? T.indigo : T.ok;
+                // Same custom-method resolution as the payments-ledger
+                // row above — defaults → custom-methods → raw id fallback.
+                const customMethod = (property?.accountant?.customPaymentMethods || []).find(m => m.id === p.method);
+                const methodLabel = METHOD_LABELS[p.method] || (customMethod && customMethod.label) || p.method;
                 const label = p.kind === 'refund' ? `Refund · ₹${p.amount.toLocaleString('en-IN')}`
                   : p.kind === 'credit' ? `Credit note · ₹${p.amount.toLocaleString('en-IN')}`
-                  : `Payment received · ₹${p.amount.toLocaleString('en-IN')}${p.method ? ` · ${METHOD_LABELS[p.method] || p.method}` : ''}`;
+                  : `Payment received · ₹${p.amount.toLocaleString('en-IN')}${p.method ? ` · ${methodLabel}` : ''}`;
                 items.push({ icon: p.kind === 'refund' ? 'arrow' : 'inr', tone, text: label, time: p.date });
               });
               (b.invoices || []).filter(inv => !inv.voided).forEach(inv => {

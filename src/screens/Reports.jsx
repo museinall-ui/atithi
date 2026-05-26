@@ -11,6 +11,43 @@ import Row from '../components/Row.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 
+// Income payment methods — default 5 (cash / card / upi / account /
+// other) merged with hotelier-defined custom methods stored on
+// property.accountant.customPaymentMethods. Same vocabulary the
+// BookingDetail PaymentSheet uses. Expense paid_via is a separate
+// vocabulary (cash / upi / card / bank) — they show in two separate
+// breakdown blocks so the hotelier can compare "cash I took in" vs
+// "cash I paid out" without conflating the two.
+const INCOME_METHOD_DEFAULTS = [
+  { id: 'cash',    label: 'Cash' },
+  { id: 'card',    label: 'Card' },
+  { id: 'upi',     label: 'UPI' },
+  { id: 'account', label: 'Bank a/c' },
+  { id: 'other',   label: 'Other' },
+];
+const EXPENSE_METHOD_DEFAULTS = [
+  { id: 'cash', label: 'Cash' },
+  { id: 'upi',  label: 'UPI' },
+  { id: 'card', label: 'Card' },
+  { id: 'bank', label: 'Bank' },
+];
+
+// Resolve the YYYY-MM-DD a payment was actually collected on. Prefers
+// payment.dateIso (added in mid-2026 — every new payment carries it),
+// falls back to parsing payment.date (only works for the rare legacy
+// payment where date happens to be an iso/iso-ish string), and finally
+// to the booking's check-in date so undated payments still appear in
+// the day-of-stay column instead of vanishing from the P&L.
+function payIsoFor(p, b) {
+  if (p && p.dateIso) return p.dateIso;
+  if (p && p.date && p.date !== 'now') {
+    const pd = new Date(p.date);
+    if (!isNaN(pd.getTime())) return ymd(pd);
+  }
+  if (b && b.startIdx != null) return idxToDate(b.startIdx);
+  return '';
+}
+
 // Helpers for the date-range picker. Default range = current calendar
 // month so opening Reports always lands on something meaningful, and
 // the user picks a different month via the date inputs.
@@ -97,6 +134,270 @@ function fmtINR(n) {
   if (n >= 100000) return '₹' + (n / 100000).toFixed(n >= 1000000 ? 0 : 1) + 'L';
   if (n >= 1000) return '₹' + Math.round(n / 1000) + 'k';
   return '₹' + Math.round(n).toLocaleString('en-IN');
+}
+
+// Default expense categories — keep in sync with src/screens/Expenses.jsx
+// DEFAULT_CATEGORIES. Duplicated here (rather than imported) because
+// Reports only needs the label lookup, not the full category metadata.
+const EXPENSE_CATEGORY_LABELS = {
+  groceries: 'Groceries', salaries: 'Salaries', utilities: 'Utilities',
+  maintenance: 'Maintenance', supplies: 'Supplies', transport: 'Transport',
+  marketing: 'Marketing', other: 'Other',
+};
+
+// Two-column row used inside every PnLCard breakdown block. Used for
+// channel/method/category lists where every row is "label · amount".
+function PnLRow({ label, value, color, faint, dim, strong }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0' }}>
+      <span style={{ fontSize: 11.5, color: color || (faint ? T.ink3 : T.ink2), fontWeight: strong ? 700 : 600 }}>{label}</span>
+      <span className="tnum" style={{ fontSize: strong ? 13 : 12, color: dim ? T.ink3 : (color || T.ink), fontWeight: strong ? 800 : 700 }}>{value}</span>
+    </div>
+  );
+}
+
+function PnLBreakdownBlock({ title, accent, rows, total, totalLabel, totalNegative }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 8 }}>
+        <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>{title}</div>
+        <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>No activity in this period.</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 8 }}>
+      <div style={{ fontSize: 10, color: accent || T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>{title}</div>
+      {rows.map((r) => (
+        <PnLRow key={r.id} label={r.label} value={r.value} />
+      ))}
+      {total !== undefined && (
+        <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 5, marginTop: 4 }}>
+          <PnLRow
+            label={totalLabel || 'Total'}
+            value={(totalNegative ? '− ' : '') + (typeof total === 'string' ? total : ('₹' + Math.round(Math.abs(total)).toLocaleString('en-IN')))}
+            color={totalNegative ? T.danger : T.primaryDk}
+            strong
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The full P&L card. Slots between the KPI tiles and the existing
+// Take-home breakdown on the Reports screen.
+function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCategories }) {
+  const [showAllDays, setShowAllDays] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(true);
+  const customCatLabels = useMemo(() => {
+    const o = {};
+    (expenseCategories || []).forEach(c => { o[c.id] = c.label; });
+    return o;
+  }, [expenseCategories]);
+  const labelForCategory = (id) => EXPENSE_CATEGORY_LABELS[id] || customCatLabels[id] || id;
+
+  const incomeRows = pnl.incomeMethods
+    .map(m => ({ id: m.id, label: m.label, raw: pnl.incomeByMethod[m.id] || 0 }))
+    .filter(r => r.raw !== 0)
+    .map(r => ({ ...r, value: (r.raw < 0 ? '− ' : '') + '₹' + Math.abs(Math.round(r.raw)).toLocaleString('en-IN') }));
+  const expenseMethodRows = pnl.expenseMethods
+    .map(m => ({ id: m.id, label: m.label, raw: pnl.expenseByMethod[m.id] || 0 }))
+    .filter(r => r.raw !== 0)
+    .map(r => ({ ...r, value: '₹' + Math.round(r.raw).toLocaleString('en-IN') }));
+  // Income by channel — pull labels from CHANNELS so OTAs show with
+  // their real names (MakeMyTrip / Booking.com / etc). Unknown channels
+  // fall through to their raw id.
+  const channelRows = Object.entries(pnl.incomeByChannel)
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([id, v]) => ({
+      id,
+      label: (CHANNELS[id] && CHANNELS[id].label) || id,
+      raw: v,
+      value: (v < 0 ? '− ' : '') + '₹' + Math.abs(Math.round(v)).toLocaleString('en-IN'),
+    }));
+  const expenseCatRows = Object.entries(pnl.expenseByCategory)
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, v]) => ({ id, label: labelForCategory(id), raw: v, value: '₹' + Math.round(v).toLocaleString('en-IN') }));
+
+  // Per-day rows — full list (every day in the range) or just days
+  // with activity, depending on the toggle. Default to "with activity"
+  // because most months have a handful of payment / expense days.
+  const allDayRows = pnl.days;
+  const visibleDays = showAllDays ? allDayRows : allDayRows.filter(d => d.income !== 0 || d.expense !== 0);
+  const noActivity = visibleDays.length === 0;
+
+  const dlCsv = () => {
+    // Per-day rows first, then the four breakdown blocks as labelled
+    // summary sections. Single file because hoteliers asked for "one
+    // clear report".
+    const rows = [];
+    for (const d of allDayRows) {
+      rows.push([d.iso, d.income, d.expense, d.profit]);
+    }
+    rows.push([]);
+    rows.push([`Period: ${rangeStart} → ${rangeEnd}`]);
+    rows.push(['Total income',   '', '', pnl.totalIncome]);
+    rows.push(['Total expense',  '', '', pnl.totalExpense]);
+    rows.push(['Net profit',     '', '', pnl.totalProfit]);
+
+    rows.push([]);
+    rows.push(['INCOME BY SOURCE / CHANNEL']);
+    rows.push(['Channel', 'Amount (₹)']);
+    channelRows.forEach(r => rows.push([r.label, r.raw]));
+
+    rows.push([]);
+    rows.push(['INCOME BY PAYMENT METHOD']);
+    rows.push(['Method', 'Amount (₹)']);
+    incomeRows.forEach(r => rows.push([r.label, r.raw]));
+
+    rows.push([]);
+    rows.push(['EXPENSE BY CATEGORY']);
+    rows.push(['Category', 'Amount (₹)']);
+    expenseCatRows.forEach(r => rows.push([r.label, r.raw]));
+
+    rows.push([]);
+    rows.push(['EXPENSE BY PAYMENT METHOD']);
+    rows.push(['Method', 'Amount (₹)']);
+    expenseMethodRows.forEach(r => rows.push([r.label, r.raw]));
+
+    const header = ['Date', 'Income (₹)', 'Expense (₹)', 'Profit (₹)'];
+    downloadCsv(`atithi-profit-loss-${rangeStart}-to-${rangeEnd}`, buildCsv(header, rows));
+  };
+
+  const profitColor = pnl.totalProfit >= 0 ? T.ok : T.danger;
+  return (
+    <Card padding={14} style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklch, ${T.primary} 14%, white)`, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="chart" size={14} stroke={2} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.primaryDk, letterSpacing: 0.2 }}>DAILY PROFIT &amp; LOSS</span>
+      </div>
+
+      {/* Headline number — net profit for the period. Avg / day is a
+          useful second-glance number when the range is multi-day. */}
+      <div className="tnum" style={{ fontSize: 28, fontWeight: 800, color: profitColor, letterSpacing: -0.5, marginBottom: 2 }}>
+        {pnl.totalProfit < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.totalProfit)).toLocaleString('en-IN')}
+      </div>
+      <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 12 }}>
+        net profit · {pnl.daysWithActivity} active day{pnl.daysWithActivity === 1 ? '' : 's'} · avg {pnl.avgDaily < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.avgDaily)).toLocaleString('en-IN')}/day
+      </div>
+
+      {/* Three-stat strip: total income, total expense, net profit.
+          Big enough to read at a glance, small enough not to dominate
+          the card the way the headline number does. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+        <div style={{ padding: '8px 10px', background: 'color-mix(in oklch, oklch(58% 0.13 155) 9%, white)', borderRadius: 7 }}>
+          <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: 'oklch(35% 0.14 155)', letterSpacing: -0.3 }}>₹{Math.round(pnl.totalIncome).toLocaleString('en-IN')}</div>
+          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.10 155)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>INCOME</div>
+        </div>
+        <div style={{ padding: '8px 10px', background: 'color-mix(in oklch, oklch(60% 0.14 30) 9%, white)', borderRadius: 7 }}>
+          <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: 'oklch(40% 0.14 30)', letterSpacing: -0.3 }}>−₹{Math.round(pnl.totalExpense).toLocaleString('en-IN')}</div>
+          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.14 30)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>EXPENSE</div>
+        </div>
+        <div style={{ padding: '8px 10px', background: `color-mix(in oklch, ${profitColor} 11%, white)`, borderRadius: 7 }}>
+          <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: profitColor, letterSpacing: -0.3 }}>{pnl.totalProfit < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.totalProfit)).toLocaleString('en-IN')}</div>
+          <div style={{ fontSize: 9.5, color: profitColor, fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>NET PROFIT</div>
+        </div>
+      </div>
+
+      {/* Toggle to hide the breakdowns for a compact view. Default
+          open because the breakdowns are the whole point of this card. */}
+      <button
+        onClick={() => setShowBreakdown(s => !s)}
+        style={{ width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', color: T.ink3, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 }}
+      >
+        <Icon name={showBreakdown ? 'chevU' : 'chevD'} size={11} color={T.ink3} />
+        {showBreakdown ? 'Hide breakdown' : 'Show income / expense breakdown'}
+      </button>
+
+      {showBreakdown && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+          <PnLBreakdownBlock title="INCOME BY SOURCE" accent="oklch(40% 0.10 155)" rows={channelRows} total={pnl.totalIncome} totalLabel="Total income" />
+          <PnLBreakdownBlock title="INCOME BY METHOD" accent="oklch(40% 0.10 155)" rows={incomeRows}  total={pnl.totalIncome} totalLabel="Total income" />
+          <PnLBreakdownBlock title="EXPENSE BY CATEGORY" accent="oklch(40% 0.14 30)" rows={expenseCatRows}    total={pnl.totalExpense} totalLabel="Total expense" totalNegative />
+          <PnLBreakdownBlock title="EXPENSE BY METHOD"   accent="oklch(40% 0.14 30)" rows={expenseMethodRows} total={pnl.totalExpense} totalLabel="Total expense" totalNegative />
+        </div>
+      )}
+
+      {/* Per-day table — "profit for each day when available". Defaults
+          to days with any activity to keep the list short on a quiet
+          month; toggle to show every date in the range. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 6 }}>
+        <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>PER-DAY BREAKDOWN</span>
+        <button
+          onClick={() => setShowAllDays(s => !s)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.primary, fontSize: 10.5, fontWeight: 700 }}
+        >
+          {showAllDays ? 'Active days only' : `Show all ${allDayRows.length} day${allDayRows.length === 1 ? '' : 's'}`}
+        </button>
+      </div>
+      {noActivity ? (
+        <div style={{ padding: '14px 12px', background: T.bgSoft, borderRadius: 8, fontSize: 11.5, color: T.ink3, fontStyle: 'italic', textAlign: 'center' }}>
+          No income or expense recorded in this period.
+        </div>
+      ) : (
+        <div style={{ background: T.bgSoft, borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 0, padding: '6px 10px', background: 'color-mix(in oklch, ' + T.primaryDk + ' 7%, white)', fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.4 }}>
+            <span>DATE</span>
+            <span style={{ textAlign: 'right' }}>INCOME</span>
+            <span style={{ textAlign: 'right' }}>EXPENSE</span>
+            <span style={{ textAlign: 'right' }}>PROFIT</span>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {visibleDays.map(d => {
+              const dateObj = new Date(d.iso + 'T00:00:00');
+              const isToday = d.iso === ymd(new Date(ANCHOR));
+              const dayLabel = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+              const dowLabel = dateObj.toLocaleDateString('en-IN', { weekday: 'short' });
+              const pColor = d.profit > 0 ? T.ok : d.profit < 0 ? T.danger : T.ink3;
+              return (
+                <div
+                  key={d.iso}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 0,
+                    padding: '7px 10px',
+                    borderTop: `1px solid ${T.borderSoft}`,
+                    background: isToday ? T.primaryLt : 'transparent',
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: T.ink, fontWeight: isToday ? 700 : 600 }}>
+                    {dayLabel} <span style={{ color: T.ink3, fontWeight: 600 }}>· {dowLabel}</span>
+                    {isToday && <span style={{ marginLeft: 4, color: T.primaryDk, fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>TODAY</span>}
+                  </span>
+                  <span className="tnum" style={{ fontSize: 11, color: d.income > 0 ? T.ink : T.ink3, fontWeight: 700, textAlign: 'right' }}>
+                    {d.income === 0 ? '—' : (d.income < 0 ? '−' : '') + '₹' + Math.abs(Math.round(d.income)).toLocaleString('en-IN')}
+                  </span>
+                  <span className="tnum" style={{ fontSize: 11, color: d.expense > 0 ? T.ink : T.ink3, fontWeight: 700, textAlign: 'right' }}>
+                    {d.expense === 0 ? '—' : '−₹' + Math.round(d.expense).toLocaleString('en-IN')}
+                  </span>
+                  <span className="tnum" style={{ fontSize: 11.5, color: pColor, fontWeight: 800, textAlign: 'right' }}>
+                    {d.profit === 0 ? '—' : (d.profit < 0 ? '−' : '+') + '₹' + Math.abs(Math.round(d.profit)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={dlCsv}
+        style={{
+          marginTop: 10, width: '100%', padding: '8px 10px', borderRadius: 8,
+          border: `1px solid ${T.border}`, background: T.card, color: T.primary,
+          fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}
+      >
+        <Icon name="download" size={12} stroke={2} color={T.primary} />
+        Download P&amp;L CSV
+      </button>
+    </Card>
+  );
 }
 
 export default function Reports({ go, t, bookings = [], plan = 'engine', property, expenses = [] }) {
@@ -254,6 +555,88 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays, totalExpenses, netAfterExpenses, expensesCount: expensesInRange.length };
   }, [bookings, ROOM_TYPES, rangeStartIdx, rangeEndIdx, rangeDays, property, expenses, rangeStart, rangeEnd]);
 
+  // Daily Profit & Loss. Separate from `stats` to keep the mental model
+  // clean: stats is the existing KPI bag (occupancy, ADR, etc) that the
+  // owner already knows; pnl is the new cash-in / cash-out / profit
+  // breakdown that maps to how a small hotelier actually tracks money.
+  //
+  // Date-attribution rules:
+  //   - Income → the day the payment was collected (payment.dateIso),
+  //     not the day the booking was made or the day of stay. So a
+  //     guest who paid ₹5,000 advance on 1 May for a 10-15 May stay
+  //     shows that ₹5k on 1 May's income row.
+  //   - Expense → the day the expense was logged (expense.date).
+  //   - Refunds + credit notes subtract from income.
+  //
+  // Cancelled bookings are excluded — their payments would have been
+  // refunded already (and those refund rows are still counted via the
+  // refund-as-negative-income rule above).
+  const pnl = useMemo(() => {
+    const customMethods = (property?.accountant?.customPaymentMethods || []).map(m => ({ id: m.id, label: m.label }));
+    const incomeMethods = [...INCOME_METHOD_DEFAULTS, ...customMethods];
+    const incomeMethodIds = new Set(incomeMethods.map(m => m.id));
+    const expenseMethods = [...EXPENSE_METHOD_DEFAULTS];
+    const expenseMethodIds = new Set(expenseMethods.map(m => m.id));
+
+    // Per-day buckets keyed by iso date for fast lookup. Pre-seed every
+    // day in the range so the per-day table renders even days with no
+    // activity (which is itself useful — "we made nothing on 12 May").
+    const dayLookup = {};
+    const days = [];
+    for (let i = 0; i < rangeDays; i++) {
+      const iso = idxToDate(rangeStartIdx + i);
+      const row = { iso, income: 0, expense: 0, profit: 0 };
+      days.push(row);
+      dayLookup[iso] = row;
+    }
+
+    const incomeByChannel = {}; // { direct: ₹, mmt: ₹, ... }
+    const incomeByMethod = {};  // { cash: ₹, upi: ₹, ... + custom }
+    let totalIncome = 0;
+    for (const b of bookings) {
+      if (b.status === 'cancelled') continue;
+      const channel = b.channel || 'direct';
+      for (const p of (b.payments || [])) {
+        const payIso = payIsoFor(p, b);
+        if (!payIso) continue;
+        if (payIso < rangeStart || payIso > rangeEnd) continue;
+        const signed = (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note')
+          ? -(p.amount || 0)
+          : (p.amount || 0);
+        if (dayLookup[payIso]) dayLookup[payIso].income += signed;
+        incomeByChannel[channel] = (incomeByChannel[channel] || 0) + signed;
+        const m = incomeMethodIds.has(p.method) ? p.method : (p.method || 'other');
+        incomeByMethod[m] = (incomeByMethod[m] || 0) + signed;
+        totalIncome += signed;
+      }
+    }
+
+    const expenseByCategory = {};
+    const expenseByMethod = {};
+    let totalExpense = 0;
+    for (const e of (expenses || [])) {
+      if (!e.date) continue;
+      if (e.date < rangeStart || e.date > rangeEnd) continue;
+      const amt = e.amount || 0;
+      if (dayLookup[e.date]) dayLookup[e.date].expense += amt;
+      const cat = e.category || 'other';
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + amt;
+      const m = expenseMethodIds.has(e.paidVia) ? e.paidVia : (e.paidVia || 'cash');
+      expenseByMethod[m] = (expenseByMethod[m] || 0) + amt;
+      totalExpense += amt;
+    }
+    for (const d of days) d.profit = d.income - d.expense;
+    const totalProfit = totalIncome - totalExpense;
+    const avgDaily = rangeDays ? totalProfit / rangeDays : 0;
+    const daysWithActivity = days.filter(d => d.income !== 0 || d.expense !== 0).length;
+
+    return {
+      days, totalIncome, totalExpense, totalProfit, avgDaily, daysWithActivity,
+      incomeByChannel, incomeByMethod, expenseByCategory, expenseByMethod,
+      incomeMethods, expenseMethods,
+    };
+  }, [bookings, expenses, rangeStart, rangeEnd, rangeStartIdx, rangeDays, property]);
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} units · ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} onBack={() => go('home')}
@@ -271,6 +654,13 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
+              {
+                id: 'today', label: 'Today',
+                onClick: () => {
+                  const iso = ymd(new Date(ANCHOR));
+                  setRangeStart(iso); setRangeEnd(iso);
+                },
+              },
               { id: 'thismonth', label: 'This month', onClick: () => setRangeToMonth(0) },
               { id: 'lastmonth', label: 'Last month', onClick: () => setRangeToMonth(-1) },
               { id: 'fy',        label: 'This FY',    onClick: setRangeToFinancialYear },
@@ -307,6 +697,15 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           <KPI label="Per room / night" value={fmtINR(stats.adr)} sub="when room is booked" icon="tag" color={T.teal} />
           <KPI label="Per room / day" value={fmtINR(stats.revpar)} sub="across all rooms" icon="chart" color="oklch(60% 0.14 320)" />
         </div>
+
+        {/* Daily Profit & Loss — the headline cash-in / cash-out card.
+            Pure cash basis (payments minus expenses on the dates they
+            were collected / paid), unlike the Take-home card below
+            which works off billed amount minus tax / OTA commissions /
+            expenses. Both are useful: this one answers "how much did
+            we actually make this month?", the other answers "what's
+            net of every deduction on what we billed?". */}
+        <PnLCard pnl={pnl} rangeLabel={rangeLabel} rangeStart={rangeStart} rangeEnd={rangeEnd} property={property} expenseCategories={(property?.accountant?.expenseCategories) || []} />
 
         {/* Take-home breakdown (Channels / Invoicing tiers only). Engine
             properties only sell direct, so gross == net minus tax; no need

@@ -98,7 +98,15 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
     if (!amt || amt <= 0) return;
     const today = new Date();
     const dateStr = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + today.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    onSave({ id: 'p_' + Date.now(), kind, method, amount: amt, note: [note, ref].filter(Boolean).join(' · '), date: dateStr });
+    // dateIso is the machine-readable YYYY-MM-DD used by the Reports
+    // P&L + payments-by-date filter. `date` stays human-readable for the
+    // activity feed / folio display, but the iso field is what daily
+    // income aggregation reads.
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const dateIso = `${yyyy}-${mm}-${dd}`;
+    onSave({ id: 'p_' + Date.now(), kind, method, amount: amt, note: [note, ref].filter(Boolean).join(' · '), date: dateStr, dateIso });
   };
 
   return (

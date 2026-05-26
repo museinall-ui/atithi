@@ -21,6 +21,10 @@ supabase/migrations/20260527_room_and_property_photos.sql
 supabase/migrations/20260528_coupons.sql
 supabase/migrations/20260529_voice_notes.sql
 supabase/migrations/20260530_widget_fields_and_closed_units.sql
+supabase/migrations/20260601_expenses.sql
+supabase/migrations/20260602_multi_account_close.sql
+supabase/migrations/20260603_team_invites.sql
+supabase/migrations/20260604_membership_permissions.sql            ← new (per-member permission picker)
 ```
 
 After each `Run`, expect a green **Success. No rows returned** message. If you get a red error, copy it back to me — but `add column if not exists` should never error on an existing column.
@@ -38,10 +42,12 @@ order by table_name, column_name;
 ```
 
 You should see (among others):
-- `properties`: `short_code`, `embed_button`, `arrivals_recipients`, `tagline`, `photo_gallery`, `coupons`, `meal_plans`, `default_meal_plan_id`, `channel_commissions`, `base_capacity_adults`, `rate_plans`, `seasons`, `weekend_rules`, `channel_markups`, `payment_qr_data_url`, `logo_data_url`
+- `properties`: `short_code`, `embed_button`, `arrivals_recipients`, `tagline`, `photo_gallery`, `coupons`, `meal_plans`, `default_meal_plan_id`, `channel_commissions`, `base_capacity_adults`, `rate_plans`, `seasons`, `weekend_rules`, `channel_markups`, `payment_qr_data_url`, `logo_data_url`, `cash_accounts`
 - `room_categories`: `extra_adult`, `extra_child`, `gst_rate`, `photo_data_url`
 - `bookings`: `meal_plan_id`, `rate_plan_id`, `email`, `events`, `coupon_code`, `discount_amount`, `voice_notes`
 - `rate_overrides`: `closed_units`
+- `memberships`: `permissions`
+- `pending_invites`: `permissions`
 
 If any are missing, the migration for that table didn't run — re-paste that file.
 

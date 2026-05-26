@@ -14,7 +14,7 @@ import { supabase } from '../supabase.js';
 export async function loadMembers(propertyId) {
   const { data, error } = await supabase
     .from('memberships')
-    .select('id, user_id, role, accepted_at, invited_by, created_at')
+    .select('id, user_id, role, permissions, accepted_at, invited_by, created_at')
     .eq('property_id', propertyId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -25,7 +25,7 @@ export async function loadMembers(propertyId) {
 export async function loadInvites(propertyId) {
   const { data, error } = await supabase
     .from('pending_invites')
-    .select('id, email, role, invited_at, expires_at, token')
+    .select('id, email, role, permissions, invited_at, expires_at, token')
     .eq('property_id', propertyId)
     .order('invited_at', { ascending: false });
   if (error) throw error;
@@ -33,7 +33,11 @@ export async function loadInvites(propertyId) {
 }
 
 // Create an invite. Email lookups are case-insensitive (citext).
-export async function inviteToTeam(propertyId, userId, email, role) {
+// `permissions` is an explicit array of permission strings the invitee
+// will land with. Empty array means "use the role's defaults" (the app
+// resolves that client-side). Saved on the invite so the hotelier's
+// pick survives until the invitee actually signs in.
+export async function inviteToTeam(propertyId, userId, email, role, permissions) {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Invalid email');
   const { data, error } = await supabase
@@ -42,6 +46,7 @@ export async function inviteToTeam(propertyId, userId, email, role) {
       email: cleanEmail,
       property_id: propertyId,
       role,
+      permissions: Array.isArray(permissions) ? permissions : [],
       invited_by: userId || null,
     })
     .select()
@@ -65,6 +70,16 @@ export async function setMemberRole(membershipId, role) {
   if (error) throw error;
 }
 
+// Replace an existing member's permissions array. Saves the full
+// override (empty array → app falls back to role defaults).
+export async function setMemberPermissions(membershipId, permissions) {
+  const { error } = await supabase
+    .from('memberships')
+    .update({ permissions: Array.isArray(permissions) ? permissions : [] })
+    .eq('id', membershipId);
+  if (error) throw error;
+}
+
 // Remove a member.
 export async function removeMember(membershipId) {
   const { error } = await supabase.from('memberships').delete().eq('id', membershipId);
@@ -79,7 +94,7 @@ export async function acceptPendingInvitesForUser(user) {
   if (!user || !user.email) return [];
   const { data: invites, error } = await supabase
     .from('pending_invites')
-    .select('id, property_id, role')
+    .select('id, property_id, role, permissions')
     .eq('email', user.email.toLowerCase());
   if (error) throw error;
   if (!invites || !invites.length) return [];
@@ -87,11 +102,13 @@ export async function acceptPendingInvitesForUser(user) {
   for (const inv of invites) {
     // Create membership. Unique constraint on (user_id, property_id)
     // means a duplicate (e.g. user was somehow already added) errors
-    // and we just skip the invite.
+    // and we just skip the invite. Permissions copied straight from
+    // the invite so what the hotelier picked is what the invitee gets.
     const { error: mErr } = await supabase.from('memberships').insert({
       user_id: user.id,
       property_id: inv.property_id,
       role: inv.role,
+      permissions: Array.isArray(inv.permissions) ? inv.permissions : [],
       accepted_at: new Date().toISOString(),
     });
     if (mErr && mErr.code !== '23505') {

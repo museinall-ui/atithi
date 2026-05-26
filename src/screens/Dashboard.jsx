@@ -511,6 +511,11 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     if (!onAddPayment) return;
     const balance = b.total - b.paid;
     const noteByMethod = { cash: 'Settled at property · cash', upi: 'Settled at property · UPI' };
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateIso = `${yyyy}-${mm}-${dd}`;
     onAddPayment(b.id, {
       id: 'p_' + Date.now(),
       kind: 'payment',
@@ -518,6 +523,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
       amount: balance,
       note: noteByMethod[method] || `Settled at property · ${method}`,
       date: 'now',
+      dateIso,
     });
   };
 

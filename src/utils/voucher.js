@@ -478,6 +478,12 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     <strong>${L.thanksLine(p.name, p.city)}</strong>
   </div>
 
+  <div style="margin-top: 14px; padding: 10px 12px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 7px; font-size: 7.5pt; color: #888; line-height: 1.45; text-align: center;">
+    ${lang === 'hi'
+      ? 'Atithi बुकिंग सॉफ़्टवेयर है, प्रॉपर्टी नहीं। प्रॉपर्टी अपनी सेवाओं, आचरण और किसी भी विवाद के लिए स्वतंत्र रूप से ज़िम्मेदार है।'
+      : 'Atithi is the booking software, not the property. The property is independently responsible for its services, conduct, and any disputes.'}
+  </div>
+
   <div class="actions">
     <button onclick="window.print()">${L.printBtn}</button>
     <button class="ghost" onclick="window.close()">${L.closeBtn}</button>

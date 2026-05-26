@@ -1031,7 +1031,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               const h = computeHoldHours();
               return (
                 <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>
-                  <Icon name="info" size={11} /> Your booking will be held for {h}h while we confirm via WhatsApp / phone. No payment needed right now.
+                  <Icon name="info" size={11} /> Your booking is held for <strong>{h}h</strong> pending confirmation. After you tap <strong>Confirm</strong>, the payment QR appears — please send the advance to lock the room. We reach out on WhatsApp / phone to coordinate.
                 </div>
               );
             })()}
@@ -1197,9 +1197,17 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
         )}
       </div>
 
-      {/* Footer — small, honest Atithi credit. Helps trust ("real product, not a scam"). */}
-      <div style={{ padding: '10px 16px', borderTop: `1px solid ${T.borderSoft}`, background: T.card, fontSize: 10, color: T.ink3, textAlign: 'center', flexShrink: 0 }}>
+      {/* Footer — small, honest Atithi credit + a one-line liability
+          disclaimer. Atithi is the booking software the property uses
+          to take reservations; we're not the property and don't
+          deliver the stay. Anything about the stay itself (rooms,
+          food, service, refunds) is between the guest and the
+          property directly. */}
+      <div style={{ padding: '10px 16px', borderTop: `1px solid ${T.borderSoft}`, background: T.card, fontSize: 10, color: T.ink3, textAlign: 'center', flexShrink: 0, lineHeight: 1.5 }}>
         Booking powered by <strong>Atithi</strong>
+        <div style={{ marginTop: 3, fontSize: 9, color: T.ink3, opacity: 0.85 }}>
+          Atithi is the booking software, not the property. The property is independently responsible for its services, conduct, and any disputes.
+        </div>
       </div>
     </div>
   );

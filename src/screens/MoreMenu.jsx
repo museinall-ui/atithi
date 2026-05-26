@@ -14,6 +14,7 @@ export default function MoreMenu({ go, t, can = () => true }) {
     { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'OTAs · coming soon' },
     can('view_reports')    && { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: 'Money earned · rooms full · invoicing' },
     can('manage_expenses') && { id: 'expenses', icon: 'inr',   color: 'oklch(55% 0.15 30)', title: 'Expenses', sub: 'Daily costs · ledger · by category' },
+    can('view_reports')    && { id: 'activity', icon: 'clock', color: 'oklch(50% 0.14 265)', title: 'Activity log', sub: 'Who did what · when · timestamped' },
     { id: 'settings', icon: 'cog',   color: T.ink2,    title: t('settings'),      sub: 'Property · plan · accountant · language' },
   ].filter(Boolean);
   return (

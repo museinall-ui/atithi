@@ -18,6 +18,7 @@ import {
   loadExpenses, seedExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
 } from './cloud/expenses.js';
 import { acceptPendingInvitesForUser } from './cloud/team.js';
+import { logActivity } from './cloud/activity.js';
 import { effectivePermissions } from './components/TeamSection.jsx';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
@@ -39,6 +40,7 @@ import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
 import Onboarding from './screens/Onboarding.jsx';
 import Expenses from './screens/Expenses.jsx';
+import Activity from './screens/Activity.jsx';
 
 // HARDCODED_DEMO_MODE: when true, skips the Supabase magic-link sign-in
 // gate and runs entirely off localStorage so prospects can poke the app
@@ -456,6 +458,16 @@ export default function App() {
     return myPerms.has(perm);
   }, [myPerms]);
 
+  // Central activity-log shim. Every action that mutates property data
+  // calls this so the Activity screen has a unified who-did-what feed.
+  // No-ops cleanly in DEMO mode (no propertyId / no session) — the
+  // audit_log RLS policy requires auth anyway.
+  const logEvent = useCallback((action, targetType, targetId, meta) => {
+    const uid = session && session.user && session.user.id;
+    if (!propertyId || !uid) return;
+    logActivity(propertyId, uid, action, targetType, targetId, meta);
+  }, [propertyId, session]);
+
   useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
   useEffect(() => { saveLS(LS_KEYS.overrides, rateOverrides); }, [rateOverrides]);
@@ -811,6 +823,13 @@ export default function App() {
         entry, newPaid, newStatus, clearReleaseFields,
       }));
     }
+    logEvent(
+      entry.kind === 'refund' ? 'payment.refund'
+        : entry.kind === 'credit' || entry.kind === 'credit_note' ? 'payment.credit'
+        : 'payment.add',
+      'booking', bookingId,
+      { guest: booking.guest, amount: entry.amount, method: entry.method, newPaid, newStatus }
+    );
   };
 
   // Lightweight event-log helper. Each booking carries an optional
@@ -866,6 +885,11 @@ export default function App() {
       if (nextEvents) patch.events = nextEvents;
       syncFire('Update booking status', updateBookingCloud(bookingId, patch));
     }
+    logEvent(
+      status === 'cancelled' ? 'booking.cancel' : 'booking.status',
+      'booking', bookingId,
+      { guest: existing?.guest, fromStatus: existing?.status, toStatus: status }
+    );
 
     // Surface a snackbar with Undo when we're cancelling. Other
     // status changes don't need undo (check-in / check-out / hold-
@@ -913,6 +937,7 @@ export default function App() {
       if (nextEvents) patch.events = nextEvents;
       syncFire('Extend hold', updateBookingCloud(bookingId, patch));
     }
+    logEvent('booking.hold_extended', 'booking', bookingId, { guest: booking.guest, hours, newReleaseAt: releaseAt });
   };
 
   const moveBooking = (bookingId, patch) => {
@@ -928,6 +953,8 @@ export default function App() {
       if (nextEvents) cloudPatch.events = nextEvents;
       syncFire('Move booking', updateBookingCloud(bookingId, cloudPatch));
     }
+    const moved = bookings.find(b => b.id === bookingId);
+    logEvent('booking.move', 'booking', bookingId, { guest: moved?.guest, patch });
   };
 
   const setBookingGst = (bookingId, value) => {
@@ -943,6 +970,7 @@ export default function App() {
       if (nextEvents) patch.events = nextEvents;
       syncFire('Update invoice flag', updateBookingCloud(bookingId, patch));
     }
+    logEvent('booking.gst_toggle', 'booking', bookingId, { gstApplies: !!value });
   };
 
   // Expense ledger actions. Each fires the local state update
@@ -961,18 +989,22 @@ export default function App() {
         }
       } catch {}
     }
+    logEvent('expense.add', 'expense', expense.id, { amount: expense.amount, category: expense.category, paidVia: expense.paidVia, note: expense.note });
   };
   const removeExpense = (expenseId) => {
+    const removed = expenses.find(e => e.id === expenseId);
     setExpenses(arr => arr.filter(e => e.id !== expenseId));
     if (cloudReady && propertyId) {
       syncFire('Remove expense', removeExpenseCloud(expenseId));
     }
+    logEvent('expense.remove', 'expense', expenseId, removed ? { amount: removed.amount, category: removed.category } : {});
   };
   const updateExpense = (expenseId, patch) => {
     setExpenses(arr => arr.map(e => e.id === expenseId ? { ...e, ...patch } : e));
     if (cloudReady && propertyId) {
       syncFire('Update expense', updateExpenseCloud(expenseId, patch));
     }
+    logEvent('expense.update', 'expense', expenseId, { patch });
   };
 
   // Append a voice note to a booking. The note is an object
@@ -994,6 +1026,7 @@ export default function App() {
     if (cloudReady && propertyId && nextNotes) {
       syncFire('Add voice note', updateBookingCloud(bookingId, { voiceNotes: nextNotes, events: nextEvents }));
     }
+    logEvent('booking.voice_note_add', 'booking', bookingId, { durationSec: note.durationSec });
   };
   const removeVoiceNote = (bookingId, noteId) => {
     let nextNotes = null;
@@ -1009,6 +1042,7 @@ export default function App() {
     if (cloudReady && propertyId && nextNotes) {
       syncFire('Remove voice note', updateBookingCloud(bookingId, { voiceNotes: nextNotes, events: nextEvents }));
     }
+    logEvent('booking.voice_note_remove', 'booking', bookingId, { noteId });
   };
 
   // Mark / unmark a booking as VIP. Drives the ★ chip on BookingDetail
@@ -1027,6 +1061,7 @@ export default function App() {
       if (nextEvents) patch.events = nextEvents;
       syncFire('Update VIP flag', updateBookingCloud(bookingId, patch));
     }
+    logEvent('booking.vip_toggle', 'booking', bookingId, { vip: !!value });
   };
 
   // Issue one sequential tax invoice against a booking. The argument is a
@@ -1070,6 +1105,7 @@ export default function App() {
           if (isFinite(seq)) counters[fy] = Math.max(counters[fy] || 0, seq);
           return { ...p, invoiceCounters: counters };
         });
+        logEvent('invoice.issue', 'invoice', inv.number, { bookingId, guest: booking.guest, amount: inv.amount, recipient: inv.recipient?.name });
         return [inv];
       } catch {
         // syncCloud already notified the user via the error toast; fall
@@ -1100,12 +1136,15 @@ export default function App() {
   };
 
   const voidInvoice = (bookingId, invoiceId) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    const inv = booking?.invoices?.find(i => i.id === invoiceId);
     setBookings(arr => arr.map(b => b.id === bookingId
       ? { ...b, invoices: (b.invoices || []).map(inv => inv.id === invoiceId ? { ...inv, voided: true } : inv) }
       : b));
     if (cloudReady && propertyId) {
       syncFire('Void invoice', voidInvoiceCloud(invoiceId));
     }
+    logEvent('invoice.void', 'invoice', inv?.number || invoiceId, { bookingId, guest: booking?.guest, amount: inv?.amount });
   };
 
   const addSavedCustomExtra = (extra) => {
@@ -1214,6 +1253,7 @@ export default function App() {
         if (nextEvents) cloudPatch.events = nextEvents;
         syncFire('Update booking', updateBookingCloud(editing, cloudPatch));
       }
+      logEvent('booking.edit', 'booking', editing, { guest: data.name, diff });
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);
       const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights, effectiveRoomTypes(property));
@@ -1255,6 +1295,7 @@ export default function App() {
           const created = await syncCloud('Create booking',
             createBookingCloud(propertyId, session && session.user && session.user.id, newBk));
           setBookings(arr => [...arr, created]);
+          logEvent('booking.create', 'booking', created.id, { guest: created.guest, total: created.total, nights: created.nights, channel: created.channel });
           go('booking-confirmed', created.id);
           return;
         } catch {
@@ -1266,6 +1307,7 @@ export default function App() {
       // Offline or cloud-error fallback — assign an id locally.
       newBk.id = 'BK-' + (2854 + bookings.length);
       setBookings(arr => [...arr, newBk]);
+      logEvent('booking.create', 'booking', newBk.id, { guest: newBk.guest, total: newBk.total, nights: newBk.nights, channel: newBk.channel, offline: true });
       go('booking-confirmed', newBk.id);
     }
   };
@@ -1302,6 +1344,7 @@ export default function App() {
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
+    case 'activity':          screen = can('view_reports') ? <Activity go={go} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />;
   }

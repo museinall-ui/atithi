@@ -482,6 +482,35 @@ A multi-session round of polish + new features shipped together:
 - **BookingDetail balance buttons** restructured — big primary "Add payment · ₹X" CTA + compact icon row for Refund / Credit / Share booking / Remind ₹X.
 - **Activity feed** reads a new `booking.events[]` array — hold extensions, status transitions, moves all push structured entries with timestamps.
 
+### June 2026 — feature sweep + QA pass
+- **Daily expense tracker** — new `Expenses` screen in Manage menu (range picker, per-category bars, CSV export). Migration `20260601_expenses.sql`. Net profit on Reports take-home card.
+- **Multi-account day close-out** — Settings → Cash accounts lets the hotelier define N payment instruments (owner UPI / manager UPI / cash drawer / card terminal / bank deposit, up to 8). Dashboard close-day card renders one input per account. Migration `20260602_multi_account_close.sql`.
+- **Team profiles + invite flow** — Settings → Property Profile → Team members accordion. Invite by email + role (owner/manager/reception); first sign-in auto-creates membership via `acceptPendingInvitesForUser()`. Migration `20260603_team_invites.sql` (plain `text` for email + functional unique index on `lower(email)` — no citext extension needed).
+- **Per-night different room type within one booking** — `roomItem.nightTypes[]` array. Lets a guest move e.g. Dlx → Lux for one night of a multi-night stay. No migration (jsonb).
+- **Form C wording honest** — Reports → Compliance now says "Form C required: N bookings" with a manual-filing hint to indianfrro.gov.in (was misleadingly "filed").
+- **Channel mix donut real** — Dashboard donut computes from `bookings[].channel` instead of hardcoded percentages.
+- **Widget hold policy surfaced** — Settings → Booking link spells out the 12h (>48h to check-in) / 4h (≤48h) auto-release behaviour.
+- **PWA wrapper** — `public/manifest.webmanifest` + SVG icons + service worker. iOS / Android "Add to Home Screen" creates a standalone app launcher.
+- **Multi-month Reports** — From → To date-range picker on Reports with presets (This month / Last month / This FY / Next 14 days). All KPIs + CSV exports honor the range.
+- **Configurable child-age policy** — Settings → House rules surfaces the free / half-rate thresholds prominently with a live preview table.
+- **In-app notifications** — RED imminent-hold nudge (≤10 min from auto-release) + blue "new website booking" nudge until acknowledged.
+- **Booking edit history** — diff-based events pushed to `booking.events[]` on edit, VIP toggle, GST toggle.
+- **Voice notes on bookings** — `<audio controls>` clips attached to a booking, capped at 3 × 60s. Migration `20260529_voice_notes.sql`.
+- **Undo for cancellations** — snackbar with 10s (manual) / 30s (auto-release) window. Tap Undo restores previous status + releaseTs.
+- **Search overlay covers notes** too, not just id/name/phone/email.
+- **Custom expense categories** — hotelier adds + removes their own categories alongside the 8 defaults. Stored on `accountant.expenseCategories`.
+- **Custom payment methods** — hotelier-defined methods (e.g. "Paytm wallet", "Cheque", "Razorpay link") alongside the 5 defaults (Cash / Card / UPI / Bank / Other). Stored on `accountant.customPaymentMethods`. Resolved 3-way: defaults → custom → raw id fallback.
+- **Per-season extra-adult / extra-child override** — each season can override the category-default extra-guest rates for dates inside it. Stored on `seasons[].extraAdult` / `extraChild`.
+- **Per-booking extra-guest override** — NewBooking RoomItemCard surfaces the auto-computed per-night charge for extra adults + children, with the rate editable per item (override stored as `roomItem.extraAdultRate` / `extraChildRate` — plain numbers, win over the category/season defaults).
+- **Rate plan cancellation in hours OR days** — segmented toggle. Stored as `refundUnit` + `refundHours` on each plan; `refundHours` stays canonical so existing cancellation math doesn't change.
+- **Settings UX polish** — Save no longer closes the sheet (green "Saved" chip instead); all 11 accordions start CLOSED by default; outer Settings property card shows the uploaded logo + a solid orange EDIT pill; Integrations card removed from Settings (status tracked in CLAUDE.md / NOT_WIRED.md).
+- **Number inputs `onFocus={(e)=>e.target.select()}`** added to all 27 number inputs across Settings/NewBooking/BookingDetail/Rates/Expenses/Dashboard. Fixes the "02000" prepend bug (typing into a defaulted-to-0 number input).
+- **`.atithi-date-overlay` opt-in class** for date inputs that need their native text hidden (so a custom overlay can render the formatted label on top). Plain date inputs (Settings → Seasons From/To, Coupon expiry) render natively with no class. Critical CSS lesson: making the rule unconditional made every date input invisible + leaked the picker-indicator into ancestors (the "every click opens calendar in Seasons" bug). See `src/tokens.js`.
+- **Click anywhere in Seasons date cell** opens the picker (new `SeasonDateCell` helper).
+- **Visual feedback on Add Season / Rate Plan / Coupon** — new row auto-scrolls into view, auto-focuses first input, flashes a 2.5s green outline so the hotelier doesn't miss it.
+- **Disclaimer footer** on widget + voucher: "Atithi is the booking software, not the property. The property is independently responsible for its services, conduct, and any disputes."
+- **Share booking with voucher attached** — Web Share API path attaches the voucher HTML as a file in one tap on mobile Chrome / iOS Safari; falls back to opening the voucher print window + WhatsApp side-by-side with a hint snackbar on desktop / unsupported browsers. New `voucherHtmlString()` + `shareBookingWithVoucher()` helpers.
+
 ### Phase 1 audit-fix pass
 A late audit found a cluster of "today = May 5, 2026" hardcodes that survived the anchor migration:
 - Dashboard `todayKey()` was a static `'2026-05-05'`, so cash-closes never persisted under the actual date.

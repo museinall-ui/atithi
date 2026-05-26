@@ -12,7 +12,9 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 // (power / water / gas), maintenance (repairs / cleaning supplies),
 // supplies (toiletries / paper goods), transport (cab / fuel),
 // marketing (ads / commissions), other (everything else).
-const CATEGORIES = [
+// Hoteliers can extend this list with their own custom categories
+// — those are stored on property.accountant.expenseCategories.
+const DEFAULT_CATEGORIES = [
   { id: 'groceries',   label: 'Groceries',   icon: 'inr' },
   { id: 'salaries',    label: 'Salaries',    icon: 'users' },
   { id: 'utilities',   label: 'Utilities',   icon: 'plug' },
@@ -64,7 +66,17 @@ function DatePill({ value, onChange, label }) {
   );
 }
 
-export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpdate }) {
+export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpdate, property, onChangeProperty }) {
+  // Merged category list: built-in defaults + property-defined custom
+  // categories. Stored on accountant.expenseCategories — that field
+  // is already a jsonb that round-trips cleanly, so no migration is
+  // needed for custom categories.
+  const customCategories = useMemo(() => {
+    const arr = property?.accountant?.expenseCategories;
+    return Array.isArray(arr) ? arr : [];
+  }, [property]);
+  const CATEGORIES = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
+
   // Add-expense form state. Reset after each successful add.
   const today = ymd(new Date(ANCHOR));
   const [date, setDate] = useState(today);
@@ -72,6 +84,36 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
   const [category, setCategory] = useState('groceries');
   const [paidVia, setPaidVia] = useState('cash');
   const [note, setNote] = useState('');
+
+  // Add-new-category inline form. Tapping "+ Add custom" expands the
+  // category picker into a small inline editor.
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCatLabel, setNewCatLabel] = useState('');
+  const saveNewCategory = () => {
+    const label = newCatLabel.trim();
+    if (!label) return;
+    const id = 'cx_' + Date.now().toString(36);
+    const next = [...customCategories, { id, label, icon: 'tag' }];
+    if (onChangeProperty) {
+      onChangeProperty(prev => ({
+        ...prev,
+        accountant: { ...(prev.accountant || {}), expenseCategories: next },
+      }));
+    }
+    setCategory(id);  // auto-select the just-added category
+    setNewCatLabel('');
+    setAddingCategory(false);
+  };
+  const removeCustomCategory = (id) => {
+    const next = customCategories.filter(c => c.id !== id);
+    if (onChangeProperty) {
+      onChangeProperty(prev => ({
+        ...prev,
+        accountant: { ...(prev.accountant || {}), expenseCategories: next },
+      }));
+    }
+    if (category === id) setCategory('groceries');
+  };
 
   // Range-filter the ledger. Defaults to current calendar month
   // (same convention as Reports).
@@ -166,11 +208,14 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
             <DatePill value={date} onChange={setDate} label="Date" />
           </div>
 
-          {/* Category picker */}
+          {/* Category picker — defaults + custom (with × delete on custom)
+              + an 'Add custom' pill at the end. Tapping the add pill
+              expands an inline input to name the new category. */}
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>CATEGORY</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
             {CATEGORIES.map(c => {
               const sel = category === c.id;
+              const isCustom = customCategories.some(x => x.id === c.id);
               return (
                 <button
                   key={c.id}
@@ -186,10 +231,53 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 >
                   <Icon name={c.icon} size={10} color={sel ? T.primaryDk : T.ink3} />
                   {c.label}
+                  {isCustom && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); removeCustomCategory(c.id); }}
+                      title={`Remove "${c.label}" category`}
+                      style={{ marginLeft: 2, color: sel ? T.primaryDk : T.ink3, opacity: 0.7, fontSize: 13, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
+                    >×</span>
+                  )}
                 </button>
               );
             })}
+            {!addingCategory && (
+              <button
+                onClick={() => setAddingCategory(true)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '5px 10px', borderRadius: 999,
+                  border: `1.5px dashed ${T.border}`,
+                  background: T.card, color: T.ink3,
+                  fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                <Icon name="plus" size={10} color={T.ink3} stroke={2.2} />
+                Add custom
+              </button>
+            )}
           </div>
+          {addingCategory && (
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12, alignItems: 'center' }}>
+              <input
+                autoFocus
+                value={newCatLabel}
+                onChange={(e) => setNewCatLabel(e.target.value.slice(0, 24))}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveNewCategory(); if (e.key === 'Escape') { setAddingCategory(false); setNewCatLabel(''); } }}
+                placeholder="New category name (e.g. Laundry, Wellness)"
+                style={{ flex: 1, padding: '7px 10px', border: `1px solid ${T.primary}`, borderRadius: 7, fontSize: 12, color: T.ink, background: T.card, outline: 'none' }}
+              />
+              <button
+                onClick={saveNewCategory}
+                disabled={!newCatLabel.trim()}
+                style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newCatLabel.trim() ? T.primary : T.bgSoft, color: newCatLabel.trim() ? '#fff' : T.ink3, fontSize: 11, fontWeight: 700, cursor: newCatLabel.trim() ? 'pointer' : 'not-allowed' }}
+              >Save</button>
+              <button
+                onClick={() => { setAddingCategory(false); setNewCatLabel(''); }}
+                style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >Cancel</button>
+            </div>
+          )}
 
           {/* Paid via */}
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>PAID VIA</div>

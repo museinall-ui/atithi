@@ -1239,7 +1239,7 @@ export default function App() {
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} />; break;
-    case 'expenses':          screen = <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} />; break;
+    case 'expenses':          screen = <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} />;
   }

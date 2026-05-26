@@ -45,8 +45,8 @@ Requires Node.js (use the official installer from nodejs.org — LTS or Current 
 ### Phase 1 status: cloud migration largely done
 Bookings, payments, invoices, properties, room categories and memberships all flow through Supabase end-to-end. Three localStorage keys still need cutover (see below). The app reads from cloud on sign-in and writes through per-action with optimistic local updates; localStorage stays as a mirror so the app keeps working if a sync errors transiently.
 
-### DEMO_MODE — sign-in is currently bypassed
-`const DEMO_MODE = true` at the top of `src/App.jsx` skips the magic-link auth gate and renders the main app directly off localStorage. This was the owner's call so they could iterate on basics without the email round-trip. **Flip it back to `false` to re-enable Supabase auth** — no other code changes needed; the SignIn screen, auth listeners, and cloud-load effects are all still wired.
+### DEMO_MODE — flipped off 2026-05-26
+`const HARDCODED_DEMO_MODE = false` at the top of `src/App.jsx` — the live site now requires a real Supabase magic-link sign-in. Per-browser demo opt-in (`?demo=1` URL or "Try the demo" button on SignIn) still lets a curious visitor preview the app without an account. Flip back to `true` only if you ever need a fully-open demo deployment.
 
 ### Auth (gated by DEMO_MODE)
 - Email magic-link only (Supabase Auth → email provider). No password.

@@ -39,12 +39,13 @@ import SignIn from './screens/SignIn.jsx';
 import Onboarding from './screens/Onboarding.jsx';
 import Expenses from './screens/Expenses.jsx';
 
-// DEMO_MODE: skip the Supabase magic-link sign-in gate and run entirely off
-// localStorage so the app is immediately usable (no email round-trip, no
-// cloud dependency). The cloud-sync code paths stay intact; they're just
-// not exercised while DEMO_MODE is true. Flip this back to false once
-// auth is being added back into the productionised flow.
-const HARDCODED_DEMO_MODE = true;
+// HARDCODED_DEMO_MODE: when true, skips the Supabase magic-link sign-in
+// gate and runs entirely off localStorage so prospects can poke the app
+// with no email round-trip. Flipped to false on 2026-05-26 — the live
+// site now requires a real sign-in. Per-browser demo opt-in (?demo=1
+// URL + "Try the demo" SignIn button) still lets a curious visitor
+// preview the app without an account.
+const HARDCODED_DEMO_MODE = false;
 
 // Per-browser demo opt-in. When the hotelier (or a prospect) lands on
 // `?demo=1` or taps "Try the demo" on SignIn, we set this flag. It lets

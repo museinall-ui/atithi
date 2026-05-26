@@ -22,8 +22,16 @@ const ROLES = [
 // row in the checklist; the wiring (gating actual UI by permission) is
 // done where each feature lives. Keep the order grouped by the area
 // the hotelier thinks in: front-desk → money → reporting → admin.
+//
+// Bookings are split three ways because the most-requested role —
+// "new staff who can take phone reservations but can't change or
+// cancel anyone else's" — needs `create_bookings` without the rest.
+// Reading bookings (seeing the diary) is implicit for anyone with any
+// permission; there's no separate `view_bookings`.
 const PERMISSIONS = [
-  { id: 'manage_bookings', label: 'Manage bookings',           desc: 'Create, edit, cancel — also drag on the diary' },
+  { id: 'create_bookings', label: 'Create new bookings',       desc: 'Take a new reservation — diary cell tap, "+ New booking" button' },
+  { id: 'edit_bookings',   label: 'Edit existing bookings',    desc: 'Change dates, guests, notes, rate, status (except cancel)' },
+  { id: 'cancel_bookings', label: 'Cancel bookings',           desc: 'Set status to cancelled · process refunds (with manage_payments)' },
   { id: 'manage_payments', label: 'Record payments + refunds', desc: 'Settle balances · refund · credit notes' },
   { id: 'manage_expenses', label: 'Log expenses + day close',  desc: 'Add expenses · close the day · cash accounts' },
   { id: 'manage_rates',    label: 'Edit rate calendar',        desc: 'Daily rates · weekend uplift · close-outs · seasons' },
@@ -35,12 +43,21 @@ const PERMISSIONS = [
 
 // Role → default permissions. Used as a quick prefill when the
 // hotelier picks a role on the invite form, or when they tap
-// "Apply role defaults" on an existing member. Owner = all, manager
-// = all except managing team, reception = front-desk + money tasks.
+// "Apply role defaults" on an existing member.
+//   - Owner gets everything.
+//   - Manager gets everything except managing team (the property
+//     owner stays the only one who can add / remove team members).
+//   - Reception is the standard front-desk role: create + edit
+//     bookings + take payments + log expenses. No cancel, no rate
+//     calendar, no invoicing, no reports, no settings, no team.
+//   - For the "new staff who can only take new bookings" case the
+//     hotelier picks Reception then unchecks `edit_bookings` (or
+//     starts from any role and hand-picks just `create_bookings`
+//     + `manage_payments`).
 const ROLE_DEFAULT_PERMS = {
   owner:     PERMISSIONS.map(p => p.id),
   manager:   PERMISSIONS.filter(p => p.id !== 'manage_team').map(p => p.id),
-  reception: ['manage_bookings', 'manage_payments', 'manage_expenses'],
+  reception: ['create_bookings', 'edit_bookings', 'manage_payments', 'manage_expenses'],
 };
 
 function roleLabel(id) {
@@ -50,9 +67,19 @@ function roleLabel(id) {
 // Resolve a member's effective permissions: the stored array if any,
 // otherwise the defaults for their role. Used everywhere downstream
 // in the app that wants to ask "can this user do X?".
+//
+// Back-compat: the previous schema (yesterday's commit, dc97470) had
+// `manage_bookings` as one umbrella permission. Today's commit splits
+// that into create / edit / cancel. Any pre-split row carrying
+// `manage_bookings` is automatically treated as having all three.
 function effectivePermissions(role, stored) {
-  if (Array.isArray(stored) && stored.length > 0) return stored;
-  return ROLE_DEFAULT_PERMS[role] || [];
+  const raw = Array.isArray(stored) && stored.length > 0 ? stored : (ROLE_DEFAULT_PERMS[role] || []);
+  if (!raw.includes('manage_bookings')) return raw;
+  const out = raw.filter(p => p !== 'manage_bookings');
+  ['create_bookings', 'edit_bookings', 'cancel_bookings'].forEach(p => {
+    if (!out.includes(p)) out.push(p);
+  });
+  return out;
 }
 
 // Permission checklist used by both the member-row editor and the

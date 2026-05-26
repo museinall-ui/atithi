@@ -130,6 +130,13 @@ export function injectBaseStyles() {
       appearance: none;
       color: transparent;
       caret-color: transparent;
+      /* CRITICAL: position: relative contains the picker-indicator
+         pseudo-element below. Without it, the indicator's
+         position: absolute escapes to the nearest positioned
+         ancestor — which can be the entire screen or a card,
+         making the whole region open the date picker on tap.
+         This was the 'every click opens calendar' bug in Seasons. */
+      position: relative;
     }
     .atithi input[type="date"]::-webkit-calendar-picker-indicator {
       opacity: 0;

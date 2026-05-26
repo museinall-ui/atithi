@@ -185,6 +185,20 @@ Don't build these until basics are stable.
 
 ---
 
+## Won't pursue (revised June 2026)
+
+After a Phase 3 scope review the owner pruned two candidates that don't justify the integration work:
+
+### GSTIN auto-validation — DROPPED
+- **Why proposed:** Live lookup against `services.gst.gov.in/searchtp` to power a "Verified ✓" chip on the property header + auto-fill company name on B2B invoices.
+- **Why dropped:** We already removed the misleading "Verified" chip in the May 2026 audit pass. The remaining value (auto-fill company name on B2B invoices) is a 30-second time-save per invoice. Hotelier types the GSTIN, we trust them. If wrong, they edit the invoice.
+
+### e-FRRO / Form C filing on behalf — DROPPED
+- **Why proposed:** Auto-file Form C with the FRRO portal when a foreign guest checks in.
+- **Why dropped:** Atithi is not the legal filer; the hotelier is. Filing on someone else's behalf creates regulatory liability for Atithi as a service provider. The current "Form C required" pill + manual filing at indianfrro.gov.in is the legally correct stance. Don't try to file on behalf.
+
+---
+
 ## Hotelier audit findings (May 25, 2026)
 
 Walking through every screen as a real hotelier surfaced these gaps. Items still open are flagged ⏳; resolved ones get ✅ when shipped.

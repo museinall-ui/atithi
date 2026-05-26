@@ -556,22 +556,56 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 ## Production roadmap — external services
 
 ### Phase 1 — Foundation (cloud DB + auth) — ✅ Mostly done
-- Supabase project + schema migrations ✓
+- Supabase project + 13 schema migrations ✓ (all pasted into Supabase, verified)
 - Email magic-link auth ✓
-- Cloud sync for properties, bookings, payments, invoices ✓
-- PWA wrapper (install-to-home-screen) — **TBD**
-- Final DEMO_MODE flip — **TBD**
+- Cloud sync for properties, bookings, payments, invoices, expenses, voice notes, coupons, team invites ✓
+- PWA wrapper (install-to-home-screen) ✓
+- Final DEMO_MODE flip — **TBD** (one-line change at `src/App.jsx` ~line 42; see [DEMO_MODE_FLIP_CHECKLIST.md](./DEMO_MODE_FLIP_CHECKLIST.md))
 
-### Phase 2 — Money flow (Razorpay / UPI) — TBD
-### Phase 3 — Communication (WhatsApp Cloud API + Resend email) — TBD
-### Phase 4 — Storage (Supabase Storage for logos) — TBD
-### Phase 5 — Deferred (paid OTA channel manager, e-FRRO via GSP, GSTN — out of scope per product principle)
-### Phase 6 — Multi-user roles — schema ready, UI/policies TBD
+### Phase 2 — Money flow (Razorpay / UPI) — DEFERRED
+Owner direction (May 2026): the hotelier-uploaded payment QR rendered on every voucher is the chosen UPI flow. Razorpay payment links would only be needed if the owner wants auto-reconciled payments + tracked delivery — deferred. Don't pursue Razorpay Route / Marketplace (RBI Money Service Business rules).
+
+### Phase 3 — Communication — ACTIVE (revised June 2026)
+Pruned from 5 candidates to 2 real ones:
+- **WhatsApp Cloud API** — auto-send confirmations + scheduled balance reminders + delivery receipts. Each hotelier connects their own WhatsApp Business Account via Meta's Embedded Signup (Pattern B — see "Multi-tenant WhatsApp pattern" below). Atithi is a Meta App; each hotelier is independently Meta-verified. Highest-impact Phase 3 feature.
+- **Resend SMTP** — one-tap "Send to CA" with PDF attached, monthly auto-send. ~2 hours of work, removes a key friction for non-technical hoteliers.
+- ~~GSTIN validation~~ — **dropped.** We removed the misleading "Verified" chip in the audit pass. The remaining value (auto-fill company name on B2B invoices) doesn't justify the integration work.
+- ~~e-FRRO / Form C filing~~ — **dropped.** Atithi is not the legal filer; the hotelier is. Our "Form C required" pill + manual filing at indianfrro.gov.in is the legally correct stance. Don't try to file on behalf.
+
+### Phase 4 — Storage (Supabase Storage for logos + room photos) — TBD
+Photos currently inline as base64 (2 MB cap). Phase 4 moves them to object URLs and lifts the cap.
+
+### Phase 5 — OTA channel manager — HIGH PRIORITY (revised June 2026)
+Bumped from "deferred" to "high priority" per owner (June 2026). Most Indian small hotels get 60-80% of bookings from OTAs; without channel-manager sync the hotelier wastes 30 min/day copy-pasting OTA bookings into Atithi.
+
+**Recommended partner**: STAAH (most common with Indian small hotels, ~₹3,000-5,000/month per property, decent API docs). Alternatives: eZee Centrix (cheaper), AxisRooms (Indian budget chains).
+
+**Process**:
+1. Atithi signs as Technology Partner with STAAH (4-8 weeks, mostly paperwork)
+2. STAAH provides sandbox API + docs
+3. Atithi implements four flows: inventory push, rate push, booking ingestion (webhook), cancellation sync (6-8 weeks of dev)
+4. Settings → Channels gains a real config UI (room-type mapping, account connection)
+5. Beta with 1-2 friendly hoteliers who already use STAAH (2-4 weeks)
+6. Open Settings → Channels stops being "Coming soon"
+
+**Total timeline**: 3-5 months. **Atithi cost up-front**: ₹0 (partnership is free for Technology Partners; sometimes ~$200/month for premium tier). **Per-hotelier cost**: STAAH subscription ~₹3k-5k/month (paid by them directly to STAAH, not via Atithi).
+
+### Phase 6 — Multi-user RBAC enforcement — Partial
+Schema (`memberships` + roles) + invite flow (`pending_invites`) ✓ shipped in June 2026 sprint. Per-role UI restrictions (reception can't edit property profile, etc.) still TBD.
+
+### Multi-tenant WhatsApp pattern (Pattern B — each hotelier brings their own WABA)
+- **Atithi (us)** — gets Meta-verified ONCE as a Meta App. Provides Embedded Signup integration. Doesn't own any phone numbers.
+- **Each hotelier** — gets Meta-verified SEPARATELY as their own business (2-4 weeks, free, they do it themselves at business.facebook.com). Owns their own phone number + WhatsApp Business Account.
+- **Connection** — hotelier clicks "Connect WhatsApp" in Settings → Embedded Signup popup → grants Atithi permission to send from their number.
+- **Branding** — guests see the hotel's name in WhatsApp, not "Atithi".
+- **Billing** — per-message fees go directly to the hotelier's Meta account (₹0.07-0.50 per message).
+- This is how Cloudbeds / Hostaway / modern PMSes do WhatsApp. Right answer for a commercial multi-hotel platform.
 
 ### Cost summary (free-tier path)
 Phase 1: ₹0/month (Supabase + Vercel free).
-Phase 2: pay-as-you-go on Razorpay (~2% per transaction).
-Phase 3: ₹0/month within Meta WA Cloud + Resend free tiers.
+Phase 2: deferred.
+Phase 3: ₹0/month within Meta WA Cloud + Resend free tiers (per-message WhatsApp fees billed to hoteliers' own Meta accounts).
+Phase 5: STAAH partnership free for Atithi; ~₹3k-5k/month per property billed to hoteliers directly.
 Estimated free-tier ceiling per hotel: ~50 bookings/day before any phase outgrows quotas.
 
 ---

@@ -5,17 +5,17 @@ import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, forma
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
-  loadBookings, seedBookings,
+  loadBookings,
   createBookingCloud, updateBookingCloud,
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
 import {
-  loadSavedExtras, seedSavedExtras, addSavedExtraCloud, removeSavedExtraCloud, updateSavedExtraCloud,
-  loadRateOverrides, seedRateOverrides, setRateOverrideCloud,
-  loadCashCloses, seedCashCloses, setCashCloseCloud,
+  loadSavedExtras, addSavedExtraCloud, removeSavedExtraCloud, updateSavedExtraCloud,
+  loadRateOverrides, setRateOverrideCloud,
+  loadCashCloses, setCashCloseCloud,
 } from './cloud/extras.js';
 import {
-  loadExpenses, seedExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
+  loadExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
 } from './cloud/expenses.js';
 import { acceptPendingInvitesForUser } from './cloud/team.js';
 import { logActivity } from './cloud/activity.js';
@@ -23,6 +23,7 @@ import { effectivePermissions } from './components/TeamSection.jsx';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
+import InstallPrompt from './components/InstallPrompt.jsx';
 import Icon from './components/Icon.jsx';
 import PublicBookingWidget from './screens/PublicBookingWidget.jsx';
 import TabBar from './components/TabBar.jsx';
@@ -531,13 +532,14 @@ export default function App() {
         let result = await loadCurrentProperty(session.user.id);
         const isFirstTime = !result;
         if (isFirstTime) {
-          // For a fresh hotelier who has never dismissed the onboarding
-          // wizard, seed the cloud row with an empty skeleton instead of
-          // the demo data so the wizard fires on first launch. Existing
-          // users who already onboarded (onboarded flag set) keep their
-          // real property data as the bootstrap seed.
-          const alreadyOnboarded = !!loadLS(LS_KEYS.onboarded, false);
-          const seed = alreadyOnboarded ? property : {
+          // Brand-new cloud user — ALWAYS bootstrap with an empty
+          // skeleton, regardless of what's in localStorage. The earlier
+          // logic used localStorage `property` as the seed when the
+          // onboarded flag was set, which leaked Yatra demo data into
+          // every account that had touched the demo (the demo data is
+          // baked into localStorage by default). Empty skeleton →
+          // Onboarding wizard fires → hotelier sets up their own property.
+          const seed = {
             profile: { name: '', phone: '', city: '', checkIn: '14:00', checkOut: '11:00' },
             categories: [],
             rules: [],
@@ -547,70 +549,35 @@ export default function App() {
             theme: { hue: 38 },
           };
           result = await bootstrapProperty(session.user, seed);
+          // Reset the onboarding-dismissed flag so the wizard fires
+          // for the freshly-bootstrapped property even if the user
+          // had dismissed it during a previous DEMO session. State
+          // update drives the useEffect that writes to localStorage,
+          // so both representations stay in sync.
+          setOnboardingDismissed(false);
         }
         if (cancelled || !result) return;
 
-        // Bookings: load from cloud, seed if empty AND we have local data
-        // AND we haven't seeded already (handles the one-time migration for
-        // existing users whose property was created in Chunk 3 before this
-        // chunk landed).
-        let cloudBookings = await loadBookings(result.id);
-        const seededBefore = !!loadLS(LS_KEYS.bookingsSeeded, false);
-        const shouldSeed = cloudBookings.length === 0
-          && bookings && bookings.length > 0
-          && (isFirstTime || !seededBefore);
-        if (shouldSeed) {
-          await seedBookings(result.id, session.user.id, bookings);
-          saveLS(LS_KEYS.bookingsSeeded, true);
-          cloudBookings = await loadBookings(result.id);
-        } else if (cloudBookings.length > 0 && !seededBefore) {
-          // Cloud already has bookings — mark the flag so we don't ever
-          // re-seed (e.g. after the user intentionally cancels everything).
-          saveLS(LS_KEYS.bookingsSeeded, true);
-        }
+        // Load whatever's in the cloud. NO MORE SEEDING FROM
+        // LOCALSTORAGE — the migration path from a pre-cloud era
+        // is dead; every fresh install today has demo data in
+        // localStorage, so seeding from it = polluting new accounts
+        // with the Yatra demo. The bookingsSeeded / extrasSeeded /
+        // expensesSeeded flags are kept around so we don't ever
+        // re-seed an existing user even by mistake, but the seed
+        // calls themselves are gone.
+        const cloudBookings = await loadBookings(result.id);
+        saveLS(LS_KEYS.bookingsSeeded, true);
 
-        // Saved extras / rate overrides / cash closes — same load+seed pattern.
-        // One shared seeded flag because these three move together.
-        let [cloudExtras, cloudOverrides, cloudCloses] = await Promise.all([
+        const [cloudExtras, cloudOverrides, cloudCloses] = await Promise.all([
           loadSavedExtras(result.id),
           loadRateOverrides(result.id),
           loadCashCloses(result.id),
         ]);
-        const extrasSeededBefore = !!loadLS(LS_KEYS.extrasSeeded, false);
-        const cloudExtrasEmpty = cloudExtras.length === 0
-          && Object.keys(cloudOverrides).length === 0
-          && Object.keys(cloudCloses).length === 0;
-        const localExtrasHaveData = (savedCustomExtras && savedCustomExtras.length)
-          || (rateOverrides && Object.keys(rateOverrides).length)
-          || (cashCloses && Object.keys(cashCloses).length);
-        if (cloudExtrasEmpty && localExtrasHaveData && (isFirstTime || !extrasSeededBefore)) {
-          await Promise.all([
-            seedSavedExtras(result.id, savedCustomExtras),
-            seedRateOverrides(result.id, rateOverrides),
-            seedCashCloses(result.id, session.user.id, cashCloses),
-          ]);
-          saveLS(LS_KEYS.extrasSeeded, true);
-          [cloudExtras, cloudOverrides, cloudCloses] = await Promise.all([
-            loadSavedExtras(result.id),
-            loadRateOverrides(result.id),
-            loadCashCloses(result.id),
-          ]);
-        } else if (!cloudExtrasEmpty && !extrasSeededBefore) {
-          saveLS(LS_KEYS.extrasSeeded, true);
-        }
+        saveLS(LS_KEYS.extrasSeeded, true);
 
-        // Expenses — load + optional one-time seed from localStorage on
-        // first cloud sign-in. Independent of the extras-seeded flag
-        // because they're a separate ledger.
-        let cloudExpensesData = await loadExpenses(result.id);
-        const expensesSeededBefore = !!loadLS(LS_KEYS.expensesSeeded, false);
-        if (cloudExpensesData.length === 0 && expenses && expenses.length > 0 && (isFirstTime || !expensesSeededBefore)) {
-          await seedExpenses(result.id, session.user.id, expenses);
-          saveLS(LS_KEYS.expensesSeeded, true);
-          cloudExpensesData = await loadExpenses(result.id);
-        } else if (cloudExpensesData.length > 0 && !expensesSeededBefore) {
-          saveLS(LS_KEYS.expensesSeeded, true);
-        }
+        const cloudExpensesData = await loadExpenses(result.id);
+        saveLS(LS_KEYS.expensesSeeded, true);
 
         if (cancelled) return;
         setPropertyId(result.id);
@@ -1541,6 +1508,7 @@ export default function App() {
         );
       })()}
       <SyncOverlay t={t} />
+      <InstallPrompt />
     </div>
   );
 }

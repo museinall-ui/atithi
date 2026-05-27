@@ -47,6 +47,13 @@ export default function SyncOverlay({ t }) {
 
   // Surface a toast whenever a fresh error arrives. A subsequent successful
   // sync clears the error in the store, which hides the toast automatically.
+  //
+  // When the 6s auto-hide timer fires we ALSO call dismissSyncError() to
+  // reset the underlying state.status — otherwise the status pill (top-
+  // right red dot) sticks on red forever even after the toast has gone,
+  // and the hotelier sees a permanent error indicator with no context.
+  // The next sync attempt re-triggers the toast cleanly with a fresh
+  // lastError.at timestamp.
   useEffect(() => {
     if (!sync.lastError) {
       setErrorVisible(false);
@@ -55,7 +62,10 @@ export default function SyncOverlay({ t }) {
     if (sync.lastError.at !== lastErrorAtRef.current) {
       lastErrorAtRef.current = sync.lastError.at;
       setErrorVisible(true);
-      const id = setTimeout(() => setErrorVisible(false), 6000);
+      const id = setTimeout(() => {
+        setErrorVisible(false);
+        dismissSyncError();
+      }, 6000);
       return () => clearTimeout(id);
     }
   }, [sync.lastError]);

@@ -541,7 +541,28 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
     // roomItem simultaneously. Still allow the tap-to-open behaviour, but
     // route any attempted drag through to a navigation instead.
     const isMulti = Array.isArray(b.roomItems) && b.roomItems.length > 1;
+
+    // Auto-scroll: when the pointer hovers near an edge of the diary's
+    // scrollable container, scroll the container so the user can drop
+    // on a room category / date that was off-screen at drag start.
+    // Held-still-near-edge scrolling needs a periodic tick (pointermove
+    // alone only fires when the pointer actually moves), so we run a
+    // small interval that reads the latest position from a ref.
+    let lastPos = { x: startX, y: startY };
+    const EDGE = 70;     // px from the edge that triggers auto-scroll
+    const SPEED = 14;    // px per tick
+    const autoScrollId = setInterval(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (lastPos.y < rect.top + EDGE)         el.scrollBy({ top: -SPEED });
+      else if (lastPos.y > rect.bottom - EDGE) el.scrollBy({ top: SPEED });
+      if (lastPos.x < rect.left + EDGE)        el.scrollBy({ left: -SPEED });
+      else if (lastPos.x > rect.right - EDGE)  el.scrollBy({ left: SPEED });
+    }, 40);
+
     const move = (ev) => {
+      lastPos = { x: ev.clientX, y: ev.clientY };
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
       setDrag({ id: b.id, dx, target });
@@ -550,6 +571,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
       const dx = Math.round((ev.clientX - startX) / colW);
       const target = slotFromPoint(ev.clientX, ev.clientY);
       setDrag(null);
+      clearInterval(autoScrollId);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       // Tap vs drag: did the pointer cross a column boundary, or land on a

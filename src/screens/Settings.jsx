@@ -6,6 +6,8 @@ import NumberInput from '../components/NumberInput.jsx';
 import { useInstallPrompt } from '../components/InstallPrompt.jsx';
 import { resetMyProperty } from '../cloud/resetProperty.js';
 import { useSyncState } from '../cloud/sync.js';
+import { isWidgetRlsLive } from '../cloud/widget.js';
+import { logActivity } from '../cloud/activity.js';
 
 // Install-app card shown in Settings → Account. Always visible (no
 // dismissal sticky) so the hotelier can come back and install at any
@@ -439,6 +441,20 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     const id = setTimeout(() => setUploadError(''), 4000);
     return () => clearTimeout(id);
   }, [uploadError]);
+
+  // Does the public widget anon-RLS migration exist in Supabase yet?
+  // Drives whether we show the "Before sharing this link" amber
+  // warning in the Booking link accordion. Three states:
+  //   null     — check not yet completed (we assume not-live so the
+  //              warning shows; flips quickly once Supabase answers)
+  //   true     — migration is live, widget bookings reach cloud
+  //   false    — migration not pasted yet, warning stays visible
+  const [widgetRlsLive, setWidgetRlsLive] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    isWidgetRlsLive().then(live => { if (!cancelled) setWidgetRlsLive(live); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Track the most-recently-added item id across the Seasons / Rate
   // plans / Coupons / Meal plans / Cash accounts editors. When set,
@@ -2067,24 +2083,39 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             };
             return (
               <>
-                {/* HONEST status: until the owner pastes the anon-RLS
-                    migration (20260605_widget_anon_access.sql) into
-                    Supabase, guest bookings stay in the guest's
-                    browser only. Once pasted, this banner can be
-                    removed manually — there's no runtime check yet
-                    that detects "did the SQL run successfully". */}
-                <div style={{
-                  padding: '10px 12px', background: 'oklch(96% 0.06 75)',
-                  border: '1.5px solid oklch(72% 0.14 75)', borderRadius: 8,
-                  marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start',
-                }}>
-                  <Icon name="info" size={14} color="oklch(40% 0.14 75)" stroke={2.2} />
-                  <div style={{ fontSize: 11, color: 'oklch(35% 0.14 75)', fontWeight: 600, lineHeight: 1.5 }}>
-                    <strong>Before sharing this link with guests:</strong> paste{' '}
-                    <code style={{ background: 'oklch(98% 0.02 75)', padding: '1px 4px', borderRadius: 3, fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>supabase/migrations/20260605_widget_anon_access.sql</code>{' '}
-                    into your Supabase SQL Editor (one-time, ~30 seconds). Until then guest bookings stay in the guest's browser and never reach your diary.
+                {/* HONEST status: surfaces only when the runtime check
+                    detects that the anon-RLS migration hasn't been
+                    pasted into Supabase yet. Auto-hides once the
+                    check resolves to "live". Flip to "live" on a green
+                    chip instead if you want the hotelier to see
+                    confirmation; today we just hide it silently to
+                    keep the screen calm. */}
+                {widgetRlsLive === false && (
+                  <div style={{
+                    padding: '10px 12px', background: 'oklch(96% 0.06 75)',
+                    border: '1.5px solid oklch(72% 0.14 75)', borderRadius: 8,
+                    marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start',
+                  }}>
+                    <Icon name="info" size={14} color="oklch(40% 0.14 75)" stroke={2.2} />
+                    <div style={{ fontSize: 11, color: 'oklch(35% 0.14 75)', fontWeight: 600, lineHeight: 1.5 }}>
+                      <strong>Before sharing this link with guests:</strong> paste{' '}
+                      <code style={{ background: 'oklch(98% 0.02 75)', padding: '1px 4px', borderRadius: 3, fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>supabase/migrations/20260605_widget_anon_access.sql</code>{' '}
+                      into your Supabase SQL Editor (one-time, ~30 seconds). Until then guest bookings stay in the guest's browser and never reach your diary.
+                    </div>
                   </div>
-                </div>
+                )}
+                {widgetRlsLive === true && (
+                  <div style={{
+                    padding: '8px 12px', background: 'oklch(96% 0.05 155)',
+                    border: '1px solid oklch(72% 0.10 155)', borderRadius: 8,
+                    marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center',
+                  }}>
+                    <Icon name="check" size={13} color="oklch(35% 0.13 155)" stroke={2.4} />
+                    <div style={{ fontSize: 11, color: 'oklch(30% 0.13 155)', fontWeight: 700 }}>
+                      Guest bookings via this link will land in your diary.
+                    </div>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
                   Share this link, or paste the embed code into your hotel website. Customers fill in dates and contact details; the booking lands in your Diary marked <strong>tentative</strong> via the Website channel for you to review before confirming.
                 </div>
@@ -2687,6 +2718,13 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
   const canEditSettings = can('manage_settings');
   const [showProfile, setShowProfile] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // Upgrade-tier popup. Tier 1 (Engine) is free + active for every
+  // hotelier. Tier 2 (Channels) + Tier 3 (Invoicing) are paid add-ons
+  // that aren't wired to a real billing flow yet — tapping them opens
+  // this sheet asking the hotelier to contact support. Each tap is
+  // logged via logActivity so the owner can see which hoteliers are
+  // asking about which tier via the Activity log.
+  const [upgradeFor, setUpgradeFor] = useState(null); // null | 'channels' | 'invoicing'
   const totalUnits = property.categories.reduce((s, c) => s + (c.units || 0), 0);
   const locationLabel = [property.profile.city, property.profile.state].filter(Boolean).join(', ');
 
@@ -2833,7 +2871,27 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             return (
               <div
                 key={p.id}
-                onClick={() => onChangePlan && onChangePlan(p.id)}
+                onClick={() => {
+                  if (p.id === 'engine') {
+                    // Tier 1 — free for everyone, just switch.
+                    onChangePlan && onChangePlan(p.id);
+                    return;
+                  }
+                  // Tier 2 / 3 are paid add-ons. Open the upgrade
+                  // popup + log the click so the owner can see
+                  // upgrade interest in the Activity log.
+                  setUpgradeFor(p.id);
+                  if (propertyId && session && session.user && session.user.id) {
+                    logActivity(
+                      propertyId,
+                      session.user.id,
+                      'tier.upgrade_clicked',
+                      'tier',
+                      p.id,
+                      { from: plan, askedFor: p.id, tierName: p.name }
+                    );
+                  }
+                }}
                 className="atithi-tap"
                 style={{
                   padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
@@ -2854,8 +2912,11 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                   <div style={{ fontSize: 13, fontWeight: 700, color: sel ? p.color : T.ink }}>{p.name}</div>
                   <div style={{ fontSize: 10.5, color: T.ink3, marginTop: 1, fontWeight: 600 }}>{p.tagline}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{p.price}<span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/mo</span></div>
+                  {p.id !== 'engine' && !sel && (
+                    <span style={{ fontSize: 8.5, fontWeight: 800, color: p.color, letterSpacing: 0.5, padding: '2px 6px', background: `color-mix(in oklch, ${p.color} 12%, white)`, borderRadius: 4 }}>UPGRADE</span>
+                  )}
                 </div>
               </div>
             );
@@ -2950,6 +3011,73 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
       </div>
 
       {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
+
+      {/* Upgrade-tier popup. Shown when the hotelier taps a paid tier
+          (Channels or Invoicing) in the plan selector. We don't have
+          billing infrastructure yet so this is a friendly "contact
+          support" sheet with a WhatsApp + email shortcut. The click
+          has already been logged to audit_log before this opens. */}
+      {upgradeFor && (
+        <div
+          onClick={() => setUpgradeFor(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 220, display: 'flex', alignItems: 'flex-end' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 480, margin: '0 auto', background: T.card, borderRadius: '16px 16px 0 0', padding: 24 }}
+          >
+            <div style={{ width: 32, height: 4, background: T.border, borderRadius: 2, margin: '0 auto 18px' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: 11,
+                background: upgradeFor === 'channels' ? T.indigoLt : 'oklch(94% 0.05 195)',
+                color: upgradeFor === 'channels' ? T.indigo : T.teal,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon name="lock" size={20} stroke={2} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: T.ink }}>
+                  {upgradeFor === 'channels' ? 'Channels add-on' : 'Invoicing add-on'}
+                </div>
+                <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
+                  {upgradeFor === 'channels' ? 'OTA sync · website widget priority · ₹999/mo' : 'GST invoices · CA monthly export · ₹1,499/mo'}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '12px 14px', background: T.bgSoft, borderRadius: 10, fontSize: 12, color: T.ink2, lineHeight: 1.6, fontWeight: 600, marginBottom: 16 }}>
+              {upgradeFor === 'channels'
+                ? 'Sync rates + availability with MakeMyTrip, Booking.com, Goibibo, Agoda and Airbnb. Get OTA bookings landing directly in your diary. Currently in setup with our channel-manager partner.'
+                : 'Issue GST-compliant tax invoices (gap-free numbering, per-FY counter), maintain an invoice register, and email it to your CA in one tap each month.'}
+            </div>
+            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 8, textTransform: 'uppercase' }}>Contact support to upgrade</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              <a
+                href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hi Atithi team — I'd like to upgrade ${property?.profile?.name || 'my property'} to the ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} add-on. Please share next steps.`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, background: '#25D366', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 700 }}
+              >
+                <Icon name="wa" size={14} color="#fff" stroke={2.2} />
+                <span style={{ flex: 1 }}>WhatsApp Atithi support</span>
+                <span style={{ fontSize: 10, opacity: 0.85 }}>fastest →</span>
+              </a>
+              <a
+                href={`mailto:support@atithi.app?subject=${encodeURIComponent(`Upgrade request — ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} for ${property?.profile?.name || 'property'}`)}&body=${encodeURIComponent(`Hi,\n\nI'd like to upgrade to the ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} add-on. Please share the next steps.\n\nProperty: ${property?.profile?.name || ''}\nCity: ${property?.profile?.city || ''}\n\nThanks.`)}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, background: T.bgSoft, color: T.ink, textDecoration: 'none', fontSize: 13, fontWeight: 700, border: `1px solid ${T.borderSoft}` }}
+              >
+                <Icon name="mail" size={14} color={T.ink2} stroke={2.2} />
+                <span style={{ flex: 1 }}>Email Atithi support</span>
+                <span style={{ fontSize: 10, color: T.ink3, opacity: 0.85 }}>→</span>
+              </a>
+            </div>
+            <button
+              onClick={() => setUpgradeFor(null)}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            >Stay on Engine for now</button>
+          </div>
+        </div>
+      )}
 
       {/* Full-screen overlay while a Reset is in flight. Without this,
           the rest of the Settings card stays interactive and the user

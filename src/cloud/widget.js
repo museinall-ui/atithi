@@ -1,6 +1,42 @@
 import { supabase } from '../supabase.js';
 import { idxToDate } from '../data.js';
 
+// One-shot check: has the owner pasted the anon-RLS migration
+// (supabase/migrations/20260605_widget_anon_access.sql) into their
+// Supabase project? Runs `property_by_short_code` with a deliberately
+// non-matching slug and inspects the result. Three outcomes:
+//   - function exists + returned 0 rows → migration is live ✓
+//   - function exists + returned N rows → migration is live ✓
+//   - function does not exist (Postgres errcode 42883) → not live ✗
+//   - any other error (network, timeout) → unknown; we conservatively
+//     treat as not-live so the warning banner stays up
+//
+// Cached at module scope so the Settings screen doesn't re-hit
+// Supabase on every render. Invalidate by reloading the page.
+let _widgetRlsCheck = null; // null = not yet checked, 'live' / 'missing' once resolved
+export async function isWidgetRlsLive() {
+  if (_widgetRlsCheck) return _widgetRlsCheck === 'live';
+  try {
+    const { error } = await supabase.rpc('property_by_short_code', { p_short_code: '__atithi_runtime_check__' });
+    if (!error) {
+      _widgetRlsCheck = 'live';
+      return true;
+    }
+    // 42883 = undefined_function. Anything else (network, RLS denial,
+    // etc.) → we don't know, default to "missing" so the warning
+    // stays visible. False negative is safe; false positive isn't.
+    if (error.code === '42883' || /does not exist|undefined.*function/i.test(error.message || '')) {
+      _widgetRlsCheck = 'missing';
+      return false;
+    }
+    _widgetRlsCheck = 'missing';
+    return false;
+  } catch {
+    _widgetRlsCheck = 'missing';
+    return false;
+  }
+}
+
 // Public booking widget cloud helpers. Both functions are designed
 // to work against the anon role — the visitor isn't signed in yet
 // (they're a prospective guest landing on hotel.com/book).

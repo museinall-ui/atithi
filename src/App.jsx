@@ -61,7 +61,23 @@ function isSessionDemo() {
   try {
     const url = new URL(window.location.href);
     if (url.searchParams.get('demo') === '1') {
-      try { window.localStorage.setItem('atithi.demo.v1', 'true'); } catch {}
+      // First-time arrival via ?demo=1. Wipe any leftover real-account
+      // state so the demo starts from a clean Yatra dataset, then set
+      // the opt-in flag. Same pattern as the "Try the demo" button in
+      // SignIn — see the comment there.
+      const keysToReset = [
+        'atithi.bookings.v1', 'atithi.property.v1',
+        'atithi.customExtras.v1', 'atithi.rateOverrides.v1',
+        'atithi.cashCloses.v1', 'atithi.expenses.v1',
+        'atithi.onboarded.v1', 'atithi.bookingsSeeded.v1',
+        'atithi.extrasSeeded.v1', 'atithi.expensesSeeded.v1',
+      ];
+      try {
+        if (window.localStorage.getItem('atithi.demo.v1') !== 'true') {
+          keysToReset.forEach(k => window.localStorage.removeItem(k));
+        }
+        window.localStorage.setItem('atithi.demo.v1', 'true');
+      } catch {}
       return true;
     }
     return window.localStorage.getItem('atithi.demo.v1') === 'true';
@@ -290,17 +306,23 @@ const saveLS = (key, val) => {
 // 0 — the owner shouldn't be creating new bookings in the past.
 function parseCheckInIdx(checkInStr) {
   if (!checkInStr) return 0;
-  return Math.max(0, dateToIdx(checkInStr));
+  // Allow negative idx (past dates) — a hotelier recording a walk-in
+  // from yesterday after they forgot needs to land the booking on the
+  // actual date, not silently bumped to today. The diary already
+  // supports past dates via `pastDays`, so a past startIdx renders
+  // correctly. Only invalid date strings still default to today.
+  const idx = dateToIdx(checkInStr);
+  return isFinite(idx) ? idx : 0;
 }
 
 // Pick the lowest-numbered unit of the chosen room type that is free for the requested
-// date range. Returns 0 as a last-resort fallback if every unit is taken — the Diary's
-// conflict UI will then surface the clash to the user. Reads unit count from
-// `property.categories` so changing units in Settings flows through immediately.
+// date range. Returns null when every unit is taken so the caller can surface a clear
+// "this room type is fully booked — pick another" message instead of silently double-
+// booking unit 0 (which would just stack two pills on top of each other in the Diary).
 function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
   const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
   const room = list.find(r => r.id === roomTypeId);
-  if (!room) return 0;
+  if (!room) return null;
   const endIdx = startIdx + nights;
   for (let u = 0; u < room.units; u++) {
     const conflict = bookings.some(b =>
@@ -311,7 +333,7 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
     );
     if (!conflict) return u;
   }
-  return 0;
+  return null;
 }
 
 // Rendered in place of any screen the current user doesn't have permission
@@ -351,12 +373,27 @@ export default function App() {
   });
   const [lang, setLang] = useState(() => loadLS(LS_KEYS.lang, 'en'));
   const [route, setRoute] = useState({ name: 'home', arg: null });
-  const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, BOOKINGS_SEED.map(b => ({ ...b }))));
+  // Initial state defaults — branch on DEMO mode so a fresh real-user
+  // sign-up never sees Yatra Desert Camp's seed data flashed at them
+  // before cloud-load completes. Only the demo path (HARDCODED_DEMO_MODE
+  // or per-browser ?demo=1 opt-in) gets the prebuilt sample property +
+  // bookings; live cloud users start from a true blank slate that the
+  // bootstrap path then replaces with their actual cloud data.
+  const EMPTY_PROPERTY = {
+    profile: { name: '', phone: '', city: '', checkIn: '14:00', checkOut: '11:00' },
+    categories: [],
+    rules: [],
+    amenityIds: [],
+    customAmenities: [],
+    accountant: { name: '', email: '', firm: '' },
+    theme: { hue: 38 },
+  };
+  const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, DEMO_MODE ? BOOKINGS_SEED.map(b => ({ ...b })) : []));
   const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
   const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
   const [expenses, setExpenses] = useState(() => loadLS(LS_KEYS.expenses, []));
-  const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEFAULT_PROPERTY)));
+  const [property, setProperty] = useState(() => migrateProperty(loadLS(LS_KEYS.property, DEMO_MODE ? DEFAULT_PROPERTY : EMPTY_PROPERTY)));
   // First-run onboarding state. Auto-shows on first launch when the
   // property is empty (no name OR no room categories) and the dismissed
   // flag isn't set. The Dashboard's "Finish setting up" nudge remains as
@@ -437,25 +474,40 @@ export default function App() {
   useEffect(() => { propertyIdRef.current = propertyId; }, [propertyId]);
   useEffect(() => { cloudReadyRef.current = cloudReady; }, [cloudReady]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  // Diff-sync refs hoisted above the cloud-load useEffect so the cloud
+  // load can snapshot them with the freshly-loaded cloud values BEFORE
+  // the diff-sync effects fire. Without that snapshot, the very first
+  // diff would compare stale localStorage state to fresh cloud data
+  // and produce spurious delete-this-from-cloud / write-stale-to-cloud
+  // calls — silent data corruption on every sign-in.
+  const savedExtrasRef = useRef(savedCustomExtras);
+  const rateOverridesRef = useRef(rateOverrides);
+  const cashClosesRef = useRef(cashCloses);
   const t = useT(lang);
 
   // RBAC. `can(permission)` is the single helper every screen calls to
   // decide whether to show a button / open an action sheet. Resolves
   // against the current member's stored permissions array, falling
-  // back to the role's defaults via effectivePermissions(). Two
-  // short-circuits make life easier:
-  //   1. DEMO mode (no session) → can() always returns true. Single
+  // back to the role's defaults via effectivePermissions(). Three
+  // ways the helper resolves:
+  //   1. DEMO mode (no session at all) → can() returns true. Single
   //      hotelier poking the app needs to see everything.
-  //   2. currentMember not yet loaded → can() returns true. Avoids a
-  //      flash of "you don't have permission" while the cloud fetch
-  //      is in flight; downstream cloud writes are still gated by
-  //      Supabase RLS so this isn't a security hole.
+  //   2. Signed-in, currentMember loaded → check against the perm set.
+  //   3. Signed-in, currentMember NOT yet loaded (cloud fetch in
+  //      flight) → can() returns FALSE. We previously returned true
+  //      here "to avoid a flash" — but that left a 500ms window
+  //      where a Reception staffer could deep-link to BookingDetail,
+  //      tap Cancel before currentMember loaded, and the optimistic
+  //      local update would land + the cloud write succeed (RLS only
+  //      checks membership, not role). Closing that hole is more
+  //      important than the brief loading flash.
   const myPerms = useMemo(() => {
-    if (!currentMember) return null; // null = wildcard
+    if (!session) return null;           // null = DEMO / unauthenticated
+    if (!currentMember) return new Set(); // empty = signed-in but member not yet loaded → deny
     return new Set(effectivePermissions(currentMember.role, currentMember.permissions));
-  }, [currentMember]);
+  }, [session, currentMember]);
   const can = useCallback((perm) => {
-    if (!myPerms) return true;
+    if (myPerms === null) return true;  // DEMO mode wildcard
     return myPerms.has(perm);
   }, [myPerms]);
 
@@ -510,9 +562,29 @@ export default function App() {
   // over. Subsequent sign-ins read from the cloud as the source of truth.
   useEffect(() => {
     if (!session) {
+      // Full local-state reset on sign-out — otherwise the previous
+      // user's bookings / property / expenses / etc linger in memory
+      // (and in localStorage via the save-LS effects) and the next
+      // user who signs in on the same browser sees that data flash
+      // before their own cloud data loads. Worse: the diff-sync
+      // effects could write the stale data into the new user's
+      // cloud account before being overwritten.
+      //
+      // CRITICAL: only clear state when we had a session before AND
+      // this is a transition. Without this guard, the effect also
+      // fires on initial mount under DEMO mode (where session is
+      // null by design) — and wipes out the just-loaded demo
+      // bookings / property before they ever render.
       setPropertyId(null);
       setCloudReady(false);
       setCurrentMember(null);
+      if (DEMO_MODE) return; // DEMO has no session by design — don't wipe demo data
+      setBookings([]);
+      setProperty(EMPTY_PROPERTY);
+      setExpenses([]);
+      setCashCloses({});
+      setRateOverrides({});
+      setSavedCustomExtras([]);
       return;
     }
     let cancelled = false;
@@ -588,6 +660,13 @@ export default function App() {
         setCashCloses(cloudCloses);
         setExpenses(cloudExpensesData);
         setCurrentMember({ role: result.role, permissions: result.permissions || [] });
+        // Snapshot the diff-sync refs to the just-loaded cloud values so the
+        // first diff-sync effect after cloudReady=true sees cloud-vs-cloud
+        // (no diff, no spurious writes) instead of stale-local-vs-cloud
+        // (which would fire wrong deletes / wrong inserts at the cloud).
+        savedExtrasRef.current = cloudExtras;
+        rateOverridesRef.current = cloudOverrides;
+        cashClosesRef.current = cloudCloses;
         setCloudReady(true);
       } catch (err) {
         notifySyncFailure('Load from cloud', err);
@@ -619,7 +698,7 @@ export default function App() {
   // at the cloud as add/remove/upsert. This keeps the screens unaware of
   // cloud sync — they just call setSavedCustomExtras/setRateOverrides/etc.
   // as before, and the diff effect propagates per-cell changes upstream.
-  const savedExtrasRef = useRef(savedCustomExtras);
+  // (Refs are declared above the cloud-load useEffect — see comment there.)
   useEffect(() => {
     if (!cloudReady || !propertyId) { savedExtrasRef.current = savedCustomExtras; return; }
     const prev = savedExtrasRef.current;
@@ -651,7 +730,6 @@ export default function App() {
     savedExtrasRef.current = next;
   }, [savedCustomExtras, cloudReady, propertyId]);
 
-  const rateOverridesRef = useRef(rateOverrides);
   useEffect(() => {
     if (!cloudReady || !propertyId) { rateOverridesRef.current = rateOverrides; return; }
     const prev = rateOverridesRef.current;
@@ -674,7 +752,6 @@ export default function App() {
     rateOverridesRef.current = next;
   }, [rateOverrides, cloudReady, propertyId]);
 
-  const cashClosesRef = useRef(cashCloses);
   useEffect(() => {
     if (!cloudReady || !propertyId) { cashClosesRef.current = cashCloses; return; }
     const prev = cashClosesRef.current;
@@ -697,8 +774,18 @@ export default function App() {
   // Cancellations also sync to the cloud so cross-device state stays consistent.
   // We use refs (not state values from this closure) because the interval is
   // set up once on mount and would otherwise hold a stale cloudReady/propertyId.
+  //
+  // Gated on cloudReadyRef.current AND a session — without that, on startup
+  // the first tick would scan stale localStorage bookings (potentially from
+  // a previous user's session if same browser) and fire cancellations + cloud
+  // syncs against booking ids that don't belong to the current user's property.
   useEffect(() => {
     const tick = () => {
+      // Don't touch tentative bookings until the cloud has caught up —
+      // otherwise we'd cancel-and-sync stale local-only data the cloud
+      // doesn't know about, against booking IDs that may not exist in
+      // the current user's property at all.
+      if (!cloudReadyRef.current || !sessionRef.current) return;
       const now = Date.now();
       const changed = [];
       setBookings(arr => {
@@ -765,8 +852,15 @@ export default function App() {
   const addPayment = (bookingId, entry) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
+    // Synthetic payment row for legacy bookings that have `paid > 0` but
+    // no proper payments[] ledger. Used so the balance math stays
+    // consistent when a new payment lands. The date used to be the
+    // hardcoded literal '03 May · 18:25' — which then got written to
+    // the cloud as part of payments[] and corrupted real ledgers
+    // forever. Now we use empty (rendered as "—") so it's clearly a
+    // pre-history marker, not a fabricated timestamp.
     const existing = booking.payments || (booking.paid > 0
-      ? [{ id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Initial payment', date: '03 May · 18:25' }]
+      ? [{ id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Pre-existing balance · date not recorded', date: '' }]
       : []);
     const nextPayments = [...existing, entry];
     const newPaid = nextPayments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
@@ -1223,7 +1317,20 @@ export default function App() {
       logEvent('booking.edit', 'booking', editing, { guest: data.name, diff });
     } else {
       const startIdx = parseCheckInIdx(data.checkIn);
-      const unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights, effectiveRoomTypes(property));
+      let unitIdx = findFirstFreeUnit(bookings, data.roomTypeId, startIdx, data.nights, effectiveRoomTypes(property));
+      if (unitIdx === null) {
+        // Every unit of this room type is booked for the requested dates.
+        // We confirm with the hotelier rather than silently dropping the
+        // booking on unit 0 (which stacked two pills in the Diary with no
+        // warning). They can still proceed (overbookings happen with OTA
+        // bookings) — but they go in eyes-open.
+        const roomType = effectiveRoomTypes(property).find(r => r.id === data.roomTypeId);
+        const proceed = window.confirm(
+          `All ${roomType?.units || ''} unit${(roomType?.units || 0) === 1 ? '' : 's'} of ${roomType?.name || 'this room type'} are already booked for these dates.\n\nDo you want to create this booking anyway? (It will appear stacked on unit 1 and you'll need to move it once a unit frees up.)`
+        );
+        if (!proceed) return;
+        unitIdx = 0;
+      }
       const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
       const newBk = {
         roomTypeId: data.roomTypeId,
@@ -1434,7 +1541,16 @@ export default function App() {
                 const t = (d.textContent || '').trim();
                 return t === "TODAY'S NUDGES" || t === 'आज की सूचनाएँ';
               });
-              if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              } else {
+                // No nudges card today (calm dashboard). Scroll to top
+                // so the tap still does something useful instead of
+                // looking broken.
+                const scroll = document.querySelector('[data-dashboard-scroll]')
+                  || (document.scrollingElement || document.documentElement);
+                if (scroll && scroll.scrollTo) scroll.scrollTo({ top: 0, behavior: 'smooth' });
+              }
             }}
             aria-label="Today's nudges"
             style={{

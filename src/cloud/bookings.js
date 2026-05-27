@@ -53,6 +53,22 @@ function cloudBookingToLocal(row, payments, invoices) {
       amount: p.amount || 0,
       note: p.note || '',
       date: p.created_at,
+      // dateIso is what Reports.jsx P&L reads to attribute income to
+      // the day the cash was collected. Newly recorded payments
+      // persist their own dateIso (from PaymentSheet); any cloud
+      // payment that pre-dates that field gets a sensible ISO derived
+      // from created_at so the P&L doesn't fall back to the booking's
+      // check-in date (which would be off by days/weeks for advance
+      // payments).
+      dateIso: (() => {
+        if (!p.created_at) return undefined;
+        const d = new Date(p.created_at);
+        if (isNaN(d.getTime())) return undefined;
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      })(),
     })),
     invoices: (invoices || []).map(i => ({
       id: i.id,

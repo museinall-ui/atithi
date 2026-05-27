@@ -569,7 +569,22 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, marginTop: 2 }} className="hi">
               {t('namaste')}
             </div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 1 }}>{property?.profile?.name || 'Yatra Desert Camp'} · {property?.profile?.city || 'Jaisalmer'}</div>
+            {/* Property name + city. Until the hotelier has set up
+                their profile (first visit, Onboarding wizard not yet
+                completed), this prompts them with a soft nudge —
+                instead of falsely labelling their app with a demo
+                property's name (the old fallback was "Yatra Desert
+                Camp · Jaisalmer" which read as "this app pretends to
+                be someone else's hotel" to a fresh user). */}
+            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 1 }}>
+              {(() => {
+                const name = (property?.profile?.name || '').trim();
+                const city = (property?.profile?.city || '').trim();
+                if (name && city) return `${name} · ${city}`;
+                if (name) return name;
+                return isHi ? 'Settings में अपनी होटल जोड़ें' : 'Add your hotel in Settings →';
+              })()}
+            </div>
           </div>
           {/* Notifications bell removed — it didn't open anything. Will return
               when there's a real notifications inbox (Phase 3 — WhatsApp /

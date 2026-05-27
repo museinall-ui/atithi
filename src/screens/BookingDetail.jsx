@@ -435,7 +435,17 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   // populate b.payments properly. The hardcoded "Razorpay UPI · auto-
   // captured · 03 May · 18:25" copy was a false claim; this is honestly
   // labelled as a pre-payment that landed when the booking was created.
-  const payments = b.payments || (b.paid > 0 ? [{ id: 'p1', kind: 'payment', method: b.channel === 'direct' ? 'upi' : 'card', amount: b.paid, note: b.channel === 'direct' ? 'Initial payment · recorded' : `${ch.label} pre-payment`, date: '' }] : []);
+  // Synthetic payment row for legacy bookings (paid > 0 but no proper
+  // payments[] ledger). Uses the booking's check-in date as the
+  // fallback date so the ledger row doesn't render with a blank
+  // timestamp. Display-only — this isn't written to the cloud.
+  const payments = b.payments || (b.paid > 0 ? [{
+    id: 'p1', kind: 'payment',
+    method: b.channel === 'direct' ? 'upi' : 'card',
+    amount: b.paid,
+    note: b.channel === 'direct' ? 'Initial payment · recorded' : `${ch.label} pre-payment`,
+    date: b.startIdx != null ? new Date(new Date(ANCHOR).setDate(new Date(ANCHOR).getDate() + b.startIdx)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
+  }] : []);
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
   const statusInfo = STATUS[b.status];

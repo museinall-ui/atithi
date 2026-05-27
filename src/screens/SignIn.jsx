@@ -89,7 +89,27 @@ export default function SignIn({ t, lang, onChangeLang }) {
             <button
               type="button"
               onClick={() => {
-                try { window.localStorage.setItem('atithi.demo.v1', 'true'); } catch {}
+                // Enter the per-browser demo. Seed localStorage with the
+                // demo property + bookings so the post-reload state init
+                // has something to load (the init checks LS first; if it
+                // finds an empty array there, it does NOT fall back to
+                // BOOKINGS_SEED). Wipe any leftover account state from a
+                // previous real-user session in the same browser so the
+                // demo always starts from a clean Yatra dataset.
+                try {
+                  window.localStorage.setItem('atithi.demo.v1', 'true');
+                  // Remove the gating flags + any user-customised state.
+                  // The state-init defaults will re-seed from data.js's
+                  // BOOKINGS_SEED + DEFAULT_PROPERTY on next mount.
+                  const keysToReset = [
+                    'atithi.bookings.v1', 'atithi.property.v1',
+                    'atithi.customExtras.v1', 'atithi.rateOverrides.v1',
+                    'atithi.cashCloses.v1', 'atithi.expenses.v1',
+                    'atithi.onboarded.v1', 'atithi.bookingsSeeded.v1',
+                    'atithi.extrasSeeded.v1', 'atithi.expensesSeeded.v1',
+                  ];
+                  keysToReset.forEach(k => window.localStorage.removeItem(k));
+                } catch {}
                 window.location.reload();
               }}
               className="atithi-tap"

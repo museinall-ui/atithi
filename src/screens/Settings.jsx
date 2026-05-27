@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
 import TeamSection from '../components/TeamSection.jsx';
+import { resetMyProperty } from '../cloud/resetProperty.js';
 
 // Click-anywhere date cell for the Seasons editor. Wraps a hidden
 // (opacity:0) date input under a labelled overlay so tapping anywhere
@@ -2383,6 +2384,43 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
     // to reset signingOut here — this component will unmount.
   };
 
+  // Reset-my-property flow. Two-step confirm: tap once to arm, tap
+  // again within 5 seconds to actually wipe. Prevents accidental
+  // taps from nuking real data, without putting a clunky modal in
+  // the way for the hotelier who genuinely needs to reset.
+  const [resetArmed, setResetArmed] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const handleReset = async () => {
+    if (resetting) return;
+    if (!resetArmed) {
+      setResetArmed(true);
+      setTimeout(() => setResetArmed(false), 5000);
+      return;
+    }
+    setResetting(true);
+    setResetError('');
+    try {
+      await resetMyProperty(propertyId);
+      // Wipe localStorage demo data so the cloud-empty state isn't
+      // overwritten by stale local state on the next render. We
+      // remove every atithi.*.v1 key — they'll be re-seeded from
+      // the cloud (which is now empty) when the page reloads.
+      try {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('atithi.'));
+        keys.forEach(k => localStorage.removeItem(k));
+      } catch {}
+      // Hard reload — easiest way to guarantee the cloud-load path
+      // re-runs against the freshly-cleared property, the
+      // Onboarding wizard fires, and no stale React state lingers.
+      window.location.reload();
+    } catch (e) {
+      setResetting(false);
+      setResetArmed(false);
+      setResetError(e?.message || 'Reset failed — please try again');
+    }
+  };
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('settings')} subtitle={property.profile.name} onBack={() => go('home')} />
@@ -2546,6 +2584,47 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 </Btn>
               </div>
             </Card>
+
+            {/* Danger zone — full property reset. Two-tap confirm so
+                accidental taps don't wipe real data. Only visible to
+                members with manage_settings; reception staff don't
+                need this lever and definitely shouldn't have it. */}
+            {canEditSettings && (
+              <>
+                <SectionHead title="Danger zone" style={{ marginTop: 16 }} />
+                <Card padding={14} style={{ border: `1.5px solid ${T.danger}`, background: 'oklch(99% 0.012 30)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.danger, marginBottom: 4 }}>
+                    Reset my property to a fresh start
+                  </div>
+                  <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+                    Wipes <strong>all bookings, payments, invoices, expenses, cash close-outs, rate overrides, room categories,</strong> and resets the property profile. Your sign-in + team members stay. Use this if your account got polluted with sample data and you want to start clean. <strong>This cannot be undone.</strong>
+                  </div>
+                  {resetError && (
+                    <div style={{ padding: '8px 10px', background: 'oklch(95% 0.06 30)', borderRadius: 7, fontSize: 11, color: T.danger, fontWeight: 600, marginBottom: 10 }}>
+                      {resetError}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleReset}
+                    disabled={resetting}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: 8,
+                      border: `1.5px solid ${T.danger}`,
+                      background: resetArmed ? T.danger : 'transparent',
+                      color: resetArmed ? '#fff' : T.danger,
+                      fontSize: 12, fontWeight: 700, cursor: resetting ? 'wait' : 'pointer',
+                      letterSpacing: resetArmed ? 0.4 : 0,
+                    }}
+                  >
+                    {resetting
+                      ? 'Resetting…'
+                      : resetArmed
+                        ? 'TAP AGAIN TO CONFIRM RESET'
+                        : 'Reset my property'}
+                  </button>
+                </Card>
+              </>
+            )}
           </>
         )}
       </div>

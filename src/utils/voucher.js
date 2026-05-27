@@ -1,15 +1,21 @@
 import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
 import { themeColors } from '../tokens.js';
 
+// Empty fallback used when the caller passes no property at all. We
+// used to fall back to Yatra Desert Camp's profile here — which meant
+// a real hotelier's voucher would be branded with someone else's hotel
+// if the property hadn't loaded yet at the time generateVoucher() ran.
+// Genuinely awful for production. Now the fallback is empty + the
+// generateVoucher entry-point refuses to render a partial property.
 const FALLBACK_PROPERTY = {
   profile: {
-    name: 'Yatra Desert Camp',
-    address: 'Sam Sand Dunes Road, near Khuri',
-    city: 'Jaisalmer', state: 'Rajasthan', pincode: '345001',
+    name: '',
+    address: '',
+    city: '', state: '', pincode: '',
     landmark: '',
     mapUrl: '',
     checkIn: '14:00', checkOut: '11:00',
-    phone: '+91 98290 12345',
+    phone: '',
   },
 };
 
@@ -153,7 +159,24 @@ const VSTR = {
 };
 
 export function generateVoucher(b, rt, property, invoice, lang = 'en') {
-  const prop = property && property.profile ? property : FALLBACK_PROPERTY;
+  // Refuse to render a voucher when the property has no name. Without
+  // this guard we'd silently use FALLBACK_PROPERTY (now empty, used to
+  // be Yatra's profile) and ship a guest a voucher with no — or worse,
+  // someone else's — hotel name. Better to surface the gap to the
+  // hotelier so they finish the Property Profile first.
+  const hasProp = property && property.profile && (property.profile.name || '').trim().length > 0;
+  if (!hasProp) {
+    const w = window.open('', '_blank', 'width=700,height=500');
+    if (w) {
+      const msg = lang === 'hi'
+        ? 'पहले Settings में अपनी होटल की जानकारी भरें — नाम, पता और चेक-इन समय — फिर वाउचर तैयार होगा।'
+        : "Add your hotel's name and address in Settings → Property profile first, then the voucher can be generated.";
+      w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Property not set up</title></head><body style="font-family: sans-serif; padding: 40px; max-width: 480px; margin: 0 auto; color: #1a1a1a;"><h2 style="color: #C8553D;">Property profile is empty</h2><p style="line-height: 1.5;">${msg}</p><button onclick="window.close()" style="margin-top: 20px; padding: 10px 18px; border-radius: 8px; border: none; background: #C8553D; color: #fff; font-weight: 700; cursor: pointer;">Close</button></body></html>`);
+      w.document.close();
+    }
+    return;
+  }
+  const prop = property;
   const p = prop.profile;
   // Inject the hotelier's brand colour into the printable HTML. The voucher
   // opens in a new window so it doesn't inherit the app's CSS variables —

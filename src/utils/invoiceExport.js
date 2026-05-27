@@ -215,6 +215,13 @@ export async function sendInvoiceListViaResend({ invoices, property, propertyId,
   // CA can save the whole email as PDF and get the same artifact.
   const body = intro + html;
 
+  // AbortController with 12s timeout so a hung fetch (cold-start Vercel
+  // function, intermittent network) doesn't leave the "Sending…"
+  // snackbar visible forever. Without this the hotelier's UI looks
+  // permanently broken — they can't fall back to mailto until the
+  // promise either resolves or rejects.
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), 12000);
   try {
     const resp = await fetch('/api/send-to-ca', {
       method: 'POST',
@@ -229,7 +236,9 @@ export async function sendInvoiceListViaResend({ invoices, property, propertyId,
         replyTo: property?.profile?.email || undefined,
         propertyId,
       }),
+      signal: ac.signal,
     });
+    clearTimeout(timeoutId);
     if (resp.ok) {
       const data = await resp.json();
       return { ok: true, id: data?.id };
@@ -238,6 +247,10 @@ export async function sendInvoiceListViaResend({ invoices, property, propertyId,
     try { const j = await resp.json(); detail = j.error || j.detail || ''; } catch { detail = await resp.text(); }
     return { ok: false, code: resp.status === 503 ? 'no_resend' : ('http_' + resp.status), error: detail || 'Send failed' };
   } catch (e) {
+    clearTimeout(timeoutId);
+    if (e?.name === 'AbortError') {
+      return { ok: false, code: 'timeout', error: 'Send took too long (12s timeout). Falling back to your email client.' };
+    }
     // Network error, no server reachable (e.g. local dev where the
     // /api function doesn't exist), CORS, etc. Treat as unavailable
     // so the caller falls back to mailto.

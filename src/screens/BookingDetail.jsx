@@ -1132,14 +1132,14 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           {b.status === 'confirmed' && canEdit && (
-            <Btn variant="soft" icon="door" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Log check-in</Btn>
+            <Btn variant="soft" icon="door" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Log check-in</Btn>
           )}
           {b.status === 'checkedin' && canEdit && (
-            <Btn variant="soft" icon="check" full onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Log check-out</Btn>
+            <Btn variant="soft" icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Log check-out</Btn>
           )}
           {b.status === 'tentative' && (
             <>
-              {canCancel && <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'cancelled')}>Cancel</Btn>}
+              {canCancel && <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => { if (window.confirm('Cancel this booking? You can undo for 10 seconds after.')) onSetStatus && onSetStatus(b.id, 'cancelled'); }}>Cancel</Btn>}
               {canEdit && <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>}
             </>
           )}
@@ -1147,7 +1147,25 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
           )}
           {b.status === 'checkout' && (
-            <Btn variant="soft" icon="check" full disabled>Stay complete</Btn>
+            <Btn variant="soft" icon="check" style={{ flex: 1 }} disabled>Stay complete</Btn>
+          )}
+          {/* Cancel a confirmed / checked-in / checked-out booking.
+              Real day-one need (no-show, walk-in cancel, duplicate entry,
+              fraud booking) — used to be impossible from the UI because
+              the Cancel button only rendered for status === 'tentative'.
+              Confirm dialog protects against misclick + ledger
+              cancellation has an undo snackbar. */}
+          {(b.status === 'confirmed' || b.status === 'checkedin' || b.status === 'checkout') && canCancel && (
+            <Btn
+              variant="ghost"
+              icon="x"
+              style={{ flex: 1 }}
+              onClick={() => {
+                if (window.confirm(`Cancel booking ${b.id}? This marks ${b.guest} as cancelled. You can undo for 10 seconds after, or Re-open the booking later.`)) {
+                  onSetStatus && onSetStatus(b.id, 'cancelled');
+                }
+              }}
+            >Cancel booking</Btn>
           )}
         </div>
       </div>

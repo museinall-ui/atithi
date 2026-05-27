@@ -155,12 +155,13 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
 
   return (
     <div
+      onClick={onDismiss}
       style={{
         position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)',
         zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       }}
     >
-      <div style={{
+      <div onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 480, background: T.card,
         borderRadius: '20px 20px 0 0', padding: '20px 18px 28px',
         display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '92%', overflow: 'auto',

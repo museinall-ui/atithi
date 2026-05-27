@@ -21,6 +21,7 @@ import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Chip from '../components/Chip.jsx';
 import Field from '../components/Field.jsx';
+import NumberInput from '../components/NumberInput.jsx';
 import Card from '../components/Card.jsx';
 import Toggle from '../components/Toggle.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
@@ -162,7 +163,12 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
               </div>
             </div>
           </div>
-          <Field label={t('nights')} value={data.nights} onChange={(e) => set('nights', +e.target.value || 1)} type="number" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>{t('nights')}</label>
+            <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
+              <NumberInput value={data.nights} min={1} fallback={1} onChange={(n) => set('nights', n)} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }} />
+            </div>
+          </div>
         </div>
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.ink3 }}>
           <Icon name="info" size={13} />
@@ -331,7 +337,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
             {!perNight && (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${overridden ? T.primary : T.border}`, borderRadius: 7, padding: '0 8px', height: 32 }}>
                 <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>₹</span>
-                <input onFocus={(e) => e.target.select()} type="number" value={uniformDefault} onChange={(e) => onChange({ rate: +e.target.value || 0 })} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
+                <NumberInput value={uniformDefault} min={0} onChange={(n) => onChange({ rate: n })} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: overridden ? T.primary : T.ink, minWidth: 0 }} />
                 <span style={{ fontSize: 9, color: T.ink3 }}>/night</span>
               </div>
             )}
@@ -433,10 +439,10 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', height: 30 }}>
                           <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                          <input onFocus={(e) => e.target.select()}
-                            type="number"
+                          <NumberInput
                             value={rate}
-                            onChange={(e) => onChange({ nightRates: nightRates.map((nr, k) => k === ni ? +e.target.value || 0 : nr) })}
+                            min={0}
+                            onChange={(n) => onChange({ nightRates: nightRates.map((nr, k) => k === ni ? n : nr) })}
                             className="tnum"
                             style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 0 }}
                           />
@@ -495,12 +501,10 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                     <span style={{ color: T.ink2, fontWeight: 600, minWidth: 84 }}>Extra adult{extraAdults > 1 ? 's' : ''}</span>
                     <span style={{ color: T.ink3, fontSize: 10, fontWeight: 600 }}>{extraAdults} ×</span>
                     <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
-                      onFocus={(e) => e.target.select()}
                       value={adultRate}
-                      onChange={(ev) => onChange({ extraAdultRate: Math.max(0, +ev.target.value || 0) })}
+                      onChange={(n) => onChange({ extraAdultRate: n })}
                       className="tnum"
                       style={{ width: 70, border: `1px solid ${isAdultOverride ? T.primary : T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: isAdultOverride ? T.primary : T.ink, background: T.card }}
                     />
@@ -520,12 +524,10 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                     <span style={{ color: T.ink2, fontWeight: 600, minWidth: 84 }}>Child{halfChildren > 1 ? 'ren' : ''} (half)</span>
                     <span style={{ color: T.ink3, fontSize: 10, fontWeight: 600 }}>{halfChildren} ×</span>
                     <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
-                      onFocus={(e) => e.target.select()}
                       value={childRate}
-                      onChange={(ev) => onChange({ extraChildRate: Math.max(0, +ev.target.value || 0) })}
+                      onChange={(n) => onChange({ extraChildRate: n })}
                       className="tnum"
                       style={{ width: 70, border: `1px solid ${isChildOverride ? T.primary : T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: isChildOverride ? T.primary : T.ink, background: T.card }}
                     />
@@ -903,7 +905,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                       <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                      <input onFocus={(e) => e.target.select()} type="number" autoFocus value={ex.price} onChange={e => set('extraPrices', { ...data.extraPrices, [ex.id]: +e.target.value || 0 })} className="tnum" style={{ width: 60, border: `1px solid ${T.primary}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.primary }} />
+                      <NumberInput autoFocus value={ex.price} min={0} onChange={(n) => set('extraPrices', { ...data.extraPrices, [ex.id]: n })} className="tnum" style={{ width: 60, border: `1px solid ${T.primary}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.primary }} />
                       <button onClick={() => setEditingPriceId(null)} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 5, padding: '3px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>OK</button>
                       {!ex.custom && data.extraPrices[ex.id] != null && (
                         <button onClick={() => { const { [ex.id]: _, ...rest } = data.extraPrices; set('extraPrices', rest); setEditingPriceId(null); }} style={{ border: 'none', background: 'none', color: T.ink3, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Reset</button>
@@ -996,7 +998,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
             <span style={{ fontSize: 11, fontWeight: 700, color: T.primaryDk }}>Custom amount</span>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1.5px solid ${T.primary}`, borderRadius: 7, padding: '0 10px', height: 36 }}>
               <span style={{ fontSize: 13, color: T.ink3, fontWeight: 600 }}>₹</span>
-              <input onFocus={(e) => e.target.select()} type="number" autoFocus value={data.payCustom || ''} onChange={e => set('payCustom', +e.target.value || 0)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 700, color: T.ink }} />
+              <NumberInput autoFocus value={data.payCustom || 0} min={0} max={total} onChange={(n) => set('payCustom', n)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 700, color: T.ink }} />
               <span style={{ fontSize: 10, color: T.ink3 }}>of ₹{total.toLocaleString('en-IN')}</span>
             </div>
           </div>

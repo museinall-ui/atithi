@@ -524,13 +524,19 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
     const dateIso = `${yyyy}-${mm}-${dd}`;
+    // Human-readable timestamp for the BookingDetail folio ledger.
+    // Used to be the literal string 'now' — which then rendered as
+    // the word "now" in the payments list. Use the same DD MMM · HH:MM
+    // format PaymentSheet uses so both code paths produce identical
+    // ledger entries.
+    const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
     onAddPayment(b.id, {
       id: 'p_' + Date.now(),
       kind: 'payment',
       method,
       amount: balance,
       note: noteByMethod[method] || `Settled at property · ${method}`,
-      date: 'now',
+      date: dateStr,
       dateIso,
     });
   };
@@ -894,18 +900,23 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                 }),
               ].join('\n\n');
               const recipients = property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7);
-              const openAllWa = () => {
-                // Open WhatsApp for each recipient in sequence. Modern
-                // browsers will only allow the first window.open() without
-                // user-gesture chaining, so we offset each subsequent
-                // open by 300ms which keeps Chrome / Safari happy.
-                recipients.forEach((r, i) => {
-                  setTimeout(() => {
-                    const phone = (r.phone || '').replace(/\D/g, '');
-                    const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines)}`;
-                    window.open(url, '_blank', 'noopener');
-                  }, i * 300);
-                });
+              // Build a wa.me URL per recipient. Used to call
+              // window.open() in a loop with setTimeouts — the
+              // 300ms gap doesn't fool popup blockers, so the 2nd
+              // and 3rd recipients were silently dropped and the
+              // hotelier thought everyone got the message.
+              //
+              // Real fix: never loop window.open(). For 1 recipient
+              // open inline (single user gesture). For 2+ render a
+              // per-recipient row with its own button — each tap is
+              // a user gesture → no popup-blocker.
+              const waUrlFor = (phone) => {
+                const digits = (phone || '').replace(/\D/g, '');
+                return `https://wa.me/${digits}?text=${encodeURIComponent(lines)}`;
+              };
+              const openSingleWa = () => {
+                if (recipients.length === 0) return;
+                window.open(waUrlFor(recipients[0].phone), '_blank', 'noopener');
               };
               const downloadHtml = () => {
                 // Printable HTML summary the hotelier can save as PDF
@@ -950,29 +961,74 @@ ${arrivingTomorrow.map(b => {
                 if (w) { w.document.write(html); w.document.close(); }
               };
               return (
-                <div style={{ padding: '10px 14px 14px', display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={openAllWa}
-                    style={{
-                      flex: 1, padding: '10px 12px', borderRadius: 8,
-                      border: 'none', background: '#25D366', color: '#fff',
-                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    }}
-                  >
-                    <Icon name="wa" size={13} color="#fff" stroke={2} /> Send on WhatsApp
-                  </button>
-                  <button
-                    onClick={downloadHtml}
-                    style={{
-                      padding: '10px 12px', borderRadius: 8,
-                      border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
-                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                    }}
-                  >
-                    <Icon name="download" size={12} stroke={2} color={T.ink2} /> PDF
-                  </button>
+                <div style={{ padding: '10px 14px 14px' }}>
+                  {/* Single recipient → one big button. Multiple → a list
+                      with per-recipient send buttons so each tap is its
+                      own user gesture (popup blockers don't fire). */}
+                  {recipients.length <= 1 ? (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={openSingleWa}
+                        disabled={recipients.length === 0}
+                        style={{
+                          flex: 1, padding: '10px 12px', borderRadius: 8,
+                          border: 'none', background: recipients.length === 0 ? T.bgSoft : '#25D366', color: recipients.length === 0 ? T.ink3 : '#fff',
+                          fontSize: 12, fontWeight: 700, cursor: recipients.length === 0 ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        }}
+                      >
+                        <Icon name="wa" size={13} color={recipients.length === 0 ? T.ink3 : '#fff'} stroke={2} />
+                        {recipients.length === 0 ? 'Add a phone number in Settings' : 'Send on WhatsApp'}
+                      </button>
+                      <button
+                        onClick={downloadHtml}
+                        style={{
+                          padding: '10px 12px', borderRadius: 8,
+                          border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                        }}
+                      >
+                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> PDF
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 8, lineHeight: 1.5 }}>
+                        {recipients.length} recipients. Tap each one to send (browsers block bulk auto-open).
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                        {recipients.map((r, i) => (
+                          <button
+                            key={i}
+                            onClick={() => window.open(waUrlFor(r.phone), '_blank', 'noopener')}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '8px 12px', borderRadius: 7,
+                              border: `1px solid #25D366`,
+                              background: 'oklch(95% 0.05 145)', color: 'oklch(35% 0.13 145)',
+                              fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'left',
+                            }}
+                          >
+                            <Icon name="wa" size={13} color="oklch(35% 0.13 145)" stroke={2} />
+                            <span style={{ flex: 1, minWidth: 0 }}>{r.label || r.phone}</span>
+                            <span className="tnum" style={{ fontSize: 10, opacity: 0.7 }}>{r.phone}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={downloadHtml}
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 7,
+                          border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
+                          fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        }}
+                      >
+                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> Download as PDF instead
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })()}

@@ -888,13 +888,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '6px 8px', background: T.indigoLt, borderRadius: 7 }}>
                       <span style={{ fontSize: 10, color: T.indigo, fontWeight: 700 }}>GST:</span>
-                      <input onFocus={(e) => e.target.select()}
-                        type="number"
+                      <NumberInput
                         value={effective}
-                        onChange={e => {
-                          const v = e.target.value === '' ? null : Math.max(0, Math.min(28, +e.target.value));
-                          setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: v } : x));
-                        }}
+                        min={0} max={28}
+                        onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: n } : x))}
                         className="tnum"
                         style={{ width: 50, border: `1px solid ${T.indigo}`, outline: 'none', background: T.card, borderRadius: 5, padding: '3px 6px', fontSize: 12, fontWeight: 700, color: T.indigo }}
                       />
@@ -965,11 +962,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                             {modeBtn(rule, 'flat', '₹')}
                             {modeBtn(rule, 'pct', '% of base')}
                           </div>
-                          <input onFocus={(e) => e.target.select()}
-                            type="number"
+                          <NumberInput
                             min={0}
                             value={val.value || 0}
-                            onChange={(e) => updateRule(rule, { value: Math.max(0, +e.target.value || 0) })}
+                            onChange={(n) => updateRule(rule, { value: n })}
                             className="tnum"
                             style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }}
                           />
@@ -1190,10 +1186,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>MULTIPLIER</span>
-                  <input onFocus={(e) => e.target.select()}
-                    type="number"
+                  <NumberInput
                     value={s.multiplierPct ?? 0}
-                    onChange={(ev) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(500, parseInt(ev.target.value, 10) || 0)) } : x))}
+                    min={-90} max={500}
+                    onChange={(n) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: n } : x))}
                     className="tnum"
                     style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 8px', fontSize: 12, fontWeight: 700, background: T.card, color: T.ink }}
                   />
@@ -1241,11 +1237,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                                 {modeBtn(rule, 'flat', '₹')}
                                 {modeBtn(rule, 'pct', '% of base')}
                               </div>
-                              <input onFocus={(e) => e.target.select()}
-                                type="number"
+                              <NumberInput
                                 min={0}
                                 value={val.value || 0}
-                                onChange={(ev) => updateRule(rule, { value: Math.max(0, +ev.target.value || 0) })}
+                                onChange={(n) => updateRule(rule, { value: n })}
                                 className="tnum"
                                 style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }}
                               />
@@ -1445,10 +1440,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>RATE</span>
-                    <input onFocus={(e) => e.target.select()}
-                      type="number"
+                    <NumberInput
                       value={p.multiplierPct ?? 0}
-                      onChange={(ev) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: Math.max(-90, Math.min(200, parseInt(ev.target.value, 10) || 0)) } : x))}
+                      min={-90} max={200}
+                      onChange={(n) => setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, multiplierPct: n } : x))}
                       disabled={isStd}
                       className="tnum"
                       style={{ width: 64, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', fontSize: 12, fontWeight: 700, background: isStd ? T.bgSunk : T.card, color: T.ink, opacity: isStd ? 0.6 : 1 }}
@@ -1643,10 +1638,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                       <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                      <input onFocus={(e) => e.target.select()}
-                        type="number"
+                      <NumberInput
                         value={mp.price}
-                        onChange={e => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: Math.max(0, +e.target.value || 0) } : p))}
+                        min={0}
+                        onChange={(n) => setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, price: n } : p))}
                         className="tnum"
                         style={{ width: 80, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 11, fontWeight: 700, background: T.card, color: T.ink }}
                       />
@@ -1730,10 +1725,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
-                  <input onFocus={(e) => e.target.select()}
-                    type="number"
+                  <NumberInput
                     value={e.price}
-                    onChange={(ev) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: Math.max(0, +ev.target.value || 0) } : x))}
+                    min={0}
+                    onChange={(n) => setExtras(arr => arr.map((x, j) => j === i ? { ...x, price: n } : x))}
                     className="tnum"
                     style={{
                       width: 90, border: `1px solid ${T.border}`, outline: 'none',
@@ -2229,11 +2224,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         );
                       })}
                     </div>
-                    <input onFocus={(e) => e.target.select()}
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={c.discount?.value || 0}
-                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, discount: { ...(x.discount || { mode: 'pct' }), value: Math.max(0, +ev.target.value || 0) } } : x))}
+                      onChange={(n) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, discount: { ...(x.discount || { mode: 'pct' }), value: n } } : x))}
                       className="tnum"
                       style={{ width: 72, fontSize: 12, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
                     />
@@ -2250,20 +2244,18 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>MIN NIGHTS</span>
-                    <input onFocus={(e) => e.target.select()}
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={c.minNights || 0}
-                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, minNights: Math.max(0, +ev.target.value || 0) } : x))}
+                      onChange={(n) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, minNights: n } : x))}
                       className="tnum"
                       style={{ width: 56, fontSize: 11, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
                     />
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginLeft: 6 }}>MAX USES</span>
-                    <input onFocus={(e) => e.target.select()}
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={c.maxUses || 0}
-                      onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, maxUses: Math.max(0, +ev.target.value || 0) } : x))}
+                      onChange={(n) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, maxUses: n } : x))}
                       className="tnum"
                       style={{ width: 56, fontSize: 11, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card }}
                     />

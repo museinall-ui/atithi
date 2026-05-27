@@ -40,7 +40,15 @@ export function subscribeSync(fn) {
 // fallback (issueInvoice, createBookingCloud) still see the error and can
 // fall back to localStorage. `label` is the short human-readable action
 // name used in the error toast ("Save payment", "Update booking").
+//
+// The status state machine intentionally treats 'ok' as a TRANSIENT
+// label, not a sticky one. After a successful sync we set status='ok'
+// briefly, then auto-demote to 'idle' after 3 seconds (if no new
+// sync has started in the meantime). This prevents the top-right
+// status pill from being a permanent green decoration.
+let _okDemoteTimeout = null;
 export function syncCloud(label, promise) {
+  if (_okDemoteTimeout) { clearTimeout(_okDemoteTimeout); _okDemoteTimeout = null; }
   state = { ...state, status: 'syncing', pending: state.pending + 1 };
   emit();
   return promise.then(
@@ -55,6 +63,17 @@ export function syncCloud(label, promise) {
         firstOk: true,
       };
       emit();
+      // Demote 'ok' to 'idle' after 3s so the UI status indicator
+      // doesn't latch green forever after the first successful save.
+      if (pending === 0) {
+        _okDemoteTimeout = setTimeout(() => {
+          _okDemoteTimeout = null;
+          if (state.status === 'ok' && state.pending === 0) {
+            state = { ...state, status: 'idle' };
+            emit();
+          }
+        }, 3000);
+      }
       return val;
     },
     (err) => {

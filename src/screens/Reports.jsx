@@ -1175,13 +1175,16 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             color={sendStatus.kind === 'ok' ? T.ok : sendStatus.kind === 'err' ? T.danger : 'oklch(45% 0.14 75)'}
           />
           <span style={{ flex: 1 }}>{sendStatus.message}</span>
-          {sendStatus.kind !== 'sending' && (
-            <button
-              onClick={() => setSendStatus(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', opacity: 0.6, fontSize: 16, lineHeight: 1 }}
-              aria-label="Dismiss"
-            >×</button>
-          )}
+          {/* Always show the dismiss button — even during 'sending'.
+              The fetch has a 12s AbortController timeout (in
+              sendInvoiceListViaResend) so the snackbar can't hang
+              forever on a stalled request, but we also let the
+              hotelier dismiss it manually if they don't want to wait. */}
+          <button
+            onClick={() => setSendStatus(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', opacity: 0.6, fontSize: 16, lineHeight: 1 }}
+            aria-label="Dismiss"
+          >×</button>
         </div>
       )}
     </div>

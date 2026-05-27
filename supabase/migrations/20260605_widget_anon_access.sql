@@ -31,11 +31,23 @@
 -- Security definer = runs as the function owner, bypassing RLS.
 -- Returns only display-safe fields (no GSTIN, no email, no
 -- accountant info, no audit_log).
+-- Note on column types — these must match the actual columns in
+-- the `properties` table EXACTLY. The initial schema declared
+-- `rules` as `text[]` (Postgres text array, not jsonb), so the
+-- function signature mirrors that. Every other jsonb-looking
+-- field IS jsonb. Mismatch → "return type mismatch in function
+-- declared to return record" error on CREATE.
+--
+-- DROP first — Postgres rejects CREATE OR REPLACE when the return
+-- type changes (signature is part of the function's identity). If
+-- you ran an earlier version of this migration that left a stub
+-- behind, the drop here makes the re-run clean.
+drop function if exists public.property_by_short_code(text);
 create or replace function public.property_by_short_code(p_short_code text)
 returns table(
   id uuid, name text, type text, city text, state text, theme jsonb,
   logo_data_url text, payment_qr_data_url text, payment_qr_label text,
-  tagline text, photo_gallery jsonb, rules jsonb, meal_plans jsonb,
+  tagline text, photo_gallery jsonb, rules text[], meal_plans jsonb,
   default_meal_plan_id text, base_capacity_adults integer,
   rate_plans jsonb, weekend_rules jsonb, seasons jsonb,
   channel_markups jsonb, coupons jsonb, embed_button jsonb,
@@ -61,6 +73,7 @@ grant execute on function public.property_by_short_code(text) to authenticated;
 -- 2) room_categories_by_property(propertyId)
 -- ---------------------------------------------------------------
 -- Used by the widget to render room tiles + check availability.
+drop function if exists public.room_categories_by_property(uuid);
 create or replace function public.room_categories_by_property(p_property_id uuid)
 returns setof room_categories
 language sql security definer
@@ -78,6 +91,7 @@ grant execute on function public.room_categories_by_property(uuid) to authentica
 -- The widget needs to know which dates/rooms are already booked so
 -- it can grey out unavailable tiles. Only returns the minimum fields
 -- needed for the overlap calculation — no guest name, phone, etc.
+drop function if exists public.bookings_by_property_public(uuid);
 create or replace function public.bookings_by_property_public(p_property_id uuid)
 returns table(
   id text, room_category_code text, unit_idx integer,

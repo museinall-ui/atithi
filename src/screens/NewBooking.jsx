@@ -1102,7 +1102,24 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     };
   });
 
-  const set = (k, v) => setData(d => ({ ...d, [k]: v }));
+  // Dirty flag for "discard unsaved edit?" confirm. Initial state of
+  // `data` is the seed (either the editing booking or the new-booking
+  // defaults). First call to set() flips dirty=true. On back / cancel
+  // we surface a confirm if dirty + edit mode.
+  const [dirty, setDirty] = useState(false);
+  const set = (k, v) => { setDirty(true); setData(d => ({ ...d, [k]: v })); };
+  const safeBack = () => {
+    // No confirm needed if nothing's changed.
+    if (!dirty) {
+      isEdit ? go('booking', editing.id) : go('home');
+      return;
+    }
+    if (window.confirm(isEdit
+      ? `Discard your changes to ${editing.id}? Tap Save before leaving to keep them.`
+      : 'Discard this draft booking?')) {
+      isEdit ? go('booking', editing.id) : go('home');
+    }
+  };
   // Tax applies only when the hotelier is on the Invoicing add-on AND has
   // toggled "include in invoice register" on for this booking. Engine and
   // Channels tiers always treat the price as a flat tariff (no CGST/SGST
@@ -1297,7 +1314,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       <ScreenHeader
         title={isEdit ? t('editReservation') : titles[step - 1]}
         subtitle={isEdit ? `${editing.id} · ${titles[step - 1]}` : `${t('step')} ${step} ${t('of2')} 4`}
-        onBack={() => step > 1 ? setStep(step - 1) : (isEdit ? go('booking', editing.id) : go('home'))}
+        onBack={() => step > 1 ? setStep(step - 1) : safeBack()}
       />
       <div style={{ display: 'flex', gap: 4, padding: '8px 16px 12px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>
         {[1, 2, 3, 4].map(s => (

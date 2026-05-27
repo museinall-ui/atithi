@@ -128,7 +128,13 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>AMOUNT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: T.bgSoft, border: `1.5px solid ${tone}`, borderRadius: 10 }}>
             <span style={{ fontSize: 18, color: T.ink3, fontWeight: 700 }}>₹</span>
-            <input onFocus={(e) => e.target.select()} type="number" autoFocus value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 24, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+            <input onFocus={(e) => e.target.select()} type="number" min={0} step="1" autoFocus value={amount} onChange={e => {
+              // Strip leading minus + drop decimals — amounts are integer
+              // rupees; negative payments break the ledger math
+              // (paid += amount would subtract).
+              const v = e.target.value.replace(/^-+/, '');
+              setAmount(v);
+            }} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 24, fontWeight: 700, color: T.ink, minWidth: 0 }} />
             {balance > 0 && !isRefund && !isCredit && (
               <button onClick={() => setAmount(balance)} style={{ background: T.card, border: `1px solid ${T.border}`, color: T.primary, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>Balance</button>
             )}

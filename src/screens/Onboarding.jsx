@@ -27,7 +27,11 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
   const [city, setCity] = useState(property?.profile?.city || '');
   const [catName, setCatName] = useState((property?.categories?.[0]?.name) || '');
   const [catUnits, setCatUnits] = useState((property?.categories?.[0]?.units) || 1);
-  const [catRate, setCatRate] = useState((property?.categories?.[0]?.base) || 3000);
+  // Start blank, not 3000. The hardcoded ₹3,000 was an opinionated
+  // default that didn't fit homestays (₹1.5k) or luxury resorts (₹25k),
+  // and the hotelier had to backspace it before typing their own rate.
+  // Empty state + placeholder is the right pattern.
+  const [catRate, setCatRate] = useState((property?.categories?.[0]?.base) || '');
   const [qrDataUrl, setQrDataUrl] = useState(property?.profile?.paymentQrDataUrl || '');
 
   const L = isHi ? {
@@ -204,7 +208,7 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>{L.catRateLabel}</label>
                   <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
-                    <NumberInput value={catRate} min={0} fallback={0} onChange={(n) => setCatRate(n)} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }} />
+                    <NumberInput value={catRate} min={0} fallback={0} onChange={(n) => setCatRate(n)} placeholder="e.g. 3000" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }} />
                   </div>
                 </div>
               </div>

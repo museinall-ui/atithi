@@ -5,6 +5,7 @@ import TeamSection from '../components/TeamSection.jsx';
 import NumberInput from '../components/NumberInput.jsx';
 import { useInstallPrompt } from '../components/InstallPrompt.jsx';
 import { resetMyProperty } from '../cloud/resetProperty.js';
+import { useSyncState } from '../cloud/sync.js';
 
 // Install-app card shown in Settings → Account. Always visible (no
 // dismissal sticky) so the hotelier can come back and install at any
@@ -413,6 +414,19 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // whether their changes actually persisted).
   const [savedAt, setSavedAt] = useState(0);
 
+  // Inline upload error chip. Logo / QR / room photo / gallery photo
+  // upload handlers all used native alert() before — which froze the
+  // app, said "atithi-seven.vercel.app says:" in the browser chrome,
+  // and looked like a security warning to a non-technical hotelier.
+  // Now: write to uploadError state from each handler and the toast
+  // surfaces at the top of the sheet for 4s.
+  const [uploadError, setUploadError] = useState('');
+  useEffect(() => {
+    if (!uploadError) return;
+    const id = setTimeout(() => setUploadError(''), 4000);
+    return () => clearTimeout(id);
+  }, [uploadError]);
+
   // Track the most-recently-added item id across the Seasons / Rate
   // plans / Coupons / Meal plans / Cash accounts editors. When set,
   // we scroll the matching row into view + focus its first input +
@@ -440,6 +454,17 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // Helper: returns the highlight style for a row when it matches the
   // just-added id. Used as an inline ...spread on the row container.
   const justAddedStyle = (id) => id === justAddedId ? { outline: `2px solid ${T.ok}`, outlineOffset: 2, transition: 'outline 0.3s' } : {};
+  // Saved-chip state: 'idle' (hidden), 'saving' (waiting for cloud
+  // round-trip), 'ok' (3s green flash), 'err' (red persists till
+  // dismiss or next save). Driven by the real sync state, not by an
+  // immediate timer — the old version flashed "Saved · live" the
+  // instant the local state changed, even if the cloud write later
+  // failed. The hotelier would walk away thinking their change was
+  // persisted; it wasn't.
+  const sync = useSyncState();
+  const [savePending, setSavePending] = useState(false);
+  const [chip, setChip] = useState(null); // null | 'saving' | 'ok' | 'err'
+
   const handleSave = () => {
     // Functional update so we don't accidentally clobber any property fields
     // we don't know about (the partial here only enumerates the editable ones).
@@ -453,13 +478,28 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
-    setSavedAt(Date.now());
+    // Hand off to the sync-driven state machine.
+    setSavePending(true);
+    setChip('saving');
   };
+  // Watch the global sync state. The App.jsx debounced property-save
+  // (600ms after the state change) flips sync.status to 'syncing' →
+  // 'ok' or 'error'. We mirror that into our local chip so the
+  // hotelier sees "Saving…" then either "Saved" or "Couldn't save".
   useEffect(() => {
-    if (!savedAt) return;
-    const id = setTimeout(() => setSavedAt(0), 2000);
-    return () => clearTimeout(id);
-  }, [savedAt]);
+    if (!savePending) return;
+    if (sync.status === 'syncing') { setChip('saving'); return; }
+    if (sync.status === 'ok') {
+      setChip('ok');
+      setSavePending(false);
+      const id = setTimeout(() => setChip(null), 3000);
+      return () => clearTimeout(id);
+    }
+    if (sync.status === 'error' && sync.lastError) {
+      setChip('err');
+      setSavePending(false);
+    }
+  }, [sync.status, sync.lastError, savePending]);
   const propTypes = [
     { id: 'resort',     label: t('ptResort') },
     { id: 'hotel',      label: t('ptHotel') },
@@ -470,20 +510,47 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   return (
     <div style={{ position: 'absolute', inset: 0, background: T.bg, zIndex: 40, display: 'flex', flexDirection: 'column' }}>
       <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
-      {savedAt > 0 && (
+      {uploadError && (
+        <div style={{
+          position: 'absolute', top: 60, left: 12, right: 12,
+          display: 'flex', justifyContent: 'center', zIndex: 51,
+        }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '9px 14px', borderRadius: 10,
+            background: T.danger, color: '#fff',
+            fontSize: 12, fontWeight: 700, lineHeight: 1.4,
+            boxShadow: '0 6px 18px rgba(20,15,10,.18)', maxWidth: 480,
+          }}>
+            <Icon name="info" size={13} color="#fff" stroke={2.4} />
+            <span style={{ flex: 1 }}>{uploadError}</span>
+            <button onClick={() => setUploadError('')} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>×</button>
+          </div>
+        </div>
+      )}
+      {chip && (
         <div style={{
           position: 'absolute', top: 60, left: 0, right: 0,
           display: 'flex', justifyContent: 'center', zIndex: 50,
-          pointerEvents: 'none',
+          pointerEvents: chip === 'err' ? 'auto' : 'none',
         }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 999,
-            background: T.ok, color: '#fff',
+            background: chip === 'ok' ? T.ok : chip === 'err' ? T.danger : T.ink2,
+            color: '#fff',
             fontSize: 12, fontWeight: 700, letterSpacing: 0.2,
-            boxShadow: '0 4px 14px rgba(14, 138, 95, 0.35)',
+            boxShadow: '0 4px 14px rgba(20, 15, 10, 0.2)',
           }}>
-            <Icon name="check" size={13} color="#fff" stroke={2.4} /> Saved · your changes are live
+            {chip === 'saving' && <><Icon name="sync" size={12} color="#fff" className="spin" /> Saving to cloud…</>}
+            {chip === 'ok' && <><Icon name="check" size={13} color="#fff" stroke={2.4} /> Saved · live across your devices</>}
+            {chip === 'err' && (
+              <>
+                <Icon name="info" size={13} color="#fff" stroke={2.4} />
+                Couldn't save — check your internet, then Save again
+                <button onClick={() => setChip(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', marginLeft: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>×</button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -527,7 +594,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       const file = e.target.files && e.target.files[0];
                       if (!file) return;
                       if (file.size > 200 * 1024) {
-                        alert('Logo is too large. Please use an image under 200 KB.');
+                        setUploadError('Logo is too large. Please use an image under 200 KB.');
                         return;
                       }
                       const r = new FileReader();
@@ -691,7 +758,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     // (~4000×3000 at quality 0.85) while keeping the
                     // property row + localStorage within sane bounds.
                     if (file.size > 2 * 1024 * 1024) {
-                      alert('Photo is too large. Please use an image under 2 MB. Tip: compress at imagecompressor.com or use a phone photo.');
+                      setUploadError('Photo is too large. Please use an image under 2 MB.');
                       return;
                     }
                     const r = new FileReader();
@@ -807,7 +874,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         const file = e.target.files && e.target.files[0];
                         if (!file) return;
                         if (file.size > 700 * 1024) {
-                          alert('Image is too large. Please use a QR under 700 KB.');
+                          setUploadError('Image is too large. Please use a QR under 700 KB.');
                           return;
                         }
                         const r = new FileReader();
@@ -839,7 +906,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   const file = e.target.files && e.target.files[0];
                   if (!file) return;
                   if (file.size > 700 * 1024) {
-                    alert('Image is too large. Please use a QR under 700 KB.');
+                    setUploadError('Image is too large. Please use a QR under 700 KB.');
                     return;
                   }
                   const r = new FileReader();
@@ -999,7 +1066,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                               const file = e.target.files && e.target.files[0];
                               if (!file) return;
                               if (file.size > 2 * 1024 * 1024) {
-                                alert('Photo is too large. Please use an image under 2 MB.');
+                                setUploadError('Photo is too large. Please use an image under 2 MB.');
                                 return;
                               }
                               const r = new FileReader();
@@ -1026,7 +1093,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           const file = e.target.files && e.target.files[0];
                           if (!file) return;
                           if (file.size > 2 * 1024 * 1024) {
-                            alert('Photo is too large. Please use an image under 2 MB.');
+                            setUploadError('Photo is too large. Please use an image under 2 MB.');
                             return;
                           }
                           const r = new FileReader();
@@ -1328,7 +1395,16 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{c.label}</div>
                           {v !== 0 && (
                             <div className="tnum" style={{ fontSize: 10, color: v > 0 ? T.ink3 : T.danger, fontWeight: 600, marginTop: 1 }}>
-                              Direct ₹4,500 → {c.label} ₹{Math.round(4500 * (1 + v/100)).toLocaleString('en-IN')}
+                              {(() => {
+                                // Example math anchored to the hotelier's
+                                // first category's base rate so the
+                                // illustration tracks THEIR pricing, not
+                                // a hardcoded ₹4,500 that meant nothing
+                                // to a homestay charging ₹1.5k or a
+                                // luxury resort charging ₹25k.
+                                const example = (categories[0]?.base) || 4500;
+                                return <>Direct ₹{example.toLocaleString('en-IN')} → {c.label} ₹{Math.round(example * (1 + v/100)).toLocaleString('en-IN')}</>;
+                              })()}
                             </div>
                           )}
                         </div>
@@ -1363,26 +1439,44 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {channels.map(c => {
                     const v = channelCommissions[c.id] ?? 0;
+                    // Direct + Website bookings have no OTA fee by
+                    // definition — render read-only so the hotelier
+                    // can't accidentally set 8% on Direct and break
+                    // their take-home math.
+                    const isDirect = c.id === 'direct' || c.id === 'website';
                     return (
                       <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 8 }}>
                         <span style={{ width: 10, height: 10, borderRadius: 5, background: c.color, flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{c.label}</div>
-                          {v > 0 && (
+                          {isDirect ? (
+                            <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
+                              No OTA commission — you keep 100% (before GST)
+                            </div>
+                          ) : v > 0 && (
                             <div className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
-                              Bill ₹4,500 → you keep ₹{Math.round(4500 * (1 - v/100)).toLocaleString('en-IN')} (before GST)
+                              {(() => {
+                                const example = (categories[0]?.base) || 4500;
+                                return <>Bill ₹{example.toLocaleString('en-IN')} → you keep ₹{Math.round(example * (1 - v/100)).toLocaleString('en-IN')} (before GST)</>;
+                              })()}
                             </div>
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <NumberInput
-                            value={v}
-                            min={0} max={50}
-                            onChange={(n) => setChannelCommissions(prev => ({ ...prev, [c.id]: n }))}
-                            className="tnum"
-                            style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
-                          />
-                          <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>%</span>
+                          {isDirect ? (
+                            <span style={{ width: 60, textAlign: 'right', fontSize: 13, fontWeight: 700, color: T.ink3, padding: '4px 6px' }}>0%</span>
+                          ) : (
+                            <>
+                              <NumberInput
+                                value={v}
+                                min={0} max={50}
+                                onChange={(n) => setChannelCommissions(prev => ({ ...prev, [c.id]: n }))}
+                                className="tnum"
+                                style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
+                              />
+                              <span style={{ fontSize: 12, color: T.ink3, fontWeight: 700 }}>%</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -1956,6 +2050,22 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             };
             return (
               <>
+                {/* HONEST status: bookings from this URL currently stay
+                    in the GUEST's browser only (anon RLS hasn't been
+                    set up in Supabase yet), so guests would think they
+                    booked but the hotelier never sees the booking on
+                    another device. Surfacing this prominently so the
+                    hotelier doesn't share the URL prematurely. */}
+                <div style={{
+                  padding: '10px 12px', background: 'oklch(96% 0.06 75)',
+                  border: '1.5px solid oklch(72% 0.14 75)', borderRadius: 8,
+                  marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start',
+                }}>
+                  <Icon name="info" size={14} color="oklch(40% 0.14 75)" stroke={2.2} />
+                  <div style={{ fontSize: 11, color: 'oklch(35% 0.14 75)', fontWeight: 600, lineHeight: 1.5 }}>
+                    <strong>Not yet shareable with guests.</strong> The widget renders correctly when YOU open the link (signed-in hotelier preview), but guest bookings will not reach your cloud account until Atithi's owner enables anonymous booking access in Supabase. Use this link to preview the guest flow only — don't put it on your website yet.
+                  </div>
+                </div>
                 <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
                   Share this link, or paste the embed code into your hotel website. Customers fill in dates and contact details; the booking lands in your Diary marked <strong>tentative</strong> via the Website channel for you to review before confirming.
                 </div>
@@ -2240,7 +2350,22 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       onChange={(ev) => setCoupons(arr => arr.map((x, j) => j === i ? { ...x, expiryIso: ev.target.value || null } : x))}
                       style={{ fontSize: 11, color: T.ink2, padding: '4px 6px', border: `1px solid ${T.border}`, borderRadius: 5, background: T.card }}
                     />
-                    <span style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, fontStyle: 'italic' }}>blank = no expiry</span>
+                    {(() => {
+                      // Red chip when the expiry is in the past — the
+                      // coupon is silently invalid (widget rejects the
+                      // code) but stayed `enabled: true` in the list
+                      // with no warning. Now there's a visible flag so
+                      // the hotelier knows to update or disable it.
+                      if (!c.expiryIso) {
+                        return <span style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, fontStyle: 'italic' }}>blank = no expiry</span>;
+                      }
+                      const today = new Date(); today.setHours(0,0,0,0);
+                      const exp = new Date(c.expiryIso + 'T00:00:00');
+                      if (!isNaN(exp.getTime()) && exp < today) {
+                        return <span style={{ fontSize: 9.5, color: T.danger, fontWeight: 800, padding: '2px 6px', background: 'oklch(95% 0.06 30)', borderRadius: 4 }}>Already expired</span>;
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>MIN NIGHTS</span>
@@ -2309,7 +2434,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           <SectionHead title="Send tomorrow's arrivals on WhatsApp" style={{ marginTop: 0 }} />
           <Card padding={12}>
             <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-              Phone numbers that should receive tomorrow's arrival list each day. The Dashboard surfaces a one-tap 'Send arrivals' card when there are check-ins ahead, opening pre-filled WhatsApp messages for each recipient (guest name, dates, room, balance, special requests).
+              Phone numbers that get tomorrow's arrival list when you tap <strong>Send arrivals</strong> on the Dashboard. Each tap opens a pre-filled WhatsApp message per recipient (guest name, dates, room, balance, special requests). The Dashboard surfaces a one-tap card when there are check-ins ahead. <em>Auto-send each morning is on the roadmap, not live yet.</em>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {(profile.arrivalsRecipients || []).length === 0 && (
@@ -2738,6 +2863,28 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
       </div>
 
       {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
+
+      {/* Full-screen overlay while a Reset is in flight. Without this,
+          the rest of the Settings card stays interactive and the user
+          can tap into anything — but any edit they make is about to be
+          wiped by the impending page reload. Block all interaction so
+          they wait for it to finish. */}
+      {resetting && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14,
+          color: '#fff', padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ width: 48, height: 48 }}>
+            <Icon name="sync" size={48} color="#fff" className="spin" />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>Resetting your property…</div>
+          <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, maxWidth: 320, lineHeight: 1.5 }}>
+            Wiping bookings, payments, expenses, and rate overrides from your cloud account. The app will reload to onboarding when this is done.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

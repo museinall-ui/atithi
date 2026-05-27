@@ -2,6 +2,53 @@ import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
 import Icon from './Icon.jsx';
 
+// Shared install-detection state. Exposed via useInstallPrompt() so
+// both the floating banner (this file) and the Settings → Install
+// app entry can read the same beforeinstallprompt event without
+// fighting over who consumes it. Module-scope state survives across
+// renders + components.
+let _deferredPromptEvent = null;
+const _subscribers = new Set();
+function _notify() { _subscribers.forEach(fn => { try { fn(_deferredPromptEvent); } catch {} }); }
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredPromptEvent = e;
+    _notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    _deferredPromptEvent = null;
+    _notify();
+  });
+}
+
+export function useInstallPrompt() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const fn = () => setTick(t => t + 1);
+    _subscribers.add(fn);
+    return () => _subscribers.delete(fn);
+  }, []);
+  return {
+    canInstall: !!_deferredPromptEvent,
+    isIosSafari: isIosSafari(),
+    isStandalone: isStandalone(),
+    install: async () => {
+      const e = _deferredPromptEvent;
+      if (!e) return { outcome: 'unavailable' };
+      _deferredPromptEvent = null;
+      _notify();
+      try {
+        e.prompt();
+        const c = await e.userChoice;
+        return c;
+      } catch {
+        return { outcome: 'failed' };
+      }
+    },
+  };
+}
+
 // One-time "install Atithi as an app" nudge. Two paths:
 //
 //   1. Chrome / Android Chrome / Edge — captures the native
@@ -45,7 +92,7 @@ function isIosSafari() {
 }
 
 export default function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const { canInstall, isIosSafari: ios, isStandalone: standalone, install } = useInstallPrompt();
   const [showIosHint, setShowIosHint] = useState(false);
   const [dismissed, setDismissed] = useState(() => {
     try { return !!JSON.parse(localStorage.getItem(DISMISS_KEY) || 'false'); }
@@ -54,28 +101,15 @@ export default function InstallPrompt() {
   const [iosSheetOpen, setIosSheetOpen] = useState(false);
 
   useEffect(() => {
-    if (isStandalone()) return; // already installed
+    if (standalone) return; // already installed
     if (dismissed) return;
-
-    // Chrome / Android path.
-    const onBeforeInstall = (e) => {
-      e.preventDefault();          // stop the browser's auto-mini-bar
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-
-    // iOS path. No event — just feature-detect.
-    if (isIosSafari()) {
+    if (ios) {
       // Small delay so the hotelier sees the dashboard first before
       // we ask them to install.
       const id = setTimeout(() => setShowIosHint(true), 4000);
-      return () => {
-        clearTimeout(id);
-        window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      };
+      return () => clearTimeout(id);
     }
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-  }, [dismissed]);
+  }, [dismissed, ios, standalone]);
 
   const dismiss = () => {
     setDismissed(true);
@@ -83,23 +117,13 @@ export default function InstallPrompt() {
   };
 
   const handleNativeInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    try {
-      const choice = await deferredPrompt.userChoice;
-      // `choice.outcome` is 'accepted' or 'dismissed'. Either way the
-      // event can only fire once, so we clear it. If they dismissed
-      // we also persist that so we don't pester them on every load.
-      if (choice && choice.outcome === 'dismissed') dismiss();
-      setDeferredPrompt(null);
-    } catch {
-      setDeferredPrompt(null);
-    }
+    const choice = await install();
+    if (choice && choice.outcome === 'dismissed') dismiss();
   };
 
   if (dismissed) return null;
-  if (isStandalone()) return null;
-  if (!deferredPrompt && !showIosHint) return null;
+  if (standalone) return null;
+  if (!canInstall && !showIosHint) return null;
 
   return (
     <>
@@ -126,7 +150,7 @@ export default function InstallPrompt() {
             One tap to open · works offline · feels like a real app
           </div>
         </div>
-        {deferredPrompt ? (
+        {canInstall ? (
           <button
             onClick={handleNativeInstall}
             style={{

@@ -3,6 +3,7 @@ import { T } from '../tokens.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
 import Field from '../components/Field.jsx';
+import NumberInput from '../components/NumberInput.jsx';
 
 // First-run 3-step wizard. Shows as a modal overlay on the Dashboard the
 // first time a hotelier opens Atithi (cloud + DEMO_MODE flows alike). The
@@ -193,8 +194,18 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <Field label={L.catNameLabel} value={catName} onChange={e => setCatName(e.target.value)} placeholder={L.catNamePh} />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <Field label={L.catUnitsLabel} type="number" value={catUnits} onChange={e => setCatUnits(Math.max(1, parseInt(e.target.value, 10) || 1))} />
-                <Field label={L.catRateLabel} type="number" value={catRate} onChange={e => setCatRate(Math.max(0, parseInt(e.target.value, 10) || 0))} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>{L.catUnitsLabel}</label>
+                  <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
+                    <NumberInput value={catUnits} min={1} fallback={1} onChange={(n) => setCatUnits(n)} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>{L.catRateLabel}</label>
+                  <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
+                    <NumberInput value={catRate} min={0} fallback={0} onChange={(n) => setCatRate(n)} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }} />
+                  </div>
+                </div>
               </div>
             </div>
           </>

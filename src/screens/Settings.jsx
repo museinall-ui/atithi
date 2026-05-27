@@ -2,7 +2,100 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
 import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
 import TeamSection from '../components/TeamSection.jsx';
+import NumberInput from '../components/NumberInput.jsx';
+import { useInstallPrompt } from '../components/InstallPrompt.jsx';
 import { resetMyProperty } from '../cloud/resetProperty.js';
+
+// Install-app card shown in Settings → Account. Always visible (no
+// dismissal sticky) so the hotelier can come back and install at any
+// time. Adapts to platform: native Install button on Chrome/Edge/
+// Android, step-by-step Share-sheet instructions on iOS, generic
+// browser-menu nudge everywhere else. Hides itself completely when
+// the app is already running standalone.
+function InstallAppCard() {
+  const { canInstall, isIosSafari, isStandalone, install } = useInstallPrompt();
+  const [iosOpen, setIosOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (isStandalone) {
+    return (
+      <Card padding={14} style={{ background: 'oklch(96% 0.05 155)', border: `1px solid ${T.ok}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Icon name="check" size={18} color={T.ok} stroke={2.2} />
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'oklch(35% 0.13 155)' }}>
+            Atithi is installed on this device
+          </div>
+        </div>
+      </Card>
+    );
+  }
+  const handleInstall = async () => {
+    setBusy(true);
+    await install();
+    setBusy(false);
+  };
+  return (
+    <>
+      <Card padding={14}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: T.primaryLt, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="plus" size={18} stroke={2.4} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Install Atithi as an app</div>
+            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
+              Faster to open · works offline · feels like a real app · no browser bar
+            </div>
+          </div>
+        </div>
+        {canInstall ? (
+          <button
+            onClick={handleInstall}
+            disabled={busy}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}
+          >{busy ? 'Opening installer…' : 'Install on this device'}</button>
+        ) : isIosSafari ? (
+          <button
+            onClick={() => setIosOpen(true)}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >Show how to install on iPhone / iPad</button>
+        ) : (
+          <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 7, fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.5 }}>
+            Your browser doesn't expose a one-tap install button. Open your browser's menu (⋮ or share icon) and look for <strong>"Install app"</strong>, <strong>"Add to Home Screen"</strong>, or <strong>"Add to Desktop"</strong>.
+          </div>
+        )}
+      </Card>
+      {iosOpen && (
+        <div
+          onClick={() => setIosOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 220, display: 'flex', alignItems: 'flex-end' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 24 }}>
+            <div style={{ width: 32, height: 4, background: T.border, borderRadius: 2, margin: '0 auto 18px' }} />
+            <div style={{ fontSize: 17, fontWeight: 800, color: T.ink, marginBottom: 14, textAlign: 'center' }}>
+              Add Atithi to your home screen
+            </div>
+            <ol style={{ paddingLeft: 24, color: T.ink2, fontSize: 13, lineHeight: 1.7, marginBottom: 18 }}>
+              <li>Tap the <strong>Share</strong> icon at the bottom of Safari
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, background: T.bgSoft, marginLeft: 6, verticalAlign: 'middle' }}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 3v10M10 3l-3 3M10 3l3 3" stroke={T.primary} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M5 10v6a1 1 0 001 1h8a1 1 0 001-1v-6" stroke={T.primary} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+              </li>
+              <li>Scroll down → tap <strong>Add to Home Screen</strong></li>
+              <li>Tap <strong>Add</strong> in the top-right corner</li>
+            </ol>
+            <button
+              onClick={() => setIosOpen(false)}
+              style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >Got it</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // Click-anywhere date cell for the Seasons editor. Wraps a hidden
 // (opacity:0) date input under a labelled overlay so tapping anywhere
@@ -778,11 +871,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('units')}:</span>
-                    <input onFocus={(e) => e.target.select()} type="number" value={c.units} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: +e.target.value || 1 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                    <NumberInput value={c.units} min={1} onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, units: n } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
                   </div>
                   <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: 4, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
                     <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('baseRateLabel')}: ₹</span>
-                    <input onFocus={(e) => e.target.select()} type="number" value={c.base} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: +e.target.value || 0 } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
+                    <NumberInput value={c.base} min={0} onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, base: n } : x))} className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }} />
                   </div>
                 </div>
                 {/* GST rate for this category. Auto-picked from the slab
@@ -1028,10 +1121,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </div>
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>WEEKEND UPLIFT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input onFocus={(e) => e.target.select()}
-              type="number"
+            <NumberInput
               value={weekendRules.upliftPct ?? 20}
-              onChange={(e) => setWeekendRules(prev => ({ ...prev, upliftPct: Math.max(0, Math.min(200, parseInt(e.target.value, 10) || 0)) }))}
+              min={0} max={200}
+              onChange={(n) => setWeekendRules(prev => ({ ...prev, upliftPct: n }))}
               className="tnum"
               style={{
                 width: 80, fontSize: 14, fontWeight: 700, color: T.ink,
@@ -1245,10 +1338,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <input onFocus={(e) => e.target.select()}
-                            type="number"
+                          <NumberInput
                             value={v}
-                            onChange={(e) => setChannelMarkups(prev => ({ ...prev, [c.id]: Math.max(-50, Math.min(100, parseInt(e.target.value, 10) || 0)) }))}
+                            min={-50} max={100}
+                            onChange={(n) => setChannelMarkups(prev => ({ ...prev, [c.id]: n }))}
                             className="tnum"
                             style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
                           />
@@ -1287,10 +1380,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <input onFocus={(e) => e.target.select()}
-                            type="number"
+                          <NumberInput
                             value={v}
-                            onChange={(e) => setChannelCommissions(prev => ({ ...prev, [c.id]: Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)) }))}
+                            min={0} max={50}
+                            onChange={(n) => setChannelCommissions(prev => ({ ...prev, [c.id]: n }))}
                             className="tnum"
                             style={{ width: 60, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '4px 6px', background: T.card, textAlign: 'right' }}
                           />
@@ -1733,20 +1826,22 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   hint={`Default is INV. The prefix combines with the FY and a running number — e.g. ${effectivePrefix}-${fy}-001.`}
                   prefix={<Icon name="tag" size={12} color={T.ink3} />}
                 />
-                <Field
-                  label={`Last invoice number issued (FY ${fmtFy(fy)})`}
-                  type="number"
-                  value={currentSeq}
-                  onChange={e => {
-                    const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    setInvoiceCounters({ ...invoiceCounters, [fy]: v });
-                  }}
-                  placeholder="0"
-                  hint={currentSeq > 0
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Last invoice number issued (FY {fmtFy(fy)})</label>
+                  <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon name="tag" size={12} color={T.ink3} />
+                    <NumberInput
+                      value={currentSeq}
+                      min={0} fallback={0}
+                      onChange={(n) => setInvoiceCounters({ ...invoiceCounters, [fy]: n })}
+                      placeholder="0"
+                      style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
+                    />
+                  </div>
+                  <span style={{ fontSize: 11, color: T.ink3 }}>{currentSeq > 0
                     ? `Next invoice will be ${effectivePrefix}-${fy}-${String(currentSeq + 1).padStart(3, '0')}.`
-                    : `Leave at 0 to start fresh from ${effectivePrefix}-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}
-                  prefix={<Icon name="tag" size={12} color={T.ink3} />}
-                />
+                    : `Leave at 0 to start fresh from ${effectivePrefix}-${fy}-001. Set this if you were already issuing invoices in another system this financial year — Atithi will continue from the next number.`}</span>
+                </div>
               </>
             )}
           </div>
@@ -2288,22 +2383,32 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             Set your property's child policy. Some properties let kids stay free up to 10 or 12 years — set whatever fits your rate sheet. Used everywhere kids are counted: New Booking, the public widget, the voucher.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-            <Field
-              label="Stay FREE under age"
-              type="number"
-              value={accountant.childFreeBelowAge ?? 5}
-              onChange={e => setAccountant({ ...accountant, childFreeBelowAge: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-              placeholder="5"
-              hint="No charge for kids below this age"
-            />
-            <Field
-              label="HALF rate under age"
-              type="number"
-              value={accountant.childAgeBelow ?? 12}
-              onChange={e => setAccountant({ ...accountant, childAgeBelow: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-              placeholder="12"
-              hint="Half the extra-child rate up to this age"
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Stay FREE under age</label>
+              <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
+                <NumberInput
+                  value={accountant.childFreeBelowAge ?? 5}
+                  min={0} fallback={5}
+                  onChange={(n) => setAccountant({ ...accountant, childFreeBelowAge: n })}
+                  placeholder="5"
+                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
+                />
+              </div>
+              <span style={{ fontSize: 11, color: T.ink3 }}>No charge for kids below this age</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>HALF rate under age</label>
+              <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
+                <NumberInput
+                  value={accountant.childAgeBelow ?? 12}
+                  min={0} fallback={12}
+                  onChange={(n) => setAccountant({ ...accountant, childAgeBelow: n })}
+                  placeholder="12"
+                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
+                />
+              </div>
+              <span style={{ fontSize: 11, color: T.ink3 }}>Half the extra-child rate up to this age</span>
+            </div>
           </div>
           {/* Live preview — concrete example rendered in the hotelier's
               current numbers. Helps catch off-by-one mistakes (e.g. 'I
@@ -2330,15 +2435,20 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
 
         <SectionHead title="Adults included in the base rate" style={{ marginTop: 16 }} />
         <Card padding={12}>
-          <Field
-            label="Standard occupancy"
-            type="number"
-            value={baseCapacityAdults}
-            onChange={e => setBaseCapacityAdults(Math.max(1, parseInt(e.target.value, 10) || 1))}
-            placeholder="2"
-            hint="Adults above this count are charged the per-category extra-adult rate."
-            prefix={<Icon name="users" size={12} color={T.ink3} />}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Standard occupancy</label>
+            <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="users" size={12} color={T.ink3} />
+              <NumberInput
+                value={baseCapacityAdults}
+                min={1} fallback={2}
+                onChange={(n) => setBaseCapacityAdults(n)}
+                placeholder="2"
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
+              />
+            </div>
+            <span style={{ fontSize: 11, color: T.ink3 }}>Adults above this count are charged the per-category extra-adult rate.</span>
+          </div>
         </Card>
 
         <SectionHead title={t('houseRules')} style={{ marginTop: 16 }} />
@@ -2562,6 +2672,12 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
               - Form C / FRRO → "Form C required" pills on the diary
                 + Reports. Hotelier files manually at indianfrro.gov.in.
         */}
+
+        {/* Install Atithi card. Visible to everyone (signed-in or DEMO)
+            because anyone might want to add the app to their home
+            screen. Hides itself when already running standalone. */}
+        <SectionHead title="App" style={{ marginTop: 16 }} />
+        <InstallAppCard />
 
         {session && (
           <>

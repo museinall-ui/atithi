@@ -76,36 +76,44 @@ export default function SyncOverlay({ t }) {
   // otherwise the green-toned chip text next to a red dot would contradict
   // itself. Otherwise show for the full 3s.
   const showPillText = showFirstOk && sync.status !== 'error';
+  // Only show the status dot when it's actually telling the hotelier
+  // something useful: a sync in flight, an error, or the one-time
+  // "Saved to cloud" confirmation pill. Idle and post-ok states hide
+  // the dot entirely so the top-right of the screen isn't permanently
+  // dotted (which the hotelier read as "is this an unread notification?").
+  const showDot = pulsing || sync.status === 'error' || showPillText;
 
   return (
     <>
-      {/* Status dot (always rendered once signed in) */}
-      <div
-        style={{
-          position: 'fixed', top: 10, right: 12, zIndex: 200,
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: 'rgba(255,255,255,0.92)',
-          borderRadius: 999,
-          padding: showPillText ? '4px 10px 4px 8px' : '4px',
-          boxShadow: '0 1px 3px rgba(20,15,10,.10), 0 0 0 1px rgba(20,15,10,.06)',
-          transition: 'padding .2s ease',
-          pointerEvents: 'auto',
-        }}
-        title={statusTitle(t, sync)}
-      >
-        <span
-          className={pulsing ? 'pulse' : ''}
+      {/* Status dot — only rendered when there's something to communicate. */}
+      {showDot && (
+        <div
           style={{
-            width: DOT, height: DOT, borderRadius: DOT / 2,
-            background: color, flexShrink: 0,
+            position: 'fixed', top: 10, right: 12, zIndex: 200,
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.92)',
+            borderRadius: 999,
+            padding: showPillText ? '4px 10px 4px 8px' : '4px',
+            boxShadow: '0 1px 3px rgba(20,15,10,.10), 0 0 0 1px rgba(20,15,10,.06)',
+            transition: 'padding .2s ease',
+            pointerEvents: 'auto',
           }}
-        />
-        {showPillText && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.ink, whiteSpace: 'nowrap' }}>
-            {t('syncSaved')}
-          </span>
-        )}
-      </div>
+          title={statusTitle(t, sync)}
+        >
+          <span
+            className={pulsing ? 'pulse' : ''}
+            style={{
+              width: DOT, height: DOT, borderRadius: DOT / 2,
+              background: color, flexShrink: 0,
+            }}
+          />
+          {showPillText && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.ink, whiteSpace: 'nowrap' }}>
+              {t('syncSaved')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Error toast (bottom, above the tab bar) */}
       {errorVisible && sync.lastError && (

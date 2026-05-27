@@ -129,7 +129,12 @@ export default function InstallPrompt() {
     <>
       <div
         style={{
-          position: 'fixed', left: 12, right: 12, bottom: 90, zIndex: 180,
+          // position:absolute so the banner anchors inside the app
+          // root, not the viewport. Otherwise on desktop the banner
+          // would span the full viewport width (1440px+) while the
+          // app sits at 760-900px centered — making it look like a
+          // browser-injected toast rather than part of the app.
+          position: 'absolute', left: 12, right: 12, bottom: 90, zIndex: 180,
           background: T.card, borderRadius: 14, padding: '12px 14px',
           boxShadow: '0 12px 32px rgba(20,15,10,.18), 0 0 0 1px rgba(20,15,10,.06)',
           display: 'flex', alignItems: 'center', gap: 10,

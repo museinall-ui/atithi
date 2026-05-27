@@ -1108,6 +1108,25 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   // we surface a confirm if dirty + edit mode.
   const [dirty, setDirty] = useState(false);
   const set = (k, v) => { setDirty(true); setData(d => ({ ...d, [k]: v })); };
+  // Submitting flag to disable Confirm Booking after the first tap.
+  // Without this, a flaky-network double-tap creates two booking
+  // rows for the same guest (BK-XXXX then BK-XXXY) since the cloud
+  // round-trip takes ~500ms and the button stays enabled the whole
+  // time. The flag stays true until App.jsx navigates away (to
+  // booking-confirmed), so we don't need to manually reset it.
+  const [submitting, setSubmitting] = useState(false);
+  const doConfirm = async () => {
+    if (submitting) return;
+    if (!guestValid) return;
+    setSubmitting(true);
+    try {
+      await onCreate(data, total);
+    } catch {
+      // onCreate handles its own toasts; re-enable the button so
+      // the hotelier can retry instead of being stuck.
+      setSubmitting(false);
+    }
+  };
   const safeBack = () => {
     // No confirm needed if nothing's changed.
     if (!dirty) {
@@ -1374,8 +1393,8 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
             setStep(step + 1);
           }} disabled={(step === 1 && !datesValid) || (step === 2 && !roomsValid) || (step === 3 && !guestValid)} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>{t('continue')}</Btn>
         ) : (
-          <Btn icon="check" onClick={() => { if (!guestValid) return; onCreate(data, total); }} disabled={!guestValid} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>
-            {isEdit ? t('confirmMove') : t('confirmBooking')}
+          <Btn icon={submitting ? 'sync' : 'check'} onClick={doConfirm} disabled={!guestValid || submitting} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>
+            {submitting ? (isEdit ? 'Saving…' : 'Creating booking…') : (isEdit ? t('confirmMove') : t('confirmBooking'))}
           </Btn>
         )}
       </div>

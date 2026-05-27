@@ -442,6 +442,44 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     return () => clearTimeout(id);
   }, [uploadError]);
 
+  // Dirty-flag tracking for the unsaved-changes confirm. Every editor
+  // surface in PropertyProfile (~25 distinct setters) writes through
+  // its own local state; tracking changes manually for each would be
+  // a nightmare. Easier: snapshot the initial property on mount, then
+  // diff against current state on close. If anything differs and the
+  // hotelier hits back without saving, confirm before navigating away.
+  const initialSnapshotRef = useRef(null);
+  useEffect(() => {
+    initialSnapshotRef.current = JSON.stringify({
+      profile, categories, rules, amenityIds, customAmenities,
+      gstin: gstin.trim(), accountant, theme, invoiceCounters,
+      mealPlans, defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
+      coupons, cashAccounts, customReminders,
+    });
+    // Empty deps — capture the FIRST render's state as the baseline.
+    // Subsequent renders compare against this snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const isDirty = () => {
+    if (!initialSnapshotRef.current) return false;
+    const current = JSON.stringify({
+      profile, categories, rules, amenityIds, customAmenities,
+      gstin: gstin.trim(), accountant, theme, invoiceCounters,
+      mealPlans, defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
+      coupons, cashAccounts, customReminders,
+    });
+    return current !== initialSnapshotRef.current;
+  };
+  const safeClose = () => {
+    if (!isDirty()) { onClose(); return; }
+    if (window.confirm("You have unsaved changes. Save before leaving?\n\nOK to save now and close, or Cancel to keep editing.")) {
+      handleSave();
+      // Give the save a moment to settle before closing. The sync
+      // chip will flash, then we close.
+      setTimeout(() => onClose(), 200);
+    }
+  };
+
   // Does the public widget anon-RLS migration exist in Supabase yet?
   // Drives whether we show the "Before sharing this link" amber
   // warning in the Booking link accordion. Three states:
@@ -542,7 +580,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   ];
   return (
     <div style={{ position: 'absolute', inset: 0, background: T.bg, zIndex: 40, display: 'flex', flexDirection: 'column' }}>
-      <ScreenHeader title={t('propertyProfile')} onBack={onClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
+      <ScreenHeader title={t('propertyProfile')} onBack={safeClose} right={<Btn size="sm" icon="check" onClick={handleSave}>{t('save')}</Btn>} />
       {uploadError && (
         <div style={{
           position: 'absolute', top: 60, left: 12, right: 12,

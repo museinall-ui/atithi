@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { T } from '../tokens.js';
 import { CHANNELS, DAYS, ANCHOR, ymd, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
 import Icon from '../components/Icon.jsx';
@@ -316,6 +316,23 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const canDayClose = can('manage_expenses');
   const canExtend  = can('edit_bookings');
   const isHi = lang === 'hi';
+  // Carousel pagination state — tracks which of the 3 occupancy /
+  // income / earned-this-month cards is currently centered. Dots
+  // were static (always first-dot-wide) until this was wired up.
+  const carouselRef = useRef(null);
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  const onCarouselScroll = () => {
+    const el = carouselRef.current;
+    if (!el) return;
+    // Each card is 100% of container width minus the side gap, so
+    // active index is just round(scrollLeft / scrollWidth-per-card).
+    // We use clientWidth as the per-card width approximation since
+    // each card's minWidth is 'calc(100% - 26px)'.
+    const cardWidth = el.clientWidth - 26;
+    if (cardWidth <= 0) return;
+    const next = Math.min(2, Math.max(0, Math.round(el.scrollLeft / cardWidth)));
+    if (next !== carouselIdx) setCarouselIdx(next);
+  };
   const ROOM_TYPES = effectiveRoomTypes(property);
   const repeats = repeatGuestKeys(bookings);
   // Fake "New booking · MakeMyTrip" toast was removed: it claimed bookings
@@ -625,7 +642,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
               email alerts have a destination). */}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, overflowX: 'auto', margin: '0 -20px', padding: '0 20px 4px', scrollSnapType: 'x mandatory' }}>
+        <div ref={carouselRef} onScroll={onCarouselScroll} style={{ display: 'flex', gap: 10, overflowX: 'auto', margin: '0 -20px', padding: '0 20px 4px', scrollSnapType: 'x mandatory' }}>
           {/* Card 1 — Occupancy */}
           <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
@@ -720,7 +737,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 8 }}>
-          {[0,1,2].map(i => <span key={i} style={{ width: i === 0 ? 14 : 5, height: 5, borderRadius: 3, background: i === 0 ? '#fff' : 'rgba(255,255,255,0.5)', transition: 'width .2s' }} />)}
+          {[0,1,2].map(i => <span key={i} style={{ width: i === carouselIdx ? 14 : 5, height: 5, borderRadius: 3, background: i === carouselIdx ? '#fff' : 'rgba(255,255,255,0.5)', transition: 'width .2s' }} />)}
         </div>
       </div>
 
@@ -766,15 +783,19 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
 
       {pendingPayments.length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>
-          <SectionHead title="Pending payments" action={
+          <SectionHead title={isHi ? 'बकाया भुगतान' : 'Pending payments'} action={
             <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.danger }}>
-              ₹{pendingTotal.toLocaleString('en-IN')} due
+              ₹{pendingTotal.toLocaleString('en-IN')} {isHi ? 'बाकी' : 'due'}
             </span>
           } />
           <Card padding={0} style={{ overflow: 'hidden' }}>
             {pendingPayments.map((b, i) => {
               const balance = b.total - b.paid;
-              const statusLabel = b.status === 'checkedin' ? 'In-house' : b.status === 'checkout' ? 'Departed' : 'Arrived today';
+              const statusLabel = b.status === 'checkedin'
+                ? (isHi ? 'ठहरे हुए' : 'In-house')
+                : b.status === 'checkout'
+                  ? (isHi ? 'जा चुके' : 'Departed')
+                  : (isHi ? 'आज आए' : 'Arrived today');
               return (
                 <div key={b.id} style={{
                   padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10,
@@ -1006,7 +1027,9 @@ ${arrivingTomorrow.map(b => {
                         }}
                       >
                         <Icon name="wa" size={13} color={recipients.length === 0 ? T.ink3 : '#fff'} stroke={2} />
-                        {recipients.length === 0 ? 'Add a phone number in Settings' : 'Send on WhatsApp'}
+                        {recipients.length === 0
+                          ? (isHi ? 'Settings में फ़ोन नंबर जोड़ें' : 'Add a phone number in Settings')
+                          : (isHi ? 'WhatsApp पर भेजें' : 'Send on WhatsApp')}
                       </button>
                       <button
                         onClick={downloadHtml}
@@ -1053,7 +1076,7 @@ ${arrivingTomorrow.map(b => {
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                         }}
                       >
-                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> Download as PDF instead
+                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> {isHi ? 'PDF डाउनलोड करें' : 'Download as PDF instead'}
                       </button>
                     </>
                   )}

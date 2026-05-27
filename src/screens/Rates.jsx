@@ -8,6 +8,7 @@ import Chip from '../components/Chip.jsx';
 import Card from '../components/Card.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
+import NumberInput from '../components/NumberInput.jsx';
 
 const bulkBtn = (bg) => ({
   background: bg, color: '#fff', border: 'none', borderRadius: 8,
@@ -1216,11 +1217,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                     <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>Or custom:</span>
-                    <input onFocus={(e) => e.target.select()}
-                      type="number"
-                      step="0.05"
+                    <NumberInput
+                      step={0.05}
+                      min={0}
                       value={copyState.multiplier}
-                      onChange={(e) => setCopyState(s => ({ ...s, multiplier: parseFloat(e.target.value) || 0 }))}
+                      onChange={(n) => setCopyState(s => ({ ...s, multiplier: n }))}
                       className="tnum"
                       style={{ width: 80, fontSize: 13, fontWeight: 700, color: T.ink, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '5px 8px', background: T.card }}
                     />

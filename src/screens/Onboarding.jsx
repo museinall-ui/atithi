@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -93,15 +93,33 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
   const step1Valid = name.trim().length > 0;
   const step2Valid = catName.trim().length > 0 && +catUnits > 0 && +catRate > 0;
 
+  // Inline upload error + busy state. Used to be a native alert()
+  // which froze the screen + showed "atithi-seven.vercel.app says:"
+  // as the title — looked like a security warning to a non-technical
+  // hotelier on their first visit. Now: friendly inline chip below
+  // the upload, auto-clears after 4s. Busy state shows "Uploading…"
+  // while the FileReader is in flight (can be 1-2s on slower phones
+  // for a large image).
+  const [qrError, setQrError] = useState('');
+  const [qrBusy, setQrBusy] = useState(false);
+  useEffect(() => {
+    if (!qrError) return;
+    const id = setTimeout(() => setQrError(''), 4000);
+    return () => clearTimeout(id);
+  }, [qrError]);
   const onUploadQr = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (file.size > 700 * 1024) {
-      alert('Image is too large. Please use a QR under 700 KB.');
+      setQrError('Image is too large. Please use a QR under 700 KB.');
+      // Clear the input so re-selecting the same file works.
+      e.target.value = '';
       return;
     }
+    setQrBusy(true);
     const r = new FileReader();
-    r.onload = () => setQrDataUrl(String(r.result || ''));
+    r.onload = () => { setQrDataUrl(String(r.result || '')); setQrBusy(false); };
+    r.onerror = () => { setQrError('Could not read the image. Try a different file.'); setQrBusy(false); };
     r.readAsDataURL(file);
   };
 
@@ -243,12 +261,18 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
               </div>
             ) : (
               <label
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '26px 14px', border: `1.5px dashed ${T.border}`, borderRadius: 12, background: T.bgSoft, color: T.ink3, cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '26px 14px', border: `1.5px dashed ${T.border}`, borderRadius: 12, background: T.bgSoft, color: T.ink3, cursor: qrBusy ? 'wait' : 'pointer', opacity: qrBusy ? 0.7 : 1 }}
               >
-                <Icon name="plus" size={16} color={T.primary} stroke={2.2} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: T.primary }}>{L.qrUploadCta}</span>
-                <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={onUploadQr} />
+                {qrBusy ? <Icon name="sync" size={16} color={T.primary} className="spin" /> : <Icon name="plus" size={16} color={T.primary} stroke={2.2} />}
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.primary }}>{qrBusy ? 'Uploading…' : L.qrUploadCta}</span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={onUploadQr} disabled={qrBusy} />
               </label>
+            )}
+            {qrError && (
+              <div style={{ padding: '8px 10px', background: 'oklch(95% 0.06 30)', border: `1px solid ${T.danger}`, borderRadius: 7, fontSize: 11, color: T.danger, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="info" size={12} color={T.danger} stroke={2.4} />
+                {qrError}
+              </div>
             )}
             <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', lineHeight: 1.5 }}>
               {L.qrSkip}

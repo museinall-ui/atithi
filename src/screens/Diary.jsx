@@ -285,7 +285,7 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   );
 }
 
-function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart }) {
+function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart, canCreate = true, canEdit = true }) {
   const tagColor = T[rt.tag];
   // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
   // pill instance. Used to decide whether to make the cell clickable for
@@ -295,7 +295,25 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
     inst.b.startIdx <= dayIdx && dayIdx < (inst.b.startIdx + (inst.b.nights || 1))
   );
   const openQuickCreate = (date) => {
+    // Gate on create_bookings so a Reception-only staffer (without
+    // the perm) doesn't tap an empty cell, bounce to PermissionDenied,
+    // and have to back out. Silent no-op is the right behaviour —
+    // the cell is rendered without a hover affordance for the same
+    // reason (see cellOnClick below).
+    if (!canCreate) return;
     if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
+  };
+  // Gate drag-move on edit_bookings — same reason. A reception
+  // staffer can still TAP a pill to view it (handled in
+  // onPointerDown's tap-vs-drag detection, which routes a stationary
+  // tap to go('booking', id) — that's just navigation, no edit). But
+  // any actual drag-to-move must require the perm.
+  const gatedOnPointerDown = canEdit ? onPointerDown : (e, b) => {
+    // Treat as tap-only — open the booking detail, never drag.
+    // Suppress the underlying onPointerDown's drag listener entirely
+    // by intercepting before it fires.
+    e.preventDefault();
+    if (go) go('booking', b.id);
   };
   return (
     <div>
@@ -367,7 +385,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                     key={inst.b.id + ':' + inst.itemIndex}
                     b={inst.b}
                     colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
-                    onPointerDown={(e) => onPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
+                    onPointerDown={(e) => gatedOnPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
                     multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
                   />
                 );
@@ -795,6 +813,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               days={viewDays}
               todayIso={todayIso}
               viewDaysStart={viewDaysStart}
+              canCreate={canCreate}
+              canEdit={canEdit}
             />
           ))}
         </div>

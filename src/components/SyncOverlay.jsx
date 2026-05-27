@@ -89,7 +89,12 @@ export default function SyncOverlay({ t }) {
       {showDot && (
         <div
           style={{
-            position: 'fixed', top: 10, right: 12, zIndex: 200,
+            // position:absolute so the dot anchors inside the app
+            // root (which is centered + width-capped on desktop)
+            // instead of the raw viewport. position:fixed used to
+            // orphan the dot in the dark page background on a
+            // laptop because the root was only 760px wide centered.
+            position: 'absolute', top: 10, right: 12, zIndex: 200,
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'rgba(255,255,255,0.92)',
             borderRadius: 999,
@@ -119,7 +124,7 @@ export default function SyncOverlay({ t }) {
       {errorVisible && sync.lastError && (
         <div
           style={{
-            position: 'fixed', left: 12, right: 12, bottom: 90, zIndex: 200,
+            position: 'absolute', left: 12, right: 12, bottom: 90, zIndex: 200,
             background: T.card, borderRadius: 14, padding: '10px 12px',
             boxShadow: '0 12px 32px rgba(20,15,10,.18), 0 0 0 1px rgba(20,15,10,.06)',
             display: 'flex', alignItems: 'flex-start', gap: 10,

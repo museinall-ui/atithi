@@ -674,7 +674,15 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} units · ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} onBack={() => go('home')}
-        right={<Btn size="sm" variant="ghost" icon="download">Export</Btn>}
+        right={<Btn size="sm" variant="ghost" icon="download" onClick={() => {
+          // Scroll to the "Downloadable reports" card. Used to be a
+          // dead button — no onClick handler at all, looked like a
+          // feature but did nothing. Now it jumps the user to the
+          // download options below.
+          const headings = [...document.querySelectorAll('div')];
+          const target = headings.find(d => (d.textContent || '').trim() === 'Downloadable reports' || (d.textContent || '').trim() === 'DOWNLOADABLE REPORTS');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}>Export</Btn>}
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         {/* Date-range picker — defaults to current calendar month. All

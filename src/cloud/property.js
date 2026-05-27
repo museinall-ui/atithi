@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { slugify } from '../data.js';
 
 // Cloud <-> local shape conversion.
 //
@@ -41,9 +42,13 @@ function localToCloudProperty(local) {
     photo_gallery: Array.isArray(p.photoGallery) ? p.photoGallery : [],
     tagline: p.tagline || '',
     // URL slug for the public booking widget (/book/<slug>). Editable
-    // in Settings → Booking link. Falls back to a name-derived slug
-    // at runtime when empty.
-    short_code: p.shortCode || '',
+    // in Settings → Booking link. If the hotelier hasn't picked a
+    // custom slug, derive one from the property name so the cloud
+    // row has a real value to look up. Without this fallback the
+    // widget URL displayed in Settings (which falls back to
+    // slugify(name) locally) wouldn't resolve via the cloud lookup
+    // (which is strict on the column value).
+    short_code: (p.shortCode || '').trim() || (p?.profile?.name ? slugify(p.profile.name) : ''),
     // Styled-button customiser config: { text, style, size,
     // useCustomColour, color }. Used by Settings → Booking link to
     // generate the inline-styled HTML snippet.

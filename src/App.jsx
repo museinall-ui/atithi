@@ -420,12 +420,13 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
 
   const handleSubmit = (newBk) => {
     if (cloudProperty && cloudProperty.id) {
-      // Real anon insert. Fire-and-forget the side effect; return
-      // the cloud-assigned id (or null if it fails so the widget
-      // shows the generic confirmation screen).
-      let resolvedId = null;
+      // Anonymous insert — fire and forget. The cloud-side trigger
+      // assigns the real BK-XXXX id, but anon doesn't have SELECT
+      // permission to read it back (RLS), so the widget never sees
+      // the real id. We return a friendly reference code instead
+      // (WEB-XXXX) for the guest's confirmation screen; the hotelier
+      // sees the real BK-#### when it lands in their diary.
       insertWidgetBooking(cloudProperty.id, newBk)
-        .then(id => { resolvedId = id; })
         .catch(err => {
           // Cloud insert failed — most likely the anon RLS SQL
           // hasn't been pasted yet. We can't synchronously
@@ -435,10 +436,10 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
           // appearing on their diary.
           console.error('[atithi widget] insert failed — anon RLS may not be set up. Run supabase/migrations/20260605_widget_anon_access.sql.', err);
         });
-      // Optimistic UI: assign a temp id so the confirmation screen
-      // shows something. The real cloud id (BK-XXXX) lands a
-      // moment later in the hotelier's diary.
-      return 'BK-PENDING-' + Date.now().toString(36).slice(-4).toUpperCase();
+      // 4-char reference. Recognizable as "this is a temporary code,
+      // not your final booking number" because of the WEB- prefix.
+      const ref = 'WEB-' + Date.now().toString(36).slice(-4).toUpperCase();
+      return ref;
     }
     // Fallback for demo / preview — local state only.
     const id = 'BK-' + (2854 + (fallbackBookings || []).length);

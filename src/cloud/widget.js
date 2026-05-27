@@ -171,14 +171,19 @@ export async function insertWidgetBooking(propertyId, booking) {
     hold_hours: booking.holdHours || null,
     gst_applies: false,
   };
-  const { data, error } = await supabase
-    .from('bookings')
-    .insert(payload)
-    .select('id')
-    .single();
+  // Don't chain .select('id').single() — the anon role has INSERT
+  // but no SELECT on the bookings table, so the read-after-insert
+  // fails RLS even though the insert itself succeeded. We accept
+  // that we can't see the DB-trigger-assigned BK-XXXX from the
+  // anonymous side; the hotelier sees the real id when the
+  // booking lands in their diary a moment later.
+  const { error } = await supabase.from('bookings').insert(payload);
   if (error) {
     console.warn('[atithi widget] insertWidgetBooking failed', error);
     throw error;
   }
-  return data?.id;
+  // Return null — caller (App.jsx PublicWidgetEntry) generates a
+  // friendly "your booking is being created" placeholder for the
+  // guest's confirmation screen.
+  return null;
 }

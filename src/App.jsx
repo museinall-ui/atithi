@@ -26,6 +26,7 @@ import SearchOverlay from './components/SearchOverlay.jsx';
 import InstallPrompt from './components/InstallPrompt.jsx';
 import Icon from './components/Icon.jsx';
 import PublicBookingWidget from './screens/PublicBookingWidget.jsx';
+import { loadPropertyBySlug, loadWidgetInventory, insertWidgetBooking } from './cloud/widget.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -334,6 +335,127 @@ function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
     if (!conflict) return u;
   }
   return null;
+}
+
+// Public booking widget — wraps PublicBookingWidget with its own
+// cloud loader so an anonymous visitor (no Supabase session) gets the
+// right hotel's data based on the URL slug, not whatever's in
+// localStorage from a previous demo session. Submits go straight to
+// Supabase via the anon RLS path; falls back to the fallback* props
+// (local state) only when the cloud calls fail (typically: anon RLS
+// SQL not yet pasted into Supabase, dev mode, or a slug that doesn't
+// match any property).
+function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackOverrides, fallbackExtras, lang }) {
+  const [cloudProperty, setCloudProperty] = useState(null);
+  const [cloudBookings, setCloudBookings] = useState(null);
+  const [cloudCategories, setCloudCategories] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(!!slug);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!slug) {
+      // No slug → fall back to local property (preview path when the
+      // hotelier opens the widget themselves while signed in).
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const prop = await loadPropertyBySlug(slug);
+        if (cancelled) return;
+        if (!prop) {
+          setLoadError('property_not_found');
+          setLoading(false);
+          return;
+        }
+        const inv = await loadWidgetInventory(prop.id);
+        if (cancelled) return;
+        // Merge categories into property so the widget renders rooms.
+        setCloudProperty({ ...prop, categories: inv.categories });
+        setCloudBookings(inv.bookings);
+        setCloudCategories(inv.categories);
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('[atithi widget] cloud load failed, falling back to local', err);
+        setLoadError('cloud_unavailable');
+        setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  // Loading splash while we fetch from cloud.
+  if (loading) {
+    return (
+      <div style={{ height: '100%', background: T.bg, color: T.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+        Loading…
+      </div>
+    );
+  }
+  // Hard-fail when the slug doesn't match a property. Don't fall
+  // back to fallbackProperty (which would be Yatra's demo data) —
+  // that's how guest bookings used to silently land on the wrong
+  // hotel's diary.
+  if (loadError === 'property_not_found') {
+    return (
+      <div style={{ height: '100%', background: T.bg, padding: 32, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>Hotel not found</div>
+        <div style={{ fontSize: 13, color: T.ink3, maxWidth: 320, lineHeight: 1.5 }}>
+          The booking link <code style={{ background: T.bgSoft, padding: '2px 6px', borderRadius: 4 }}>/book/{slug}</code> doesn't match any property. The link may have been mistyped or the property's URL may have changed.
+        </div>
+      </div>
+    );
+  }
+
+  // Use cloud data when available; fall back to local (demo /
+  // hotelier-preview-while-signed-in) otherwise.
+  const widgetProperty = cloudProperty || fallbackProperty;
+  const widgetBookings = cloudBookings || fallbackBookings;
+  // No rate overrides via anon path for now — widget uses base rates
+  // + property-level multipliers. Hotelier-side rate-override
+  // calendar still works on the diary as before.
+  const widgetOverrides = cloudCategories ? {} : fallbackOverrides;
+
+  const handleSubmit = (newBk) => {
+    if (cloudProperty && cloudProperty.id) {
+      // Real anon insert. Fire-and-forget the side effect; return
+      // the cloud-assigned id (or null if it fails so the widget
+      // shows the generic confirmation screen).
+      let resolvedId = null;
+      insertWidgetBooking(cloudProperty.id, newBk)
+        .then(id => { resolvedId = id; })
+        .catch(err => {
+          // Cloud insert failed — most likely the anon RLS SQL
+          // hasn't been pasted yet. We can't synchronously
+          // surface this to the widget (the confirmation screen
+          // already rendered), but we log it loudly so the
+          // hotelier can see why their widget bookings aren't
+          // appearing on their diary.
+          console.error('[atithi widget] insert failed — anon RLS may not be set up. Run supabase/migrations/20260605_widget_anon_access.sql.', err);
+        });
+      // Optimistic UI: assign a temp id so the confirmation screen
+      // shows something. The real cloud id (BK-XXXX) lands a
+      // moment later in the hotelier's diary.
+      return 'BK-PENDING-' + Date.now().toString(36).slice(-4).toUpperCase();
+    }
+    // Fallback for demo / preview — local state only.
+    const id = 'BK-' + (2854 + (fallbackBookings || []).length);
+    return id;
+  };
+
+  return (
+    <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{ height: '100%', background: T.bg, overflow: 'hidden' }}>
+      <PublicBookingWidget
+        property={widgetProperty}
+        bookings={widgetBookings || []}
+        rateOverrides={widgetOverrides || {}}
+        savedCustomExtras={fallbackExtras || []}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
 }
 
 // Rendered in place of any screen the current user doesn't have permission
@@ -1451,22 +1573,7 @@ export default function App() {
   // in the same property's diary with channel='website' + status='tentative'
   // so the hotelier can review before confirming.
   if (IS_PUBLIC_WIDGET) {
-    return (
-      <div className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')} style={{ height: '100%', background: T.bg, overflow: 'hidden' }}>
-        <PublicBookingWidget
-          property={property}
-          bookings={bookings}
-          rateOverrides={rateOverrides}
-          savedCustomExtras={savedCustomExtras}
-          onSubmit={(newBk) => {
-            const id = 'BK-' + (2854 + bookings.length);
-            const enriched = { ...newBk, id };
-            setBookings(arr => [...arr, enriched]);
-            return id;
-          }}
-        />
-      </div>
-    );
+    return <PublicWidgetEntry slug={WIDGET_SLUG} fallbackProperty={property} fallbackBookings={bookings} fallbackOverrides={rateOverrides} fallbackExtras={savedCustomExtras} lang={lang} />;
   }
 
   // Session-demo banner — visible only when the visitor opted into demo

@@ -294,6 +294,19 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
   const [newRule, setNewRule] = useState('');
+  // Custom pre-arrival reminders. Each {id, text} appears in the
+  // Dashboard's Today's Nudges card once per guest arriving tomorrow,
+  // with a one-tap WhatsApp button that opens the chat with the
+  // reminder text prefilled. Useful for property-specific reminders
+  // like "Ask if airport pickup needed" or "Confirm any dietary
+  // requirements" that the hotelier wants to ask the day before.
+  //
+  // Stored inside `accountant` jsonb so it round-trips to Supabase via
+  // the existing properties.accountant column — no new column / no
+  // migration. Same hack as childAgeBelow / customPaymentMethods /
+  // expenseCategories that already live there.
+  const [customReminders, setCustomReminders] = useState(Array.isArray(property?.accountant?.customReminders) ? property.accountant.customReminders : []);
+  const [newReminder, setNewReminder] = useState('');
   const [amenityIds, setAmenityIds] = useState(property.amenityIds || []);
   const [customAmenities, setCustomAmenities] = useState(property.customAmenities || []);
   const [mealPlans, setMealPlans] = useState(property.mealPlans || []);
@@ -471,7 +484,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     onSave(prev => ({
       ...prev,
       profile, categories, rules, amenityIds, customAmenities,
-      gstin: gstin.trim(), accountant, theme, invoiceCounters,
+      gstin: gstin.trim(),
+      // Merge customReminders into accountant jsonb (round-trips to
+      // properties.accountant column without a migration).
+      accountant: { ...accountant, customReminders },
+      theme, invoiceCounters,
       mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
       coupons,
       cashAccounts,
@@ -2050,12 +2067,12 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             };
             return (
               <>
-                {/* HONEST status: bookings from this URL currently stay
-                    in the GUEST's browser only (anon RLS hasn't been
-                    set up in Supabase yet), so guests would think they
-                    booked but the hotelier never sees the booking on
-                    another device. Surfacing this prominently so the
-                    hotelier doesn't share the URL prematurely. */}
+                {/* HONEST status: until the owner pastes the anon-RLS
+                    migration (20260605_widget_anon_access.sql) into
+                    Supabase, guest bookings stay in the guest's
+                    browser only. Once pasted, this banner can be
+                    removed manually — there's no runtime check yet
+                    that detects "did the SQL run successfully". */}
                 <div style={{
                   padding: '10px 12px', background: 'oklch(96% 0.06 75)',
                   border: '1.5px solid oklch(72% 0.14 75)', borderRadius: 8,
@@ -2063,7 +2080,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 }}>
                   <Icon name="info" size={14} color="oklch(40% 0.14 75)" stroke={2.2} />
                   <div style={{ fontSize: 11, color: 'oklch(35% 0.14 75)', fontWeight: 600, lineHeight: 1.5 }}>
-                    <strong>Not yet shareable with guests.</strong> The widget renders correctly when YOU open the link (signed-in hotelier preview), but guest bookings will not reach your cloud account until Atithi's owner enables anonymous booking access in Supabase. Use this link to preview the guest flow only — don't put it on your website yet.
+                    <strong>Before sharing this link with guests:</strong> paste{' '}
+                    <code style={{ background: 'oklch(98% 0.02 75)', padding: '1px 4px', borderRadius: 3, fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5 }}>supabase/migrations/20260605_widget_anon_access.sql</code>{' '}
+                    into your Supabase SQL Editor (one-time, ~30 seconds). Until then guest bookings stay in the guest's browser and never reach your diary.
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
@@ -2583,6 +2602,74 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             <input value={newRule} onChange={e => setNewRule(e.target.value)} placeholder={t('rulesPlaceholder')} style={{ flex: 1, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 7, padding: '7px 10px', fontSize: 12, color: T.ink, background: T.card }} />
             <button onClick={() => { if (newRule.trim()) { setRules(r => [...r, newRule.trim()]); setNewRule(''); } }} style={{ border: 'none', background: T.primary, color: '#fff', borderRadius: 7, padding: '0 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('addRule')}</button>
           </div>
+        </Card>
+
+        {/* Pre-arrival reminders — surface in Dashboard's Today's
+            Nudges card the day before each arrival. One nudge per
+            reminder × per tomorrow-arriving guest. Tap → opens
+            WhatsApp pre-filled with the reminder text + guest's
+            name. Useful for property-specific asks: cab booking,
+            dietary needs, ID upload, late check-in confirmation. */}
+        <SectionHead title="Pre-arrival reminders" style={{ marginTop: 16 }} />
+        <Card padding={12}>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
+            Each reminder appears in the Dashboard's <strong>Today's Nudges</strong> card the day before every arrival, with a one-tap WhatsApp button to send it to the guest.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {customReminders.length === 0 && (
+              <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>No custom reminders yet. Examples below.</div>
+            )}
+            {customReminders.map((r) => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bgSoft, borderRadius: 8 }}>
+                <Icon name="wa" size={12} color="#25D366" />
+                <span style={{ flex: 1, fontSize: 12, color: T.ink2, fontWeight: 600 }}>{r.text}</span>
+                <button onClick={() => setCustomReminders(arr => arr.filter(x => x.id !== r.id))} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }} title="Remove"><Icon name="x" size={11} /></button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              value={newReminder}
+              onChange={(e) => setNewReminder(e.target.value)}
+              placeholder="e.g. Confirm airport pickup time"
+              maxLength={140}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newReminder.trim()) {
+                  setCustomReminders(arr => [...arr, { id: 'rem_' + Date.now().toString(36), text: newReminder.trim() }]);
+                  setNewReminder('');
+                }
+              }}
+              style={{ flex: 1, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 7, padding: '7px 10px', fontSize: 12, color: T.ink, background: T.card }}
+            />
+            <button
+              onClick={() => {
+                if (newReminder.trim()) {
+                  setCustomReminders(arr => [...arr, { id: 'rem_' + Date.now().toString(36), text: newReminder.trim() }]);
+                  setNewReminder('');
+                }
+              }}
+              disabled={!newReminder.trim()}
+              style={{ border: 'none', background: newReminder.trim() ? T.primary : T.bgSoft, color: newReminder.trim() ? '#fff' : T.ink3, borderRadius: 7, padding: '0 14px', fontSize: 12, fontWeight: 700, cursor: newReminder.trim() ? 'pointer' : 'not-allowed' }}
+            >Add</button>
+          </div>
+          {/* Quick-add suggestions a hotelier can tap to skip typing */}
+          {customReminders.length === 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+              {[
+                'Confirm airport pickup / cab',
+                'Ask for ID / Aadhaar in advance',
+                'Confirm dietary requirements',
+                'Late check-in time confirmation',
+                'Share parking / arrival instructions',
+              ].map((example) => (
+                <button
+                  key={example}
+                  onClick={() => setCustomReminders(arr => [...arr, { id: 'rem_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), text: example }])}
+                  style={{ padding: '4px 10px', borderRadius: 999, border: `1px dashed ${T.border}`, background: T.card, color: T.ink3, fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
+                >+ {example}</button>
+              ))}
+            </div>
+          )}
         </Card>
         </AccordionGroup>
       </div>

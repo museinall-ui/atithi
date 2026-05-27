@@ -498,6 +498,34 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         window.open(`https://wa.me/${firstDigits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
       },
     });
+
+    // Custom pre-arrival reminders (Settings → Pre-arrival reminders).
+    // For each reminder × each tomorrow-arriving guest with a phone,
+    // surface a nudge with a WhatsApp button that opens the chat with
+    // the reminder text prefilled. Caps at 6 nudges total so the
+    // dashboard doesn't drown in reminders for a busy property — the
+    // hotelier can still see the rest by tapping into individual
+    // bookings.
+    const customReminders = Array.isArray(property?.accountant?.customReminders) ? property.accountant.customReminders : [];
+    const propName = property?.profile?.name || 'our property';
+    let added = 0;
+    outer: for (const reminder of customReminders) {
+      for (const guest of arrivingTomorrow) {
+        if (added >= 6) break outer;
+        const digits = (guest.phone || '').replace(/\D/g, '');
+        if (!digits) continue;
+        nudges.push({
+          icon: 'wa', tone: '#25D366',
+          text: `${reminder.text} — ${guest.guest} arrives tomorrow`,
+          cta: 'Send',
+          onClick: () => {
+            const msg = `Hi ${guest.guest},\n\n${reminder.text}\n\nReach us anytime on this number — ${propName}.`;
+            window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+          },
+        });
+        added += 1;
+      }
+    }
   }
   if (foreignOnProperty.length > 0) {
     nudges.push({

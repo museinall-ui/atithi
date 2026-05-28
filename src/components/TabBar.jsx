@@ -21,9 +21,18 @@ export default function TabBar({ active, onChange, t, can = () => true }) {
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
       borderTop: `1px solid ${T.borderSoft}`,
       paddingBottom: 24, paddingTop: 8,
-      display: 'flex', justifyContent: 'space-around', alignItems: 'center',
+      display: 'flex', justifyContent: 'center',
       zIndex: 30,
     }}>
+      {/* Inner row capped at a phone-like width + centered. On the
+          wide Diary/Rates screens (root up to 1320px) this stops the
+          5 tabs spreading uncomfortably far apart — they stay grouped
+          like a normal mobile tab bar. The frosted background still
+          spans the full bar width. */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-around', alignItems: 'center',
+        width: '100%', maxWidth: 460,
+      }}>
       {tabs.map(tab => {
         if (tab.id === '__spacer') return <span key="__spacer" style={{ width: 52, height: 52 }} aria-hidden />;
         const isFab = tab.id === 'new';
@@ -52,6 +61,7 @@ export default function TabBar({ active, onChange, t, can = () => true }) {
           </button>
         );
       })}
+      </div>
     </div>
   );
 }

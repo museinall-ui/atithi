@@ -549,7 +549,18 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     }));
     // Saved extras live outside `property` so they go through their own setter.
     if (onChangeSavedExtras) onChangeSavedExtras(extras);
-    // Hand off to the sync-driven state machine.
+    // DEMO / local-only (no signed-in cloud session): the save is
+    // synchronous localStorage — there's no cloud round-trip to wait
+    // for, so the sync-driven state machine below would never resolve
+    // and the chip would hang on "Saving…" forever. Show "Saved"
+    // immediately instead.
+    if (!session || !propertyId) {
+      setChip('ok');
+      setSavePending(false);
+      setTimeout(() => setChip(null), 2500);
+      return;
+    }
+    // Cloud mode — hand off to the sync-driven state machine.
     setSavePending(true);
     setChip('saving');
   };
@@ -557,6 +568,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   // (600ms after the state change) flips sync.status to 'syncing' →
   // 'ok' or 'error'. We mirror that into our local chip so the
   // hotelier sees "Saving…" then either "Saved" or "Couldn't save".
+  // Safety net: if savePending is set but no sync transition arrives
+  // within 4s (e.g. the property diff was a no-op so App.jsx's
+  // debounced effect fired but the value was identical), fall back to
+  // showing "Saved" so the chip never hangs.
   useEffect(() => {
     if (!savePending) return;
     if (sync.status === 'syncing') { setChip('saving'); return; }
@@ -569,7 +584,15 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     if (sync.status === 'error' && sync.lastError) {
       setChip('err');
       setSavePending(false);
+      return;
     }
+    // Idle / unchanged — fall back after 4s so the chip never sticks.
+    const fallback = setTimeout(() => {
+      setChip('ok');
+      setSavePending(false);
+      setTimeout(() => setChip(null), 2000);
+    }, 4000);
+    return () => clearTimeout(fallback);
   }, [sync.status, sync.lastError, savePending]);
   const propTypes = [
     { id: 'resort',     label: t('ptResort') },

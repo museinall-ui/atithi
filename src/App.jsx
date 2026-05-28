@@ -661,6 +661,19 @@ export default function App() {
     applyTheme(property?.theme);
   }, [property?.theme?.hue, property?.theme?.color]);
 
+  // Desktop width toggle. The Diary + Rates calendar benefit from the
+  // full laptop width (more day columns visible); every other screen
+  // is phone-shaped and reads best in a narrow centered column. We
+  // toggle a body class that index.html's @media (min-width:1024px)
+  // rule keys off — no-op below 1024px where the app is already
+  // narrow / phone-framed.
+  useEffect(() => {
+    const wide = route.name === 'diary' || route.name === 'rates';
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('atithi-wide', wide);
+    }
+  }, [route.name]);
+
   // Load Supabase session on mount + subscribe to auth state changes (sign-in,
   // sign-out, token refresh). detectSessionInUrl picks up the magic-link
   // token from the URL hash automatically when the user lands back.

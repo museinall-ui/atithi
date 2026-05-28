@@ -2114,13 +2114,28 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             // fonts so it inherits the site's font.
             const btnInlineStyle = `display:inline-block;padding:${sizePadding};border-radius:${borderRadius}px;background:${btnColor};color:#fff;font-size:${sizeFont}px;font-weight:700;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,0.12);letter-spacing:0.2px;`;
             const linkSnippet = `<a href="${widgetUrl}" target="_blank" rel="noopener" style="${btnInlineStyle}">${btnText} →</a>`;
+            // Block copying the embed code / URL while there are
+            // unsaved changes. The URL is built from the LOCAL slug;
+            // if the hotelier edited their name/slug but hasn't saved,
+            // copying would hand them a URL whose slug doesn't exist
+            // in the cloud yet → guests get "Hotel not found". When
+            // dirty, the copy is a no-op + the button reads "Save
+            // first".
+            const unsaved = isDirty();
             const copyToClipboard = (text) => {
+              if (unsaved) return;
               if (typeof navigator !== 'undefined' && navigator.clipboard) {
                 navigator.clipboard.writeText(text).catch(() => {});
               }
             };
             return (
               <>
+                {unsaved && (
+                  <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink2, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="info" size={12} color={T.ink3} stroke={2.2} />
+                    Tap <strong>Save</strong> (top-right) before copying — your link reflects unsaved edits.
+                  </div>
+                )}
                 {/* HONEST status: surfaces only when the runtime check
                     detects that the anon-RLS migration hasn't been
                     pasted into Supabase yet. Auto-hides once the
@@ -2181,8 +2196,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   <Btn
                     size="sm"
                     variant="ghost"
+                    disabled={unsaved}
                     onClick={() => copyToClipboard(widgetUrl)}
-                  >Copy</Btn>
+                  >{unsaved ? 'Save first' : 'Copy'}</Btn>
                   <Btn
                     size="sm"
                     variant="ghost"
@@ -2204,9 +2220,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   <Btn
                     size="sm"
                     variant="ghost"
+                    disabled={unsaved}
                     onClick={() => copyToClipboard(iframeSnippet)}
                     style={{ position: 'absolute', top: 6, right: 6 }}
-                  >Copy</Btn>
+                  >{unsaved ? 'Save first' : 'Copy'}</Btn>
                 </div>
 
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>
@@ -2344,9 +2361,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   <Btn
                     size="sm"
                     variant="ghost"
+                    disabled={unsaved}
                     onClick={() => copyToClipboard(linkSnippet)}
                     style={{ position: 'absolute', top: 6, right: 6 }}
-                  >Copy</Btn>
+                  >{unsaved ? 'Save first' : 'Copy'}</Btn>
                 </div>
 
                 <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
@@ -3085,7 +3103,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             </div>
             <div style={{ padding: '12px 14px', background: T.bgSoft, borderRadius: 10, fontSize: 12, color: T.ink2, lineHeight: 1.6, fontWeight: 600, marginBottom: 16 }}>
               {upgradeFor === 'channels'
-                ? 'Sync rates + availability with MakeMyTrip, Booking.com, Goibibo, Agoda and Airbnb. Get OTA bookings landing directly in your diary. Currently in setup with our channel-manager partner.'
+                ? 'Sync rates + availability with MakeMyTrip, Booking.com, Goibibo, Agoda and Airbnb, so OTA bookings land directly in your diary — no more copy-pasting from each portal.'
                 : 'Issue GST-compliant tax invoices (gap-free numbering, per-FY counter), maintain an invoice register, and email it to your CA in one tap each month.'}
             </div>
             {/* No contact details baked in — the owner shares their

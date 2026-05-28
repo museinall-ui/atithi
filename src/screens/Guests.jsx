@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, dateToIdx } from '../data.js';
+import { dateToIdx } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Field from '../components/Field.jsx';
@@ -116,7 +116,13 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
   }), [liveGuests]);
 
   const targetDayIdx = useMemo(() => dateToDayIdx(stayDate), [stayDate]);
-  const dateOutOfRange = stayDate && (targetDayIdx === null || targetDayIdx < 0 || targetDayIdx >= DAYS.length);
+  // Only flag a date as out-of-range when it's genuinely unparseable.
+  // We used to also reject past dates (targetDayIdx < 0) and any date
+  // beyond the 14-day DAYS window — which meant a hotelier couldn't
+  // search "who stayed last week / last month". The stay-overlap math
+  // below handles any idx (negative = past), so there's no reason to
+  // gate the picker to a 2-week window.
+  const dateOutOfRange = stayDate && targetDayIdx === null;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -186,8 +192,6 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
             ref={stayDateRef}
             type="date"
             value={stayDate}
-            min={DAYS[0].iso}
-            max={DAYS[DAYS.length - 1].iso}
             onChange={(e) => setStayDate(e.target.value)}
             onClick={() => {
               const el = stayDateRef.current;
@@ -231,7 +235,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
         </div>
         {dateOutOfRange && (
           <div style={{ marginTop: 6, fontSize: 10, color: T.ink3, fontWeight: 600 }}>
-            Outside the visible window — pick a date between {DAYS[0].dom} {DAYS[0].month} and {DAYS[DAYS.length-1].dom} {DAYS[DAYS.length-1].month}.
+            Couldn't read that date — please pick again.
           </div>
         )}
       </div>

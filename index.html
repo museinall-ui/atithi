@@ -51,11 +51,13 @@
       }
     }
     /* Desktop (1024px+) — drop the iframe-looking phone frame.
-       App fills viewport height and stretches to a comfortable
-       reading width (~760px), centered, with no surround. Reads
-       like a focused web app instead of a phone mockup floating
-       in a dark void. Phone-width inner layouts still work; they
-       just get a bit more breathing room. */
+       App fills viewport height + stretches to a working width so
+       the Diary / Rates calendar / Reports use the extra horizontal
+       space (more day columns visible without scrolling). Reads
+       like a focused web app instead of a phone mockup floating in
+       a dark void. The genuinely phone-shaped screens (forms,
+       booking detail) center their own content via .atithi-narrow
+       so they don't sprawl. */
     @media (min-width: 1024px) {
       body {
         align-items: stretch;
@@ -63,18 +65,28 @@
         background: oklch(98% 0.008 75);
       }
       #root {
-        max-width: 760px;
+        /* Narrow by default — most screens (dashboard, forms,
+           booking detail, settings) are phone-shaped and look best
+           in a centered reading column. The Diary + Rates calendar
+           want the full width; they widen the column by adding the
+           `atithi-wide` class to <body> (toggled in App.jsx by route).*/
+        max-width: 820px;
         width: 100%;
         height: 100dvh;
         border-radius: 0;
         box-shadow: none;
         margin: 0 auto;
+        /* Hairline borders frame the app column against the page
+           background so it reads as an intentional app, not full-bleed. */
+        border-left: 1px solid oklch(90% 0.012 70);
+        border-right: 1px solid oklch(90% 0.012 70);
       }
+      /* Wide screens (Diary / Rates) — use the laptop's horizontal
+         space so more day columns are visible without scrolling. */
+      body.atithi-wide #root { max-width: 1100px; }
     }
-    /* Wide-desktop (1440px+) — let the diary / reports / settings
-       breathe a little more without becoming uncomfortably wide. */
     @media (min-width: 1440px) {
-      #root { max-width: 900px; }
+      body.atithi-wide #root { max-width: 1320px; }
     }
   </style>
 </head>

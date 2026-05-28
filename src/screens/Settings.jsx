@@ -423,11 +423,6 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     setCategories(arr => arr.map(c => ({ ...c, amenityIds: (c.amenityIds || []).filter(x => x !== id) })));
   };
 
-  // 'Saved!' confirmation chip. Auto-dismisses after 2s. Replaces the
-  // old behaviour where tapping Save closed the entire profile sheet
-  // (which felt punitive — hotelier loses their place + can't see
-  // whether their changes actually persisted).
-  const [savedAt, setSavedAt] = useState(0);
 
   // Inline upload error chip. Logo / QR / room photo / gallery photo
   // upload handlers all used native alert() before — which froze the

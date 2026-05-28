@@ -668,11 +668,17 @@ export default function App() {
   // rule keys off — no-op below 1024px where the app is already
   // narrow / phone-framed.
   useEffect(() => {
-    const wide = route.name === 'diary' || route.name === 'rates';
+    // Only widen for the actual in-app Diary / Rates screens. Gate on
+    // an effective session (DEMO counts) so the class doesn't linger
+    // on the SignIn / loading splash after sign-out — without the
+    // session check, signing out while on the Diary left <body> wide
+    // and rendered SignIn at 1100px+ on a laptop.
+    const inApp = DEMO_MODE || !!session;
+    const wide = inApp && (route.name === 'diary' || route.name === 'rates');
     if (typeof document !== 'undefined') {
       document.body.classList.toggle('atithi-wide', wide);
     }
-  }, [route.name]);
+  }, [route.name, session]);
 
   // Load Supabase session on mount + subscribe to auth state changes (sign-in,
   // sign-out, token refresh). detectSessionInUrl picks up the magic-link
@@ -808,7 +814,18 @@ export default function App() {
         notifySyncFailure('Load from cloud', err);
         // Don't block the app — fall back to localStorage data so the
         // hotelier can still work. We retry on next sign-in.
-        if (!cancelled) setCloudReady(true);
+        //
+        // CRITICAL: also seed currentMember with a full-access owner
+        // fallback. Without this, the cloud-load error path leaves
+        // currentMember null while cloudReady flips true → myPerms
+        // resolves to an empty Set → can() denies EVERY action and
+        // the signed-in owner is locked out of new booking, payments,
+        // rates, reports, diary drag, etc. A transient load blip must
+        // degrade to full access, never to zero access.
+        if (!cancelled) {
+          setCurrentMember(prev => prev || { role: 'owner', permissions: [] });
+          setCloudReady(true);
+        }
       }
     })();
     return () => { cancelled = true; };

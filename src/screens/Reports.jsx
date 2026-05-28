@@ -405,6 +405,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   // dismisses after 5s. Kept local since it only fires from one place.
   const [sendStatus, setSendStatus] = useState(null);
   // { kind: 'ok' | 'err' | 'fallback', message }
+  // Ref to the Downloadable-reports card so the header Export button
+  // scrolls to it reliably (was matching on hardcoded heading text,
+  // which would silently break if the heading was ever translated).
+  const downloadsRef = useRef(null);
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
   const caEmail = property?.accountant?.email || '';
@@ -464,12 +468,17 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   // backend isn't configured yet (RESEND_API_KEY missing) or the
   // call fails for any reason.
   const handleSendToCA = async () => {
+    // Inline snackbar (not native alert) — matches the rest of the
+    // app and doesn't show the scary "atithi-seven.vercel.app says:"
+    // browser chrome to a non-technical hotelier.
     if (issuedInvoices.length === 0) {
-      alert('No invoices to send yet. Open any booking and tap "Issue invoice" first.');
+      setSendStatus({ kind: 'err', message: 'No invoices to send yet. Open any booking and tap "Issue invoice" first.' });
+      setTimeout(() => setSendStatus(null), 6000);
       return;
     }
     if (!caEmail) {
-      alert('Add your CA\'s email in Settings → Property profile → Accountant before sending.');
+      setSendStatus({ kind: 'err', message: "Add your CA's email in Settings → Property profile → Accountant before sending." });
+      setTimeout(() => setSendStatus(null), 6000);
       return;
     }
     // Try Resend first (requires signed-in user + configured backend).
@@ -675,13 +684,9 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} units · ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} onBack={() => go('home')}
         right={<Btn size="sm" variant="ghost" icon="download" onClick={() => {
-          // Scroll to the "Downloadable reports" card. Used to be a
-          // dead button — no onClick handler at all, looked like a
-          // feature but did nothing. Now it jumps the user to the
-          // download options below.
-          const headings = [...document.querySelectorAll('div')];
-          const target = headings.find(d => (d.textContent || '').trim() === 'Downloadable reports' || (d.textContent || '').trim() === 'DOWNLOADABLE REPORTS');
-          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Scroll to the Downloadable-reports card via ref (robust
+          // to heading translation, unlike the old DOM-text match).
+          if (downloadsRef.current) downloadsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }}>Export</Btn>}
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
@@ -790,6 +795,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             Google Sheets / Numbers. Available to every plan; the
             invoice-register CSV is plan-gated below since it's a
             tax-filing artefact. */}
+        <div ref={downloadsRef}>
         <SectionHead title="Downloadable reports" />
         <Card padding={0} style={{ marginBottom: 16 }}>
           {(() => {
@@ -970,6 +976,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             ));
           })()}
         </Card>
+        </div>
 
         {/* Invoicing-tier-only: month-end CA email + invoice register +
             invoicing summary. Engine / Channels properties don't issue

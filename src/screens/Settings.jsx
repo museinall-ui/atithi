@@ -3088,26 +3088,13 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 ? 'Sync rates + availability with MakeMyTrip, Booking.com, Goibibo, Agoda and Airbnb. Get OTA bookings landing directly in your diary. Currently in setup with our channel-manager partner.'
                 : 'Issue GST-compliant tax invoices (gap-free numbering, per-FY counter), maintain an invoice register, and email it to your CA in one tap each month.'}
             </div>
-            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 700, letterSpacing: 0.3, marginBottom: 8, textTransform: 'uppercase' }}>Contact support to upgrade</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              <a
-                href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hi Atithi team — I'd like to upgrade ${property?.profile?.name || 'my property'} to the ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} add-on. Please share next steps.`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, background: '#25D366', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 700 }}
-              >
-                <Icon name="wa" size={14} color="#fff" stroke={2.2} />
-                <span style={{ flex: 1 }}>WhatsApp Atithi support</span>
-                <span style={{ fontSize: 10, opacity: 0.85 }}>fastest →</span>
-              </a>
-              <a
-                href={`mailto:support@atithi.app?subject=${encodeURIComponent(`Upgrade request — ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} for ${property?.profile?.name || 'property'}`)}&body=${encodeURIComponent(`Hi,\n\nI'd like to upgrade to the ${upgradeFor === 'channels' ? 'Channels' : 'Invoicing'} add-on. Please share the next steps.\n\nProperty: ${property?.profile?.name || ''}\nCity: ${property?.profile?.city || ''}\n\nThanks.`)}`}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, background: T.bgSoft, color: T.ink, textDecoration: 'none', fontSize: 13, fontWeight: 700, border: `1px solid ${T.borderSoft}` }}
-              >
-                <Icon name="mail" size={14} color={T.ink2} stroke={2.2} />
-                <span style={{ flex: 1 }}>Email Atithi support</span>
-                <span style={{ fontSize: 10, color: T.ink3, opacity: 0.85 }}>→</span>
-              </a>
+            {/* No contact details baked in — the owner shares their
+                own support number / email out-of-band when they hand
+                the app to a hotelier. We just tell the hotelier to
+                reach out to support. */}
+            <div style={{ padding: '12px 14px', background: T.primaryLt, borderRadius: 10, fontSize: 12.5, color: T.primaryDk, lineHeight: 1.5, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name="info" size={16} color={T.primaryDk} stroke={2.2} />
+              <span>Please contact support to upgrade. We'll set this up for you.</span>
             </div>
             <button
               onClick={() => setUpgradeFor(null)}

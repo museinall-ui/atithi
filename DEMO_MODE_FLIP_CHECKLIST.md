@@ -24,7 +24,9 @@ supabase/migrations/20260530_widget_fields_and_closed_units.sql
 supabase/migrations/20260601_expenses.sql
 supabase/migrations/20260602_multi_account_close.sql
 supabase/migrations/20260603_team_invites.sql
-supabase/migrations/20260604_membership_permissions.sql            ← new (per-member permission picker)
+supabase/migrations/20260604_membership_permissions.sql            ← per-member permission picker
+supabase/migrations/20260605_widget_anon_access.sql                ← public booking widget (guest bookings reach the cloud)
+supabase/migrations/20260606_redeem_coupon.sql                     ← new (coupon maxUses actually counts down)
 ```
 
 After each `Run`, expect a green **Success. No rows returned** message. If you get a red error, copy it back to me — but `add column if not exists` should never error on an existing column.

@@ -203,8 +203,13 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
                     'Free' without having to first add a 5+ kid. Previously
                     the Free bucket only appeared once children > 0, which
                     silently broke this case. */}
-                <MiniStep label={`${t('children')} ${childFreeAge}–${childHalfAge - 1}y`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
                 <MiniStep label={`Free <${childFreeAge}y`} value={r.childrenFree || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFree: Math.max(0, v) } : x))} />
+                <MiniStep label={`${t('children')} ${childFreeAge}–${childHalfAge - 1}y`} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
+                {/* Full-rate children (≥ the half-rate cut-off, e.g. ≥12y)
+                    are charged the full extra-child rate. Without this
+                    stepper the bucket was unreachable, so the full-rate
+                    branch in the cost math (childrenFull) never fired. */}
+                <MiniStep label={`Full ≥${childHalfAge}y`} value={r.childrenFull || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFull: Math.max(0, v) } : x))} />
               </div>
             </div>
           ))}
@@ -487,7 +492,8 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
             const adultRate = (typeof item.extraAdultRate === 'number') ? item.extraAdultRate : autoAdult;
             const childRate = (typeof item.extraChildRate === 'number') ? item.extraChildRate : autoChild;
             const adultLine = extraAdults * adultRate * nights;
-            const childLine = Math.round(halfChildren * childRate * 0.5 * nights) + fullChildren * childRate * nights;
+            const halfChildLine = Math.round(halfChildren * childRate * 0.5 * nights);
+            const fullChildLine = fullChildren * childRate * nights;
             const isAdultOverride = typeof item.extraAdultRate === 'number';
             const isChildOverride = typeof item.extraChildRate === 'number';
             const fmt = (n) => '₹' + (n || 0).toLocaleString('en-IN');
@@ -539,7 +545,30 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                         style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 9, fontWeight: 700, cursor: 'pointer', padding: 0 }}
                       >Reset</button>
                     )}
-                    <span className="tnum" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.ink }}>{fmt(childLine)}</span>
+                    <span className="tnum" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.ink }}>{fmt(halfChildLine)}</span>
+                  </div>
+                )}
+                {fullChildren > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', flexWrap: 'wrap' }}>
+                    <span style={{ color: T.ink2, fontWeight: 600, minWidth: 84 }}>Child{fullChildren > 1 ? 'ren' : ''} (full)</span>
+                    <span style={{ color: T.ink3, fontSize: 10, fontWeight: 600 }}>{fullChildren} ×</span>
+                    <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>₹</span>
+                    <NumberInput
+                      min={0}
+                      value={childRate}
+                      onChange={(n) => onChange({ extraChildRate: n })}
+                      className="tnum"
+                      style={{ width: 70, border: `1px solid ${isChildOverride ? T.primary : T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: isChildOverride ? T.primary : T.ink, background: T.card }}
+                    />
+                    <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/ night × {nights}N</span>
+                    {isChildOverride && (
+                      <button
+                        onClick={() => onChange({ extraChildRate: undefined })}
+                        title="Reset to category default"
+                        style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 9, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                      >Reset</button>
+                    )}
+                    <span className="tnum" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.ink }}>{fmt(fullChildLine)}</span>
                   </div>
                 )}
                 <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600, fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 }}>
@@ -939,7 +968,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 12, t, plan, property }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 5, t, plan, property, isEdit = false }) {
   const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -967,12 +996,25 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           <Row label={`Meal plan · ${mealPlan.code} (${mealPlan.label})`} value={`₹${mealCost.toLocaleString('en-IN')}`} />
         )}
         {extrasTotal > 0 && <Row label={`Extras · ${Object.values(data.extras).reduce((a,b)=>a+b,0)} item(s)`} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
-        {withTax && <Row label={`CGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}%`} value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
-        {withTax && <Row label={`SGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}%`} value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label={`CGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}% · incl`} value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
+        {withTax && <Row label={`SGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}% · incl`} value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
         <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
         <Row label={t('total')} value={`₹${total.toLocaleString('en-IN')}`} bold />
+        {withTax && <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 4 }}>Tax shown is included in the total above, not added on top.</div>}
       </Card>
 
+      {isEdit ? (
+        <Card padding={16} style={{ background: T.bgSoft, borderColor: T.borderSoft }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <Icon name="info" size={15} color={T.ink3} />
+            <div style={{ fontSize: 11.5, color: T.ink2, fontWeight: 600, lineHeight: 1.5 }}>
+              Payments aren't changed here. Editing only updates the booking
+              details above — to record or refund money, use
+              <strong> Add payment</strong> on the booking page after you save.
+            </div>
+          </div>
+        </Card>
+      ) : (
       <Card padding={16}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 12 }}>COLLECT NOW</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
@@ -1015,8 +1057,9 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           </>
         )}
       </Card>
+      )}
 
-      {data.payMethod === 'upi' && (() => {
+      {!isEdit && data.payMethod === 'upi' && (() => {
         const qrUrl = property?.profile?.paymentQrDataUrl || '';
         const qrLabel = property?.profile?.paymentQrLabel || '';
         return (
@@ -1217,8 +1260,9 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   }, property);
   const subtotal = roomsSubtotal + extrasTotal + mealCost + extraGuestCost;
   // Blended GST rate across rooms — different categories sit in different
-  // Indian GST slabs (≤₹1k exempt, ₹1k-7.5k = 12%, >₹7.5k = 18%).
-  let blendedRate = 12;
+  // Indian GST slabs (≤₹1k exempt, ₹1,001–₹7,499 = 5%, ≥₹7,500 = 18%;
+  // the old 12% mid-slab was retired on 22 Sep 2025).
+  let blendedRate = 5;
   if (withTax) {
     let ws = 0, tw = 0;
     for (const it of data.roomItems) {
@@ -1230,8 +1274,16 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     }
     if (tw > 0) blendedRate = ws / tw;
   }
-  const gst = withTax ? Math.round(subtotal * blendedRate / 100) : 0;
-  const total = subtotal + gst;
+  // GST is treated as INCLUSIVE — the subtotal (room + meals + extras +
+  // extra-guest) IS what the guest pays; the tax is extracted from
+  // within it, never added on top. This matches every other surface
+  // (BookingDetail folio, getTaxBreakdown, the voucher, the IssueInvoice
+  // sheet, and the "shown inside the price" UI copy). The old code did
+  // `total = subtotal + gst` (tax-exclusive), which overcharged the
+  // guest on every taxed booking — e.g. a ₹4,500 5%-slab room billed
+  // ₹4,725 while the hotelier believed "₹4,500 inclusive".
+  const gst = withTax ? Math.round(subtotal * blendedRate / (100 + blendedRate)) : 0;
+  const total = subtotal;
 
   // Warnings for the hotelier on Step 4: per-unit close-outs that
   // overlap this booking, whole-type close-outs, and overbooking.
@@ -1373,7 +1425,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
                 })}
               </div>
             )}
-            <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} />
+            <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} isEdit={isEdit} />
           </>
         )}
       </div>

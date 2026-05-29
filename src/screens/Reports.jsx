@@ -546,11 +546,19 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const netRevenue = Math.max(0, billed - totalTax - totalCommission);
 
     // Occupancy across the picked range. For each day in the range,
-    // count every booking whose stay covers that day.
+    // count every ROOM occupied that day — a multi-room booking holds
+    // roomItems.length rooms, not 1. Counting bookings (.length) instead
+    // of rooms under-counted occupancy %, and skewed ADR (denominator
+    // too small → inflated) + RevPAR for any multi-room or widget
+    // booking. This now matches the occupancy CSV export's room-level
+    // count.
+    const roomsHeld = (b) => (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems.length : 1;
     const dailyOccupied = [];
     for (let i = 0; i < rangeDays; i++) {
       const dayIdx = rangeStartIdx + i;
-      const n = active.filter(b => (b.startIdx || 0) <= dayIdx && dayIdx < (b.startIdx || 0) + (b.nights || 1)).length;
+      const n = active
+        .filter(b => (b.startIdx || 0) <= dayIdx && dayIdx < (b.startIdx || 0) + (b.nights || 1))
+        .reduce((s, b) => s + roomsHeld(b), 0);
       dailyOccupied.push(n);
     }
     const occupiedRoomNights = dailyOccupied.reduce((s, v) => s + v, 0);

@@ -1410,6 +1410,19 @@ export default function App() {
 
     if (editing) {
       const existing = bookings.find(b => b.id === editing);
+      // Editing must NOT recompute what's been paid. The payment step's
+      // Full / 50% / Custom picker defaults to "Full", which only makes
+      // sense when first taking a booking — re-running it on an edit would
+      // silently mark the booking paid-in-full and wipe a genuine
+      // outstanding balance. Keep whatever's already collected; payments
+      // are added/refunded on the booking page.
+      const keepPaid = existing ? (existing.paid || 0) : paid;
+      // Coupon discounts are applied in the public widget; the hotelier
+      // edit form has no coupon field, so the fresh rate recompute would
+      // drop the discount. Re-apply the originally granted rupee discount
+      // on top of the recomputed subtotal and carry the coupon fields.
+      const keepDiscount = existing ? (existing.discountAmount || 0) : 0;
+      const adjTotal = Math.max(0, total - keepDiscount);
       const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
       const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
       // Build a brief diff summary for the activity feed — only the
@@ -1419,7 +1432,7 @@ export default function App() {
       if (existing) {
         if (existing.guest !== (data.name || existing.guest)) diff.push(`guest: ${existing.guest} → ${data.name}`);
         if ((existing.nights || 0) !== (data.nights || 0)) diff.push(`nights: ${existing.nights} → ${data.nights}`);
-        if ((existing.total || 0) !== total) diff.push(`total: ₹${(existing.total || 0).toLocaleString('en-IN')} → ₹${total.toLocaleString('en-IN')}`);
+        if ((existing.total || 0) !== adjTotal) diff.push(`total: ₹${(existing.total || 0).toLocaleString('en-IN')} → ₹${adjTotal.toLocaleString('en-IN')}`);
         if (existing.roomTypeId !== data.roomTypeId) diff.push(`room type: ${existing.roomTypeId} → ${data.roomTypeId}`);
         if ((existing.mealPlanId || 'ep') !== (data.mealPlanId || 'ep')) diff.push(`meal plan: ${existing.mealPlanId || 'ep'} → ${data.mealPlanId || 'ep'}`);
         if ((existing.ratePlanId || 'standard') !== (data.ratePlanId || 'standard')) diff.push(`rate plan: ${existing.ratePlanId || 'standard'} → ${data.ratePlanId || 'standard'}`);
@@ -1431,7 +1444,9 @@ export default function App() {
       const patch = {
         roomTypeId: data.roomTypeId, nights: data.nights,
         guest: data.name || (existing && existing.guest) || '',
-        total, paid, phone, email: data.email || '',
+        total: adjTotal, paid: keepPaid, phone, email: data.email || '',
+        couponCode: existing ? (existing.couponCode || '') : '',
+        discountAmount: keepDiscount,
         notes: data.notes, extras: data.extras,
         roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',

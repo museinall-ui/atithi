@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
+import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
 import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -247,13 +247,14 @@ function fmtIssued(iso) {
 // single amount — split-across-recipients was retired (added complexity
 // most hoteliers didn't need; can be reintroduced later if needed).
 //
-// `amountIncludesTax` toggles the tax math:
+// `amountIncludesTax` toggles the tax math (rate = the booking's blended
+// GST rate: 5% mid-tier / 18% luxury per the post-22-Sep-2025 slabs):
 //   * inclusive (default): the entered amount IS the invoice total, GST is
-//     extracted from it (12 / 112). Matches the common case where the
-//     hotelier already quoted a tax-inclusive figure to the guest.
-//   * exclusive: the entered amount is pre-tax; CGST 6% + SGST 6% are added
-//     on top to compute the invoice total.
-function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
+//     extracted from within it (amount × rate / (100 + rate)). Matches the
+//     common case where the hotelier already quoted a tax-inclusive figure.
+//   * exclusive: the entered amount is pre-tax; CGST + SGST (half the rate
+//     each) are added on top to compute the invoice total.
+function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, onIssue }) {
   const [name, setName] = useState(booking.guest || '');
   const [gstin, setGstin] = useState('');
   const [amount, setAmount] = useState(defaultAmount != null ? defaultAmount : (booking.total || 0));
@@ -268,9 +269,14 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
     : null;
 
   const baseAmount = +amount || 0;
+  // Use the booking's real blended GST rate (5% mid-tier / 18% luxury
+  // per the post-22-Sep-2025 CBIC slabs), NOT a hardcoded 12% — that
+  // slab was retired and would put a wrong rate on a legal tax
+  // invoice (over-taxing a ₹4,500 room, under-taxing a ₹9,500 one).
+  const invRate = blendedGstRate(booking, property) || 5;
   const gst = amountIncludesTax
-    ? Math.round(baseAmount * 12 / 112)
-    : Math.round(baseAmount * 0.12);
+    ? Math.round(baseAmount * invRate / (100 + invRate))
+    : Math.round(baseAmount * invRate / 100);
   const preTax = amountIncludesTax ? baseAmount - gst : baseAmount;
   const invoiceTotal = amountIncludesTax ? baseAmount : baseAmount + gst;
   const half = Math.round(gst / 2);
@@ -396,11 +402,11 @@ function IssueInvoiceSheet({ booking, defaultAmount, kind, onClose, onIssue }) {
                 <span style={{ fontWeight: 600 }}>₹{preTax.toLocaleString('en-IN')}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
-                <span>CGST 6%</span>
+                <span>CGST {(invRate / 2).toFixed(invRate % 2 ? 1 : 0)}%</span>
                 <span style={{ fontWeight: 600 }}>₹{cgst.toLocaleString('en-IN')}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
-                <span>SGST 6%</span>
+                <span>SGST {(invRate / 2).toFixed(invRate % 2 ? 1 : 0)}%</span>
                 <span style={{ fontWeight: 600 }}>₹{sgst.toLocaleString('en-IN')}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: T.ink, paddingTop: 6, borderTop: `1px solid ${T.borderSoft}` }}>
@@ -1030,6 +1036,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           {invoiceOpen && (
             <IssueInvoiceSheet
               booking={{ ...b, total: remainingToInvoice }}
+              property={property}
               defaultAmount={invoiceDefaultAmount}
               kind={invoiceKind}
               onClose={() => setInvoiceOpen(false)}

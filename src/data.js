@@ -187,18 +187,20 @@ export function gstSlabFor(perNightRate) {
 // Resolution order:
 //   1. Explicit override on the category (category.gstRate, set in Settings)
 //   2. Auto-pick from the slab based on category.base
-//   3. 12% fallback (matches the historical default).
+//   3. 5% fallback (the current mid slab, ₹1,001–₹7,499, where most
+//      small-hotel rooms sit). The old 12% default was retired with the
+//      22-Sep-2025 slab change, so we must never hand it back.
 export function gstRateForCategory(category) {
-  if (!category) return 12;
+  if (!category) return 5;
   if (typeof category.gstRate === 'number' && category.gstRate >= 0) return category.gstRate;
   return gstSlabFor(category.base || 0).rate;
 }
 
 // Blended GST rate across all rooms in a booking, weighted by tariff.
 // Used when the booking spans multiple room categories with different
-// slabs (e.g. one Deluxe at 12% + one Pool Cottage at 18%).
+// slabs (e.g. one Deluxe at 5% + one Pool Cottage at 18%).
 export function blendedGstRate(booking, property) {
-  if (!booking) return 12;
+  if (!booking) return 5;
   const cats = effectiveRoomTypes(property);
   const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
     ? booking.roomItems
@@ -213,7 +215,7 @@ export function blendedGstRate(booking, property) {
     weightedSum += rate * weight;
     totalWeight += weight;
   }
-  if (totalWeight === 0) return 12;
+  if (totalWeight === 0) return 5;
   return weightedSum / totalWeight;
 }
 
@@ -495,9 +497,20 @@ export function extraGuestCostForItem(item, property, category, nights, booking)
 export function extraGuestCostFor(booking, property) {
   if (!booking) return 0;
   const cats = effectiveRoomTypes(property);
+  // Fallback when a booking has no roomItems[] (legacy rows, some
+  // widget paths): parse the `guests` string ("2A" / "2A 1C") for the
+  // real party size instead of hardcoding adults:2 — the hardcode
+  // silently zeroed out the extra-adult surcharge for any larger
+  // party, costing the hotelier money on every such booking.
+  const parseGuests = (g) => {
+    const s = String(g || '');
+    const a = s.match(/(\d+)\s*A/i);
+    const c = s.match(/(\d+)\s*C/i);
+    return { adults: a ? parseInt(a[1], 10) : 2, children: c ? parseInt(c[1], 10) : 0 };
+  };
   const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
     ? booking.roomItems
-    : [{ roomTypeId: booking.roomTypeId, adults: 2, children: 0, rate: null }];
+    : [{ roomTypeId: booking.roomTypeId, ...parseGuests(booking.guests), rate: null }];
   const nights = booking.nights || 1;
   let total = 0;
   for (const it of items) {

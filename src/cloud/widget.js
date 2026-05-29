@@ -182,6 +182,19 @@ export async function insertWidgetBooking(propertyId, booking) {
     console.warn('[atithi widget] insertWidgetBooking failed', error);
     throw error;
   }
+  // Best-effort: record the coupon redemption so its maxUses limit
+  // actually counts down. This is intentionally fire-and-forget AFTER
+  // the booking is safely inserted — if the redeem_coupon RPC is
+  // missing (owner hasn't pasted 20260606_redeem_coupon.sql yet) or
+  // errors, we must NOT fail the guest's booking. Worst case the
+  // coupon's usedCount stays at 0, exactly as it behaved before.
+  if (payload.coupon_code) {
+    try {
+      await supabase.rpc('redeem_coupon', { p_property_id: propertyId, p_code: payload.coupon_code });
+    } catch (e) {
+      console.warn('[atithi widget] redeem_coupon skipped', e);
+    }
+  }
   // Return null — caller (App.jsx PublicWidgetEntry) generates a
   // friendly "your booking is being created" placeholder for the
   // guest's confirmation screen.

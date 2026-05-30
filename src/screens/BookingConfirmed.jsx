@@ -22,7 +22,24 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
     setVoucherSheet(false);
   };
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, position: 'relative' }}>
+      {/* Compact back arrow — celebration screen has its own big CTAs
+          below, but a consistent top-left back keeps navigation
+          predictable across every screen. Goes to the diary because
+          that's the natural place to see the new booking sitting in
+          context (going to 'new' would just relaunch the form). */}
+      <button
+        onClick={() => go('diary')}
+        aria-label="Back to diary"
+        style={{
+          position: 'absolute', top: 14, left: 14, zIndex: 5,
+          width: 36, height: 36, borderRadius: 10, border: 'none',
+          background: T.bgSoft, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', cursor: 'pointer', color: T.ink,
+        }}
+      >
+        <Icon name="arrowL" size={18} />
+      </button>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
         <div style={{
           width: 88, height: 88, borderRadius: '50%',

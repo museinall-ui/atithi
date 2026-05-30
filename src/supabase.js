@@ -35,6 +35,25 @@ export function signInWithEmail(email) {
   });
 }
 
+// Google OAuth sign-in. Redirects the browser to Google's consent screen
+// and Supabase brings them back via authRedirectUrl() with a session.
+//
+// Owner-side prerequisite (one-time, ~10 min):
+//   1. Google Cloud Console → APIs & Services → Credentials → create an
+//      OAuth 2.0 Client ID (type: Web application). Add the Supabase
+//      callback URL (Supabase will show it to you) to "Authorized
+//      redirect URIs".
+//   2. Supabase dashboard → Authentication → Providers → Google → toggle
+//      ON, paste the Client ID + Client Secret from step 1, click Save.
+// Until this is done the call fails with provider_not_enabled — the UI
+// surfaces a friendly hint instead of a raw error.
+export function signInWithGoogle() {
+  return supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: authRedirectUrl() },
+  });
+}
+
 export function signOut() {
   return supabase.auth.signOut();
 }

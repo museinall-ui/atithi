@@ -655,6 +655,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, position: 'relative' }}>
       <ScreenHeader title={t('diaryTitle')} subtitle={t('diarySub')}
+        onBack={() => go('home')}
         right={<div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setZoom(z => Math.max(40, z - 10))} style={iconBtn}><span style={{ fontSize: 18, lineHeight: 1, color: T.ink2 }}>−</span></button>
           <button onClick={() => setZoom(z => Math.min(90, z + 10))} style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>

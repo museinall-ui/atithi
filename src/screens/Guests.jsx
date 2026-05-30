@@ -143,6 +143,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('guests')} subtitle={`${counts.all} contacts · ${counts.inhouse} in-house`}
+        onBack={() => go('home')}
         right={can('create_bookings') ? <button style={iconBtn2} onClick={() => go('new')} title="New booking"><Icon name="plus" size={18} /></button> : null}
       />
       <div style={{ padding: '12px 16px', background: T.card, borderBottom: `1px solid ${T.borderSoft}` }}>

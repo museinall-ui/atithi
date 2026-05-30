@@ -19,7 +19,7 @@ export default function MoreMenu({ go, t, can = () => true }) {
   ].filter(Boolean);
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('more')} subtitle="All tools" />
+      <ScreenHeader title={t('more')} subtitle="All tools" onBack={() => go('home')} />
       <div style={{ flex: 1, padding: 16, paddingBottom: 100 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {items.map(it => (

@@ -17,33 +17,35 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 // Action → display metadata. Adding a new action elsewhere (App.jsx
 // logEvent calls) just shows up as the raw action string until you
 // teach this map about it.
+// `key` maps to an i18n string (see src/i18n.js); `label` is the English
+// fallback used when no translation exists.
 const ACTION_META = {
-  'booking.create':            { label: 'Created booking',     icon: 'plus',  color: T.ok,      group: 'booking' },
-  'booking.edit':              { label: 'Edited booking',      icon: 'edit',  color: T.indigo,  group: 'booking' },
-  'booking.cancel':            { label: 'Cancelled booking',   icon: 'x',     color: T.danger,  group: 'booking' },
-  'booking.status':            { label: 'Changed status',      icon: 'sync',  color: T.indigo,  group: 'booking' },
-  'booking.move':              { label: 'Moved booking',       icon: 'arrow', color: T.indigo,  group: 'booking' },
-  'booking.hold_extended':     { label: 'Extended hold',       icon: 'clock', color: 'oklch(50% 0.14 75)', group: 'booking' },
-  'booking.gst_toggle':        { label: 'Changed GST flag',    icon: 'tag',   color: T.ink2,    group: 'booking' },
-  'booking.vip_toggle':        { label: 'Changed VIP flag',    icon: 'check', color: 'oklch(60% 0.16 60)', group: 'booking' },
-  'booking.voice_note_add':    { label: 'Added voice note',    icon: 'plus',  color: T.ink2,    group: 'booking' },
-  'booking.voice_note_remove': { label: 'Deleted voice note',  icon: 'x',     color: T.ink3,    group: 'booking' },
-  'payment.add':               { label: 'Recorded payment',    icon: 'inr',   color: T.ok,      group: 'payment' },
-  'payment.refund':            { label: 'Recorded refund',     icon: 'arrow', color: T.danger,  group: 'payment' },
-  'payment.credit':            { label: 'Issued credit note',  icon: 'tag',   color: T.indigo,  group: 'payment' },
-  'invoice.issue':             { label: 'Issued invoice',      icon: 'check', color: T.teal,    group: 'invoice' },
-  'invoice.void':              { label: 'Voided invoice',      icon: 'x',     color: T.danger,  group: 'invoice' },
-  'expense.add':               { label: 'Logged expense',      icon: 'inr',   color: 'oklch(55% 0.15 30)', group: 'expense' },
-  'expense.remove':            { label: 'Deleted expense',     icon: 'x',     color: T.ink3,    group: 'expense' },
-  'expense.update':            { label: 'Updated expense',     icon: 'edit',  color: T.ink3,    group: 'expense' },
+  'booking.create':            { key: 'actBookingCreate',  label: 'Created booking',     icon: 'plus',  color: T.ok,      group: 'booking' },
+  'booking.edit':              { key: 'actBookingEdit',    label: 'Edited booking',      icon: 'edit',  color: T.indigo,  group: 'booking' },
+  'booking.cancel':            { key: 'actBookingCancel',  label: 'Cancelled booking',   icon: 'x',     color: T.danger,  group: 'booking' },
+  'booking.status':            { key: 'actBookingStatus',  label: 'Changed status',      icon: 'sync',  color: T.indigo,  group: 'booking' },
+  'booking.move':              { key: 'actBookingMove',    label: 'Moved booking',       icon: 'arrow', color: T.indigo,  group: 'booking' },
+  'booking.hold_extended':     { key: 'actHoldExtended',   label: 'Extended hold',       icon: 'clock', color: 'oklch(50% 0.14 75)', group: 'booking' },
+  'booking.gst_toggle':        { key: 'actGstToggle',      label: 'Changed GST flag',    icon: 'tag',   color: T.ink2,    group: 'booking' },
+  'booking.vip_toggle':        { key: 'actVipToggle',      label: 'Changed VIP flag',    icon: 'check', color: 'oklch(60% 0.16 60)', group: 'booking' },
+  'booking.voice_note_add':    { key: 'actVoiceAdd',       label: 'Added voice note',    icon: 'plus',  color: T.ink2,    group: 'booking' },
+  'booking.voice_note_remove': { key: 'actVoiceRemove',    label: 'Deleted voice note',  icon: 'x',     color: T.ink3,    group: 'booking' },
+  'payment.add':               { key: 'actPaymentAdd',     label: 'Recorded payment',    icon: 'inr',   color: T.ok,      group: 'payment' },
+  'payment.refund':            { key: 'actPaymentRefund',  label: 'Recorded refund',     icon: 'arrow', color: T.danger,  group: 'payment' },
+  'payment.credit':            { key: 'actPaymentCredit',  label: 'Issued credit note',  icon: 'tag',   color: T.indigo,  group: 'payment' },
+  'invoice.issue':             { key: 'actInvoiceIssue',   label: 'Issued invoice',      icon: 'check', color: T.teal,    group: 'invoice' },
+  'invoice.void':              { key: 'actInvoiceVoid',    label: 'Voided invoice',      icon: 'x',     color: T.danger,  group: 'invoice' },
+  'expense.add':               { key: 'actExpenseAdd',     label: 'Logged expense',      icon: 'inr',   color: 'oklch(55% 0.15 30)', group: 'expense' },
+  'expense.remove':            { key: 'actExpenseRemove',  label: 'Deleted expense',     icon: 'x',     color: T.ink3,    group: 'expense' },
+  'expense.update':            { key: 'actExpenseUpdate',  label: 'Updated expense',     icon: 'edit',  color: T.ink3,    group: 'expense' },
 };
 
 const GROUP_FILTERS = [
-  { id: 'all',      label: 'All',      prefix: '' },
-  { id: 'booking',  label: 'Bookings', prefix: 'booking.' },
-  { id: 'payment',  label: 'Payments', prefix: 'payment.' },
-  { id: 'invoice',  label: 'Invoices', prefix: 'invoice.' },
-  { id: 'expense',  label: 'Expenses', prefix: 'expense.' },
+  { id: 'all',      key: 'filterAll',      label: 'All',      prefix: '' },
+  { id: 'booking',  key: 'filterBookings', label: 'Bookings', prefix: 'booking.' },
+  { id: 'payment',  key: 'filterPayments', label: 'Payments', prefix: 'payment.' },
+  { id: 'invoice',  key: 'filterInvoices', label: 'Invoices', prefix: 'invoice.' },
+  { id: 'expense',  key: 'filterExpenses', label: 'Expenses', prefix: 'expense.' },
 ];
 
 function metaFor(action) {
@@ -54,7 +56,7 @@ function metaFor(action) {
 // pulls slightly different fields out of meta so the line reads
 // naturally: "Aanya · ₹4,500 · UPI" for a payment, "₹250 · groceries"
 // for an expense, etc.
-function metaSummary(action, meta) {
+function metaSummary(action, meta, t) {
   if (!meta) return '';
   const fmt = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
   switch (action) {
@@ -69,11 +71,11 @@ function metaSummary(action, meta) {
     case 'booking.hold_extended':
       return [meta.guest, meta.hours ? `+${meta.hours}h` : null, meta.newReleaseAt ? `releases ${meta.newReleaseAt}` : null].filter(Boolean).join(' · ');
     case 'booking.gst_toggle':
-      return `GST ${meta.gstApplies ? 'ON' : 'OFF'}`;
+      return `GST ${meta.gstApplies ? t('statusOn') : t('statusOff')}`;
     case 'booking.vip_toggle':
-      return `VIP ${meta.vip ? 'ON' : 'OFF'}`;
+      return `VIP ${meta.vip ? t('statusOn') : t('statusOff')}`;
     case 'booking.voice_note_add':
-      return meta.durationSec ? `${Math.round(meta.durationSec)}s clip` : 'audio clip';
+      return meta.durationSec ? `${Math.round(meta.durationSec)}s ${t('clip')}` : t('audioClip');
     case 'payment.add':
     case 'payment.refund':
     case 'payment.credit':
@@ -92,12 +94,12 @@ function metaSummary(action, meta) {
 
 // Compact relative-time stamp. < 60s → "just now", < 60m → "Nm ago",
 // < 24h → "Nh ago", else absolute "26 May · 14:32".
-function relativeTime(iso) {
+function relativeTime(iso, t) {
   const d = new Date(iso);
   const delta = (Date.now() - d.getTime()) / 1000;
-  if (delta < 60) return 'just now';
-  if (delta < 3600) return Math.round(delta / 60) + 'm ago';
-  if (delta < 86400) return Math.round(delta / 3600) + 'h ago';
+  if (delta < 60) return t('justNow');
+  if (delta < 3600) return Math.round(delta / 60) + t('minAgo');
+  if (delta < 86400) return Math.round(delta / 3600) + t('hourAgo');
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
@@ -124,7 +126,7 @@ function DatePill({ value, onChange, label }) {
   );
 }
 
-export default function Activity({ go, propertyId, session }) {
+export default function Activity({ go, t, propertyId, session }) {
   // Default range: last 7 days. Most hoteliers check "what happened
   // this week"; the date picker is one tap away if they want more.
   const today = new Date(ANCHOR);
@@ -151,7 +153,7 @@ export default function Activity({ go, propertyId, session }) {
     const f = GROUP_FILTERS.find(g => g.id === filter) || GROUP_FILTERS[0];
     loadActivity(propertyId, { sinceIso, untilIso, actionPrefix: f.prefix || null })
       .then(rows => { setEntries(rows); setLoading(false); })
-      .catch(e => { setError(e?.message || 'Could not load activity'); setLoading(false); });
+      .catch(e => { setError(e?.message || t('couldNotLoadActivity')); setLoading(false); });
   }, [signedIn, propertyId, rangeStart, rangeEnd, filter]);
 
   // Group entries by calendar day for the visual sectioning.
@@ -168,15 +170,15 @@ export default function Activity({ go, propertyId, session }) {
   if (!signedIn) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-        <ScreenHeader title="Activity log" subtitle="Who did what · when" onBack={() => go('more')} />
+        <ScreenHeader title={t('activityLog')} subtitle={t('activitySub')} onBack={() => go('more')} />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ textAlign: 'center', maxWidth: 320 }}>
             <div style={{ width: 56, height: 56, borderRadius: 14, background: T.bgSoft, color: T.ink3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <Icon name="clock" size={24} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Activity log starts when you sign in</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>{t('activitySignedOutTitle')}</div>
             <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, lineHeight: 1.5 }}>
-              Every booking, payment, invoice, expense, and edit is recorded in the cloud once you're signed in. DEMO mode runs entirely in this browser so there's nothing to track.
+              {t('activitySignedOutBody')}
             </div>
           </div>
         </div>
@@ -186,22 +188,22 @@ export default function Activity({ go, propertyId, session }) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title="Activity log" subtitle={`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} · ${rangeStart} → ${rangeEnd}`} onBack={() => go('more')} />
+      <ScreenHeader title={t('activityLog')} subtitle={`${entries.length} ${t('expEntries')} · ${rangeStart} → ${rangeEnd}`} onBack={() => go('more')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         {/* Date range */}
         <Card padding={12} style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>RANGE</div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('activityRange')}</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label="From" />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label="To" />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
-              { id: 'today',  label: 'Today',     days: 0 },
-              { id: '7d',     label: 'Last 7 days', days: 6 },
-              { id: '30d',    label: 'Last 30 days', days: 29 },
-              { id: '90d',    label: 'Last 90 days', days: 89 },
+              { id: 'today',  label: t('today'),         days: 0 },
+              { id: '7d',     label: t('presetLast7'),   days: 6 },
+              { id: '30d',    label: t('presetLast30'),  days: 29 },
+              { id: '90d',    label: t('presetLast90'),  days: 89 },
             ].map(p => (
               <button
                 key={p.id}
@@ -232,7 +234,7 @@ export default function Activity({ go, propertyId, session }) {
                   color: sel ? T.primaryDk : T.ink2,
                   fontSize: 11, fontWeight: 700, cursor: 'pointer',
                 }}
-              >{g.label}</button>
+              >{t(g.key)}</button>
             );
           })}
         </div>
@@ -244,27 +246,27 @@ export default function Activity({ go, propertyId, session }) {
         )}
 
         {loading && entries.length === 0 ? (
-          <div style={{ fontSize: 12, color: T.ink3, fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>Loading activity…</div>
+          <div style={{ fontSize: 12, color: T.ink3, fontStyle: 'italic', padding: '20px 0', textAlign: 'center' }}>{t('loadingActivity')}</div>
         ) : grouped.length === 0 ? (
           <Card padding={20} style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, lineHeight: 1.5 }}>
-              No activity in this range. Try widening the date range, or pick a different filter.
+              {t('noActivityRange')}
             </div>
           </Card>
         ) : (
           grouped.map(([day, rows]) => {
             const dateObj = new Date(day + 'T00:00:00');
             const isToday = day === ymd(new Date(ANCHOR));
-            const heading = isToday ? 'Today' : dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+            const heading = isToday ? t('today') : dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
             return (
               <div key={day} style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6, textTransform: 'uppercase' }}>{heading}</div>
                 <Card padding={0}>
                   {rows.map((e, i) => {
                     const m = metaFor(e.action);
-                    const summary = metaSummary(e.action, e.meta);
+                    const summary = metaSummary(e.action, e.meta, t);
                     const isMe = myUserId && e.actor_id === myUserId;
-                    const actor = isMe ? 'You' : `Member · ${String(e.actor_id || '').slice(0, 8)}…`;
+                    const actor = isMe ? t('actorYou') : `${t('actorMember')} · ${String(e.actor_id || '').slice(0, 8)}…`;
                     return (
                       <div
                         key={e.id}
@@ -284,8 +286,8 @@ export default function Activity({ go, propertyId, session }) {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{m.label}</span>
-                            <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600, whiteSpace: 'nowrap' }} className="tnum">{relativeTime(e.created_at)}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{m.key ? t(m.key) : m.label}</span>
+                            <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600, whiteSpace: 'nowrap' }} className="tnum">{relativeTime(e.created_at, t)}</span>
                           </div>
                           {summary && (
                             <div style={{ fontSize: 11, color: T.ink2, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>

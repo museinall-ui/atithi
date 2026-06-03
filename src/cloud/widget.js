@@ -171,16 +171,32 @@ export async function insertWidgetBooking(propertyId, booking) {
     hold_hours: booking.holdHours || null,
     gst_applies: false,
   };
-  // Don't chain .select('id').single() — the anon role has INSERT
-  // but no SELECT on the bookings table, so the read-after-insert
-  // fails RLS even though the insert itself succeeded. We accept
-  // that we can't see the DB-trigger-assigned BK-XXXX from the
-  // anonymous side; the hotelier sees the real id when the
-  // booking lands in their diary a moment later.
-  const { error } = await supabase.from('bookings').insert(payload);
-  if (error) {
-    console.warn('[atithi widget] insertWidgetBooking failed', error);
-    throw error;
+  // Prefer the atomic capacity-checked RPC (20260607_widget_capacity_check.sql):
+  // it locks per property + room type, re-checks availability against live
+  // bookings, and inserts in one transaction — closing the race where two
+  // guests confirm the last unit in the same instant (which would otherwise
+  // stack two pills on unit 0 in the hotelier's diary). We can't read the
+  // BK-XXXX back from the anon side (no SELECT under RLS), so we ignore the
+  // returned id; the hotelier sees the real id when it lands in their diary.
+  const rpc = await supabase.rpc('book_widget_slot', { p_booking: payload });
+  const rpcErr = rpc.error;
+  const rpcMissing = rpcErr && (rpcErr.code === '42883'
+    || /does not exist|undefined.*function/i.test(rpcErr.message || ''));
+  if (rpcErr && !rpcMissing) {
+    // RPC is installed but rejected the booking (e.g. 'no_capacity' — the
+    // last unit was taken a moment ago) or hit a real error. Surface it.
+    console.warn('[atithi widget] book_widget_slot rejected', rpcErr);
+    throw rpcErr;
+  }
+  if (rpcMissing) {
+    // Pre-migration fallback: plain INSERT via the anon policy. No atomic
+    // capacity guard (same behaviour as before this migration) so the widget
+    // keeps working until the owner pastes 20260607_widget_capacity_check.sql.
+    const { error } = await supabase.from('bookings').insert(payload);
+    if (error) {
+      console.warn('[atithi widget] insertWidgetBooking failed', error);
+      throw error;
+    }
   }
   // Best-effort: record the coupon redemption so its maxUses limit
   // actually counts down. This is intentionally fire-and-forget AFTER

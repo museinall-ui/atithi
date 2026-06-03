@@ -428,6 +428,15 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
       // sees the real BK-#### when it lands in their diary.
       insertWidgetBooking(cloudProperty.id, newBk)
         .catch(err => {
+          if (/no_capacity/i.test((err && err.message) || '')) {
+            // The room type filled up between the guest opening the widget
+            // and tapping Confirm (or two guests raced for the last unit).
+            // The atomic book_widget_slot capacity guard rejected this insert
+            // — working as intended; the booking simply isn't created, so the
+            // hotelier's diary stays correct (no double-booked unit).
+            console.warn('[atithi widget] booking not created — room type just sold out (capacity guard).', err);
+            return;
+          }
           // Cloud insert failed — most likely the anon RLS SQL
           // hasn't been pasted yet. We can't synchronously
           // surface this to the widget (the confirmation screen

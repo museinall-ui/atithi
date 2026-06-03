@@ -2,7 +2,7 @@
 
 When you're ready to switch Atithi from "runs entirely off localStorage" to "real Supabase backed product that real hoteliers can sign in to", work through this list top to bottom. It's deliberately small — the heavy lifting is paste-and-run SQL and a single one-line code change.
 
-Last updated: May 25, 2026 (pre-flip audit complete; round-trip gaps closed).
+Last updated: Jun 3, 2026 (round-7 audit fixes; added widget capacity-check RPC).
 
 ---
 
@@ -26,7 +26,8 @@ supabase/migrations/20260602_multi_account_close.sql
 supabase/migrations/20260603_team_invites.sql
 supabase/migrations/20260604_membership_permissions.sql            ← per-member permission picker
 supabase/migrations/20260605_widget_anon_access.sql                ← public booking widget (guest bookings reach the cloud)
-supabase/migrations/20260606_redeem_coupon.sql                     ← new (coupon maxUses actually counts down)
+supabase/migrations/20260606_redeem_coupon.sql                     ← coupon maxUses actually counts down
+supabase/migrations/20260607_widget_capacity_check.sql             ← new (atomic capacity check — stops the widget double-book race)
 ```
 
 After each `Run`, expect a green **Success. No rows returned** message. If you get a red error, copy it back to me — but `add column if not exists` should never error on an existing column.
@@ -52,6 +53,15 @@ You should see (among others):
 - `pending_invites`: `permissions`
 
 If any are missing, the migration for that table didn't run — re-paste that file.
+
+To confirm the widget RPCs (anon access + capacity guard) are installed:
+
+```sql
+select proname from pg_proc
+where proname in ('property_by_short_code', 'redeem_coupon', 'book_widget_slot');
+```
+
+All three should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit.
 
 ---
 

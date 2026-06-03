@@ -2843,7 +2843,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
     } catch (e) {
       setResetting(false);
       setResetArmed(false);
-      setResetError(e?.message || 'Reset failed — please try again');
+      setResetError(e?.message || t('resetFailedFallback'));
     }
   };
 
@@ -2873,7 +2873,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8, gap: 8 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{property.profile.name}</div>
-                <div style={{ fontSize: 11, color: T.ink3 }}>{locationLabel} · {totalUnits} units</div>
+                <div style={{ fontSize: 11, color: T.ink3 }}>{locationLabel} · {totalUnits} {t('repUnits')}</div>
               </div>
               {/* Unambiguous Edit affordance. The bare > chevron was so
                   subtle that hoteliers didn't realise the card was
@@ -2888,11 +2888,11 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                   boxShadow: '0 2px 6px rgba(0,0,0,0.12)', flexShrink: 0,
                 }}>
                   <Icon name="edit" size={12} color="#fff" stroke={2.4} />
-                  EDIT
+                  {t('editPill')}
                 </span>
               ) : (
                 <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, padding: '4px 8px', background: T.bgSoft, borderRadius: 6, flexShrink: 0 }}>
-                  View only
+                  {t('viewOnly')}
                 </span>
               )}
             </div>
@@ -2905,8 +2905,8 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
               {property.gstin
                 ? <Chip color="ok" icon="check" style={{ fontSize: 9 }}>GSTIN · {property.gstin}</Chip>
-                : <Chip color="warn" style={{ fontSize: 9 }}>GSTIN not set</Chip>}
-              {totalUnits > 0 && <Chip color="indigo" style={{ fontSize: 9 }}>{totalUnits} rooms live</Chip>}
+                : <Chip color="warn" style={{ fontSize: 9 }}>{t('gstinNotSet')}</Chip>}
+              {totalUnits > 0 && <Chip color="indigo" style={{ fontSize: 9 }}>{totalUnits} {t('roomsLive')}</Chip>}
             </div>
           </div>
         </Card>
@@ -2989,7 +2989,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{p.price}<span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>/mo</span></div>
                   {p.id !== 'engine' && !sel && (
-                    <span style={{ fontSize: 8.5, fontWeight: 800, color: p.color, letterSpacing: 0.5, padding: '2px 6px', background: `color-mix(in oklch, ${p.color} 12%, white)`, borderRadius: 4 }}>UPGRADE</span>
+                    <span style={{ fontSize: 8.5, fontWeight: 800, color: p.color, letterSpacing: 0.5, padding: '2px 6px', background: `color-mix(in oklch, ${p.color} 12%, white)`, borderRadius: 4 }}>{t('upgradeWord')}</span>
                   )}
                 </div>
               </div>
@@ -3015,7 +3015,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         {/* Install Atithi card. Visible to everyone (signed-in or DEMO)
             because anyone might want to add the app to their home
             screen. Hides itself when already running standalone. */}
-        <SectionHead title="App" style={{ marginTop: 16 }} />
+        <SectionHead title={t('appSection')} style={{ marginTop: 16 }} />
         <InstallAppCard />
 
         {session && (
@@ -3046,13 +3046,13 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 need this lever and definitely shouldn't have it. */}
             {canEditSettings && (
               <>
-                <SectionHead title="Danger zone" style={{ marginTop: 16 }} />
+                <SectionHead title={t('dangerZone')} style={{ marginTop: 16 }} />
                 <Card padding={14} style={{ border: `1.5px solid ${T.danger}`, background: 'oklch(99% 0.012 30)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: T.danger, marginBottom: 4 }}>
-                    Reset my property to a fresh start
+                    {t('resetTitle')}
                   </div>
                   <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 10 }}>
-                    Wipes <strong>all bookings, payments, invoices, expenses, cash close-outs, rate overrides, room categories,</strong> and resets the property profile. Your sign-in + team members stay. Use this if your account got polluted with sample data and you want to start clean. <strong>This cannot be undone.</strong>
+                    {t('resetBody')}
                   </div>
                   {resetError && (
                     <div style={{ padding: '8px 10px', background: 'oklch(95% 0.06 30)', borderRadius: 7, fontSize: 11, color: T.danger, fontWeight: 600, marginBottom: 10 }}>
@@ -3072,10 +3072,10 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                     }}
                   >
                     {resetting
-                      ? 'Resetting…'
+                      ? t('resetWord')
                       : resetArmed
-                        ? 'TAP AGAIN TO CONFIRM RESET'
-                        : 'Reset my property'}
+                        ? t('resetConfirm')
+                        : t('resetBtn')}
                   </button>
                 </Card>
               </>
@@ -3112,17 +3112,17 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: T.ink }}>
-                  {upgradeFor === 'channels' ? 'Channels add-on' : 'Invoicing add-on'}
+                  {upgradeFor === 'channels' ? t('upgradeChannelsTitle') : t('upgradeInvoicingTitle')}
                 </div>
                 <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
-                  {upgradeFor === 'channels' ? 'OTA sync · website widget priority · ₹999/mo' : 'GST invoices · CA monthly export · ₹1,499/mo'}
+                  {upgradeFor === 'channels' ? t('upgradeChannelsTag') : t('upgradeInvoicingTag')}
                 </div>
               </div>
             </div>
             <div style={{ padding: '12px 14px', background: T.bgSoft, borderRadius: 10, fontSize: 12, color: T.ink2, lineHeight: 1.6, fontWeight: 600, marginBottom: 16 }}>
               {upgradeFor === 'channels'
-                ? 'Sync rates + availability with MakeMyTrip, Booking.com, Goibibo, Agoda and Airbnb, so OTA bookings land directly in your diary — no more copy-pasting from each portal.'
-                : 'Issue GST-compliant tax invoices (gap-free numbering, per-FY counter), maintain an invoice register, and email it to your CA in one tap each month.'}
+                ? t('upgradeChannelsDesc')
+                : t('upgradeInvoicingDesc')}
             </div>
             {/* No contact details baked in — the owner shares their
                 own support number / email out-of-band when they hand
@@ -3130,12 +3130,12 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
                 reach out to support. */}
             <div style={{ padding: '12px 14px', background: T.primaryLt, borderRadius: 10, fontSize: 12.5, color: T.primaryDk, lineHeight: 1.5, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
               <Icon name="info" size={16} color={T.primaryDk} stroke={2.2} />
-              <span>Please contact support to upgrade. We'll set this up for you.</span>
+              <span>{t('upgradeContactSupport')}</span>
             </div>
             <button
               onClick={() => setUpgradeFor(null)}
               style={{ width: '100%', padding: '10px 12px', borderRadius: 9, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-            >Stay on Engine for now</button>
+            >{t('stayOnEngine')}</button>
           </div>
         </div>
       )}
@@ -3155,9 +3155,9 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
           <div style={{ width: 48, height: 48 }}>
             <Icon name="sync" size={48} color="#fff" className="spin" />
           </div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>Resetting your property…</div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>{t('resettingTitle')}</div>
           <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, maxWidth: 320, lineHeight: 1.5 }}>
-            Wiping bookings, payments, expenses, and rate overrides from your cloud account. The app will reload to onboarding when this is done.
+            {t('resettingBody')}
           </div>
         </div>
       )}

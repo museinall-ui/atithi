@@ -156,12 +156,12 @@ function PnLRow({ label, value, color, faint, dim, strong }) {
   );
 }
 
-function PnLBreakdownBlock({ title, accent, rows, total, totalLabel, totalNegative }) {
+function PnLBreakdownBlock({ title, accent, rows, total, totalLabel, totalNegative, t }) {
   if (!rows || rows.length === 0) {
     return (
       <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 8 }}>
         <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>{title}</div>
-        <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>No activity in this period.</div>
+        <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>{t('pnlNoActivity')}</div>
       </div>
     );
   }
@@ -174,7 +174,7 @@ function PnLBreakdownBlock({ title, accent, rows, total, totalLabel, totalNegati
       {total !== undefined && (
         <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 5, marginTop: 4 }}>
           <PnLRow
-            label={totalLabel || 'Total'}
+            label={totalLabel || t('total')}
             value={(totalNegative ? '− ' : '') + (typeof total === 'string' ? total : ('₹' + Math.round(Math.abs(total)).toLocaleString('en-IN')))}
             color={totalNegative ? T.danger : T.primaryDk}
             strong
@@ -187,7 +187,7 @@ function PnLBreakdownBlock({ title, accent, rows, total, totalLabel, totalNegati
 
 // The full P&L card. Slots between the KPI tiles and the existing
 // Take-home breakdown on the Reports screen.
-function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCategories }) {
+function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCategories, t }) {
   const [showAllDays, setShowAllDays] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(true);
   const customCatLabels = useMemo(() => {
@@ -274,7 +274,7 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
         <div style={{ width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklch, ${T.primary} 14%, white)`, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="chart" size={14} stroke={2} />
         </div>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.primaryDk, letterSpacing: 0.2 }}>DAILY PROFIT &amp; LOSS</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.primaryDk, letterSpacing: 0.2 }}>{t('pnlTitle')}</span>
       </div>
 
       {/* Headline number — net profit for the period. Avg / day is a
@@ -283,7 +283,7 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
         {pnl.totalProfit < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.totalProfit)).toLocaleString('en-IN')}
       </div>
       <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 12 }}>
-        net profit · {pnl.daysWithActivity} active day{pnl.daysWithActivity === 1 ? '' : 's'} · avg {pnl.avgDaily < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.avgDaily)).toLocaleString('en-IN')}/day
+        {t('pnlNetProfit')} · {pnl.daysWithActivity} {t('pnlActiveDays')} · {t('average')} {pnl.avgDaily < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.avgDaily)).toLocaleString('en-IN')}{t('pnlPerDay')}
       </div>
 
       {/* Three-stat strip: total income, total expense, net profit.
@@ -292,15 +292,15 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
         <div style={{ padding: '8px 10px', background: 'color-mix(in oklch, oklch(58% 0.13 155) 9%, white)', borderRadius: 7 }}>
           <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: 'oklch(35% 0.14 155)', letterSpacing: -0.3 }}>₹{Math.round(pnl.totalIncome).toLocaleString('en-IN')}</div>
-          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.10 155)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>INCOME</div>
+          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.10 155)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>{t('pnlIncome')}</div>
         </div>
         <div style={{ padding: '8px 10px', background: 'color-mix(in oklch, oklch(60% 0.14 30) 9%, white)', borderRadius: 7 }}>
           <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: 'oklch(40% 0.14 30)', letterSpacing: -0.3 }}>−₹{Math.round(pnl.totalExpense).toLocaleString('en-IN')}</div>
-          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.14 30)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>EXPENSE</div>
+          <div style={{ fontSize: 9.5, color: 'oklch(40% 0.14 30)', fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>{t('pnlExpense')}</div>
         </div>
         <div style={{ padding: '8px 10px', background: `color-mix(in oklch, ${profitColor} 11%, white)`, borderRadius: 7 }}>
           <div className="tnum" style={{ fontSize: 16, fontWeight: 800, color: profitColor, letterSpacing: -0.3 }}>{pnl.totalProfit < 0 ? '−' : ''}₹{Math.abs(Math.round(pnl.totalProfit)).toLocaleString('en-IN')}</div>
-          <div style={{ fontSize: 9.5, color: profitColor, fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>NET PROFIT</div>
+          <div style={{ fontSize: 9.5, color: profitColor, fontWeight: 700, letterSpacing: 0.3, marginTop: 1 }}>{t('pnlNetProfitCap')}</div>
         </div>
       </div>
 
@@ -311,15 +311,15 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
         style={{ width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', color: T.ink3, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 }}
       >
         <Icon name={showBreakdown ? 'chevU' : 'chevD'} size={11} color={T.ink3} />
-        {showBreakdown ? 'Hide breakdown' : 'Show income / expense breakdown'}
+        {showBreakdown ? t('pnlHideBreakdown') : t('pnlShowBreakdown')}
       </button>
 
       {showBreakdown && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-          <PnLBreakdownBlock title="INCOME BY SOURCE" accent="oklch(40% 0.10 155)" rows={channelRows} total={pnl.totalIncome} totalLabel="Total income" />
-          <PnLBreakdownBlock title="INCOME BY METHOD" accent="oklch(40% 0.10 155)" rows={incomeRows}  total={pnl.totalIncome} totalLabel="Total income" />
-          <PnLBreakdownBlock title="EXPENSE BY CATEGORY" accent="oklch(40% 0.14 30)" rows={expenseCatRows}    total={pnl.totalExpense} totalLabel="Total expense" totalNegative />
-          <PnLBreakdownBlock title="EXPENSE BY METHOD"   accent="oklch(40% 0.14 30)" rows={expenseMethodRows} total={pnl.totalExpense} totalLabel="Total expense" totalNegative />
+          <PnLBreakdownBlock t={t} title={t('pnlIncomeBySource')} accent="oklch(40% 0.10 155)" rows={channelRows} total={pnl.totalIncome} totalLabel={t('pnlTotalIncome')} />
+          <PnLBreakdownBlock t={t} title={t('pnlIncomeByMethod')} accent="oklch(40% 0.10 155)" rows={incomeRows}  total={pnl.totalIncome} totalLabel={t('pnlTotalIncome')} />
+          <PnLBreakdownBlock t={t} title={t('pnlExpenseByCategory')} accent="oklch(40% 0.14 30)" rows={expenseCatRows}    total={pnl.totalExpense} totalLabel={t('pnlTotalExpense')} totalNegative />
+          <PnLBreakdownBlock t={t} title={t('pnlExpenseByMethod')}   accent="oklch(40% 0.14 30)" rows={expenseMethodRows} total={pnl.totalExpense} totalLabel={t('pnlTotalExpense')} totalNegative />
         </div>
       )}
 
@@ -327,25 +327,25 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
           to days with any activity to keep the list short on a quiet
           month; toggle to show every date in the range. */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>PER-DAY BREAKDOWN</span>
+        <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>{t('pnlPerDayBreakdown')}</span>
         <button
           onClick={() => setShowAllDays(s => !s)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.primary, fontSize: 10.5, fontWeight: 700 }}
         >
-          {showAllDays ? 'Active days only' : `Show all ${allDayRows.length} day${allDayRows.length === 1 ? '' : 's'}`}
+          {showAllDays ? t('pnlActiveDaysOnly') : `${t('pnlShowAll')} ${allDayRows.length} ${t('repDays')}`}
         </button>
       </div>
       {noActivity ? (
         <div style={{ padding: '14px 12px', background: T.bgSoft, borderRadius: 8, fontSize: 11.5, color: T.ink3, fontStyle: 'italic', textAlign: 'center' }}>
-          No income or expense recorded in this period.
+          {t('pnlNoneRecorded')}
         </div>
       ) : (
         <div style={{ background: T.bgSoft, borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 0, padding: '6px 10px', background: 'color-mix(in oklch, ' + T.primaryDk + ' 7%, white)', fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.4 }}>
-            <span>DATE</span>
-            <span style={{ textAlign: 'right' }}>INCOME</span>
-            <span style={{ textAlign: 'right' }}>EXPENSE</span>
-            <span style={{ textAlign: 'right' }}>PROFIT</span>
+            <span>{t('colDate')}</span>
+            <span style={{ textAlign: 'right' }}>{t('colIncome')}</span>
+            <span style={{ textAlign: 'right' }}>{t('colExpense')}</span>
+            <span style={{ textAlign: 'right' }}>{t('colProfit')}</span>
           </div>
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
             {visibleDays.map(d => {
@@ -366,7 +366,7 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
                 >
                   <span style={{ fontSize: 11, color: T.ink, fontWeight: isToday ? 700 : 600 }}>
                     {dayLabel} <span style={{ color: T.ink3, fontWeight: 600 }}>· {dowLabel}</span>
-                    {isToday && <span style={{ marginLeft: 4, color: T.primaryDk, fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>TODAY</span>}
+                    {isToday && <span style={{ marginLeft: 4, color: T.primaryDk, fontSize: 9, fontWeight: 800, letterSpacing: 0.3 }}>{t('today')}</span>}
                   </span>
                   <span className="tnum" style={{ fontSize: 11, color: d.income > 0 ? T.ink : T.ink3, fontWeight: 700, textAlign: 'right' }}>
                     {d.income === 0 ? '—' : (d.income < 0 ? '−' : '') + '₹' + Math.abs(Math.round(d.income)).toLocaleString('en-IN')}
@@ -394,7 +394,7 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
         }}
       >
         <Icon name="download" size={12} stroke={2} color={T.primary} />
-        Download P&amp;L CSV
+        {t('pnlDownloadCsv')}
       </button>
     </Card>
   );
@@ -472,18 +472,18 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     // app and doesn't show the scary "atithi-seven.vercel.app says:"
     // browser chrome to a non-technical hotelier.
     if (issuedInvoices.length === 0) {
-      setSendStatus({ kind: 'err', message: 'No invoices to send yet. Open any booking and tap "Issue invoice" first.' });
+      setSendStatus({ kind: 'err', message: t('snackNoInvoices') });
       setTimeout(() => setSendStatus(null), 6000);
       return;
     }
     if (!caEmail) {
-      setSendStatus({ kind: 'err', message: "Add your CA's email in Settings → Property profile → Accountant before sending." });
+      setSendStatus({ kind: 'err', message: t('snackAddCaEmail') });
       setTimeout(() => setSendStatus(null), 6000);
       return;
     }
     // Try Resend first (requires signed-in user + configured backend).
     if (session && propertyId) {
-      setSendStatus({ kind: 'sending', message: `Sending ${issuedInvoices.length} invoice${issuedInvoices.length === 1 ? '' : 's'} to ${caEmail}…` });
+      setSendStatus({ kind: 'sending', message: `${t('snackSending')} ${issuedInvoices.length} ${t('snackInvoicesTo')} ${caEmail}…` });
       const result = await sendInvoiceListViaResend({
         invoices: issuedInvoices,
         property,
@@ -491,17 +491,17 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         session,
       });
       if (result.ok) {
-        setSendStatus({ kind: 'ok', message: `Sent to ${caEmail}. The CA will reply from their inbox.` });
+        setSendStatus({ kind: 'ok', message: `${t('snackSentTo')} ${caEmail}. ${t('snackSentOk')}` });
         setTimeout(() => setSendStatus(null), 6000);
         return;
       }
       // Specific helpful messages for the common fail modes.
       if (result.code === 'no_resend') {
-        setSendStatus({ kind: 'fallback', message: "Atithi's email service isn't set up on this deployment yet — opening your email client instead. Owner: add RESEND_API_KEY in Vercel to enable direct send." });
+        setSendStatus({ kind: 'fallback', message: t('snackNoResend') });
       } else if (result.code === 'no_session') {
-        setSendStatus({ kind: 'fallback', message: 'Sign-in required for direct send — opening your email client instead.' });
+        setSendStatus({ kind: 'fallback', message: t('snackNoSession') });
       } else {
-        setSendStatus({ kind: 'fallback', message: 'Direct send failed — opening your email client instead. ' + (result.error || '') });
+        setSendStatus({ kind: 'fallback', message: t('snackSendFailed') + ' ' + (result.error || '') });
       }
       setTimeout(() => setSendStatus(null), 8000);
     }
@@ -690,37 +690,37 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} units · ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} onBack={() => go('home')}
+      <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} ${t('repUnits')} · ${stats.rangeDays} ${t('repDays')}`} onBack={() => go('home')}
         right={<Btn size="sm" variant="ghost" icon="download" onClick={() => {
           // Scroll to the Downloadable-reports card via ref (robust
           // to heading translation, unlike the old DOM-text match).
           if (downloadsRef.current) downloadsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }}>Export</Btn>}
+        }}>{t('exportLabel')}</Btn>}
       />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         {/* Date-range picker — defaults to current calendar month. All
             KPIs + CSV exports below honor whatever is picked here. */}
         <Card padding={12} style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>REPORT PERIOD</div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('reportPeriod')}</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label="From" />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label="To" />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
               {
-                id: 'today', label: 'Today',
+                id: 'today', label: t('today'),
                 onClick: () => {
                   const iso = ymd(new Date(ANCHOR));
                   setRangeStart(iso); setRangeEnd(iso);
                 },
               },
-              { id: 'thismonth', label: 'This month', onClick: () => setRangeToMonth(0) },
-              { id: 'lastmonth', label: 'Last month', onClick: () => setRangeToMonth(-1) },
-              { id: 'fy',        label: 'This FY',    onClick: setRangeToFinancialYear },
+              { id: 'thismonth', label: t('presetThisMonth'), onClick: () => setRangeToMonth(0) },
+              { id: 'lastmonth', label: t('presetLastMonth'), onClick: () => setRangeToMonth(-1) },
+              { id: 'fy',        label: t('presetThisFY'),    onClick: setRangeToFinancialYear },
               {
-                id: 'next14',    label: 'Next 14 days',
+                id: 'next14',    label: t('presetNext14'),
                 onClick: () => {
                   setRangeStart(ymd(new Date(ANCHOR)));
                   const e = new Date(ANCHOR);
@@ -742,15 +742,15 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           </div>
           {rangeEndIdx < rangeStartIdx && (
             <div style={{ marginTop: 8, fontSize: 11, color: T.danger, fontWeight: 700 }}>
-              End date is before start — please pick a valid range.
+              {t('rangeInvalidEnd')}
             </div>
           )}
         </Card>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          <KPI label="Money earned" value={fmtINR(stats.revenue)} sub={`of ${fmtINR(stats.billed)} billed`} icon="inr" color={T.primary} />
-          <KPI label="Rooms full" value={`${stats.avgOccPct}%`} sub={`avg over ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'}`} icon="bed" color={T.indigo} />
-          <KPI label="Per room / night" value={fmtINR(stats.adr)} sub="when room is booked" icon="tag" color={T.teal} />
-          <KPI label="Per room / day" value={fmtINR(stats.revpar)} sub="across all rooms" icon="chart" color="oklch(60% 0.14 320)" />
+          <KPI label={t('kpiMoneyEarned')} value={fmtINR(stats.revenue)} sub={`${fmtINR(stats.billed)} ${t('kpiBilledSuffix')}`} icon="inr" color={T.primary} />
+          <KPI label={t('kpiRoomsFull')} value={`${stats.avgOccPct}%`} sub={`${stats.rangeDays} ${t('repDays')} ${t('average')}`} icon="bed" color={T.indigo} />
+          <KPI label={t('kpiPerRoomNight')} value={fmtINR(stats.adr)} sub={t('kpiWhenBooked')} icon="tag" color={T.teal} />
+          <KPI label={t('kpiPerRoomDay')} value={fmtINR(stats.revpar)} sub={t('kpiAcrossRooms')} icon="chart" color="oklch(60% 0.14 320)" />
         </div>
 
         {/* Daily Profit & Loss — the headline cash-in / cash-out card.
@@ -760,7 +760,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             expenses. Both are useful: this one answers "how much did
             we actually make this month?", the other answers "what's
             net of every deduction on what we billed?". */}
-        <PnLCard pnl={pnl} rangeLabel={rangeLabel} rangeStart={rangeStart} rangeEnd={rangeEnd} property={property} expenseCategories={(property?.accountant?.expenseCategories) || []} />
+        <PnLCard t={t} pnl={pnl} rangeLabel={rangeLabel} rangeStart={rangeStart} rangeEnd={rangeEnd} property={property} expenseCategories={(property?.accountant?.expenseCategories) || []} />
 
         {/* Take-home breakdown (Channels / Invoicing tiers only). Engine
             properties only sell direct, so gross == net minus tax; no need
@@ -771,29 +771,29 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
               <div style={{ width: 28, height: 28, borderRadius: 8, background: 'color-mix(in oklch, oklch(60% 0.14 175) 14%, white)', color: 'oklch(45% 0.14 175)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="inr" size={14} stroke={2} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'oklch(45% 0.14 175)', letterSpacing: 0.2 }}>TAKE-HOME · AFTER TAX + OTA</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'oklch(45% 0.14 175)', letterSpacing: 0.2 }}>{t('thTitle')}</span>
             </div>
             <div className="tnum" style={{ fontSize: 26, fontWeight: 700, color: T.ink, letterSpacing: -0.5, marginBottom: 2 }}>{fmtINR(stats.netRevenue)}</div>
-            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 12 }}>actually kept by your property</div>
+            <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 12 }}>{t('thKept')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', background: T.bgSoft, borderRadius: 7 }}>
-              <BreakdownRow label="Total billed" value={fmtINR(stats.billed)} color={T.ink2} />
-              <BreakdownRow label="GST collected (to government)" value={`− ${fmtINR(stats.totalTax)}`} color={T.ink3} />
-              <BreakdownRow label="OTA commissions" value={`− ${fmtINR(stats.totalCommission)}`} color={T.ink3} />
+              <BreakdownRow label={t('thTotalBilled')} value={fmtINR(stats.billed)} color={T.ink2} />
+              <BreakdownRow label={t('thGstGov')} value={`− ${fmtINR(stats.totalTax)}`} color={T.ink3} />
+              <BreakdownRow label={t('thOtaComm')} value={`− ${fmtINR(stats.totalCommission)}`} color={T.ink3} />
               <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
-                <BreakdownRow label="Net to you" value={fmtINR(stats.netRevenue)} color={T.primaryDk} bold />
+                <BreakdownRow label={t('thNetToYou')} value={fmtINR(stats.netRevenue)} color={T.primaryDk} bold />
               </div>
               {stats.totalExpenses > 0 && (
                 <>
-                  <BreakdownRow label={`Operating expenses (${stats.expensesCount} entr${stats.expensesCount === 1 ? 'y' : 'ies'})`} value={`− ${fmtINR(stats.totalExpenses)}`} color={T.ink3} />
+                  <BreakdownRow label={`${t('thOpExpenses')} (${stats.expensesCount} ${t('expEntries')})`} value={`− ${fmtINR(stats.totalExpenses)}`} color={T.ink3} />
                   <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
-                    <BreakdownRow label="After expenses" value={fmtINR(stats.netAfterExpenses)} color={T.ok} bold />
+                    <BreakdownRow label={t('thAfterExpenses')} value={fmtINR(stats.netAfterExpenses)} color={T.ok} bold />
                   </div>
                 </>
               )}
             </div>
             {stats.totalCommission === 0 && (
               <div style={{ marginTop: 10, fontSize: 10.5, color: T.ink3, lineHeight: 1.4 }}>
-                No OTA bookings in this window — commissions are zero. Defaults are 18% MMT, 15% Booking.com, etc. Edit in Settings → Property profile → Channel commissions if your contract differs.
+                {t('thNoOtaHint')}
               </div>
             )}
           </Card>
@@ -804,7 +804,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             invoice-register CSV is plan-gated below since it's a
             tax-filing artefact. */}
         <div ref={downloadsRef}>
-        <SectionHead title="Downloadable reports" />
+        <SectionHead title={t('downloadableReports')} />
         <Card padding={0} style={{ marginBottom: 16 }}>
           {(() => {
             const reports = [
@@ -812,8 +812,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 id: 'occupancy',
                 icon: 'bed',
                 color: T.indigo,
-                title: 'Occupancy report',
-                sub: `Daily occupancy across ${stats.rangeDays} day${stats.rangeDays === 1 ? '' : 's'} (${rangeLabel}) + ADR + RevPAR`,
+                title: t('rptOccTitle'),
+                sub: `${t('rptOccSub')} · ${stats.rangeDays} ${t('repDays')} (${rangeLabel}) ${t('rptOccSubTail')}`,
                 onClick: () => {
                   const rows = [];
                   const active = bookings.filter(b => b.status !== 'cancelled');
@@ -854,8 +854,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 id: 'payments',
                 icon: 'inr',
                 color: 'oklch(58% 0.13 155)',
-                title: 'Payment reconciliation',
-                sub: `Payments within ${rangeLabel}, grouped by method (cash / UPI / card / bank)`,
+                title: t('rptPayTitle'),
+                sub: `${t('rptPaySub')} · ${rangeLabel}`,
                 onClick: () => {
                   const rows = [];
                   const methodTotals = {};
@@ -901,8 +901,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 id: 'ota',
                 icon: 'sync',
                 color: 'oklch(60% 0.16 38)',
-                title: 'OTA booking report',
-                sub: `Bookings overlapping ${rangeLabel}, grouped by channel (MMT / Booking / Goibibo / Agoda / Airbnb / Direct / Website)`,
+                title: t('rptOtaTitle'),
+                sub: `${t('rptOtaSub')} · ${rangeLabel}`,
                 onClick: () => {
                   const rows = [];
                   const channelTotals = {};
@@ -939,8 +939,8 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 id: 'invoices',
                 icon: 'tag',
                 color: T.indigo,
-                title: 'Invoice register (Invoicing tier)',
-                sub: `${issuedInvoices.length} invoice${issuedInvoices.length === 1 ? '' : 's'} issued — CSV for your CA's records`,
+                title: t('rptInvTitle'),
+                sub: `${issuedInvoices.length} ${t('rptInvSubTail')}`,
                 onClick: () => {
                   const rows = issuedInvoices.map(inv => [
                     inv.number, inv.fy, inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : '',
@@ -995,21 +995,21 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         <Card padding={14} style={{ marginBottom: 16, borderColor: stats.gapCount > 0 ? 'oklch(85% 0.10 75)' : 'oklch(85% 0.06 175)', background: stats.gapCount > 0 ? 'oklch(98% 0.018 75)' : 'oklch(98% 0.014 175)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Icon name="download" size={14} color={T.teal} stroke={2} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.teal, letterSpacing: 0.2 }}>MONTH-END · SEND TO CA</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.teal, letterSpacing: 0.2 }}>{t('monthEndCA')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
             <div>
               <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{issuedInvoices.length}</div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>INVOICES ISSUED</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>{t('invoicesIssued')}</div>
             </div>
             <div>
               <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{stats.invoiceableCount}</div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>BOOKINGS READY</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>{t('bookingsReady')}</div>
             </div>
             {stats.gapCount > 0 && (
               <div>
                 <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: 'oklch(48% 0.14 75)', letterSpacing: -0.3 }}>{stats.gapCount}</div>
-                <div style={{ fontSize: 10, color: 'oklch(48% 0.14 75)', fontWeight: 700, letterSpacing: 0.3 }}>WITH GAPS</div>
+                <div style={{ fontSize: 10, color: 'oklch(48% 0.14 75)', fontWeight: 700, letterSpacing: 0.3 }}>{t('withGaps')}</div>
               </div>
             )}
           </div>
@@ -1018,10 +1018,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
               <Icon name="info" size={14} color="oklch(48% 0.14 75)" stroke={2} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>
-                  {stats.gapCount} booking{stats.gapCount > 1 ? 's' : ''} need payment reconciliation
+                  {stats.gapCount} {stats.gapCount === 1 ? t('booking1') : t('bookingN')} {t('needReconcile')}
                 </div>
                 <div className="tnum" style={{ fontSize: 11, color: T.ink2, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
-                  ₹{stats.gapAmount.toLocaleString('en-IN')} unaccounted. Resolve via the "Pending payments" card on the Dashboard before sending invoices to your CA.
+                  ₹{stats.gapAmount.toLocaleString('en-IN')} {t('unaccountedHint')}
                 </div>
               </div>
             </div>
@@ -1029,20 +1029,20 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <Icon name="info" size={13} color={T.ink3} stroke={2} />
               <div style={{ fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.4 }}>
-                No invoices issued yet. Open a booking and tap <strong>Issue invoice</strong> to start.
+                {t('noInvoicesYet')} <strong>{t('issueInvoiceWord')}</strong> {t('toStart')}
               </div>
             </div>
           ) : !caEmail ? (
             <div style={{ padding: '10px 12px', background: 'oklch(95% 0.05 75)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <Icon name="info" size={13} color="oklch(48% 0.14 75)" stroke={2} />
               <div style={{ fontSize: 11, color: 'oklch(40% 0.14 75)', fontWeight: 600, lineHeight: 1.4 }}>
-                Add your CA's email in <strong>Settings → Property profile → Accountant</strong> before sending.
+                {t('addCaEmailHint')} <strong>{t('settingsAccountantPath')}</strong> {t('beforeSending')}
               </div>
             </div>
           ) : (
             <div style={{ padding: '10px 12px', background: 'oklch(95% 0.04 155)', borderRadius: 8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="check" size={13} color={T.ok} stroke={2.4} />
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ok }}>Ready to send to {caEmail}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ok }}>{t('readyToSend')} {caEmail}</div>
             </div>
           )}
           <button
@@ -1059,33 +1059,33 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           >
             <Icon name="download" size={13} stroke={2} />
             {stats.gapCount > 0
-              ? `Resolve ${stats.gapCount} gap${stats.gapCount > 1 ? 's' : ''} to enable export`
+              ? t('gapsToEnable').replace('{n}', stats.gapCount)
               : issuedInvoices.length === 0
-                ? 'Issue at least one invoice first'
-                : `Open invoice list (${issuedInvoices.length}) + email to CA`}
+                ? t('issueOneFirst')
+                : `${t('openInvoiceList')} (${issuedInvoices.length}) ${t('emailToCA')}`}
           </button>
         </Card>
 
         <Card padding={14} style={{ marginBottom: 16, borderColor: T.indigoLt, background: 'oklch(98% 0.012 265)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Icon name="tag" size={14} color={T.indigo} stroke={2} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.indigo, letterSpacing: 0.2 }}>INVOICING SUMMARY</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.indigo, letterSpacing: 0.2 }}>{t('invoicingSummary')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>GOES TO CA</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>{t('goesToCA')}</div>
               <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.reportedRevenue)}</div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{stats.gstCount} booking{stats.gstCount === 1 ? '' : 's'} · in monthly export</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{stats.gstCount} {stats.gstCount === 1 ? t('booking1') : t('bookingN')} · {t('inMonthlyExport')}</div>
             </div>
             <div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>SKIPPED</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>{t('skipped')}</div>
               <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginTop: 2 }}>{fmtINR(stats.unreported)}</div>
-              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>direct / cash · not in export</div>
+              <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>{t('notInExport')}</div>
             </div>
           </div>
           <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
           <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
-            Bookings included in your monthly export to the CA. Default is OTA-yes / direct-no — flip per booking via "Include in invoice" on its detail page.
+            {t('invoicingSummaryHint')}
           </div>
         </Card>
         </>
@@ -1094,10 +1094,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'baseline' }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Daily occupancy</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('dailyOccupancy')}</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{rangeLabel}</div>
             </div>
-            <Chip color="ok">{stats.avgOccPct}% avg</Chip>
+            <Chip color="ok">{stats.avgOccPct}% {t('avgSuffix')}</Chip>
           </div>
           <div style={{ display: 'flex', gap: stats.rangeDays > 60 ? 1 : 4, alignItems: 'flex-end', height: 80 }}>
             {stats.dailyOccPct.map((v, i) => {
@@ -1132,7 +1132,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           </div>
         </Card>
 
-        <SectionHead title="Top room types" />
+        <SectionHead title={t('topRoomTypes')} />
         <Card padding={0}>
           {stats.byType.map((r, i) => {
             const pct = stats.topRevenue ? Math.round((r.rev / stats.topRevenue) * 100) : 0;
@@ -1153,13 +1153,13 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
           })}
         </Card>
 
-        <SectionHead title="Compliance" style={{ marginTop: 18 }} />
+        <SectionHead title={t('compliance')} style={{ marginTop: 18 }} />
         <Card>
-          <Row label="Tax inside invoices" value={fmtINR(stats.gstCollected)} />
-          <Row label="Form C required" value={`${stats.formC} booking${stats.formC === 1 ? '' : 's'}`} />
+          <Row label={t('taxInsideInvoices')} value={fmtINR(stats.gstCollected)} />
+          <Row label={t('formCRequired')} value={`${stats.formC} ${stats.formC === 1 ? t('booking1') : t('bookingN')}`} />
           {stats.formC > 0 && (
             <div style={{ padding: '6px 12px 0', fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
-              Atithi flags foreign-passport guests as needing Form C. Actual e-FRRO filing is still manual — submit at <strong>indianfrro.gov.in/frro</strong> per stay.
+              {t('formCHint')}
             </div>
           )}
         </Card>

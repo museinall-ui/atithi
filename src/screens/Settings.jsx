@@ -15,9 +15,10 @@ import { logActivity } from '../cloud/activity.js';
 // Android, step-by-step Share-sheet instructions on iOS, generic
 // browser-menu nudge everywhere else. Hides itself completely when
 // the app is already running standalone.
-function InstallAppCard() {
+function InstallAppCard({ t }) {
   const { canInstall, isIosSafari, isStandalone, install } = useInstallPrompt();
   const [iosOpen, setIosOpen] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   if (isStandalone) {
     return (
@@ -25,7 +26,7 @@ function InstallAppCard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Icon name="check" size={18} color={T.ok} stroke={2.2} />
           <div style={{ fontSize: 13, fontWeight: 700, color: 'oklch(35% 0.13 155)' }}>
-            Atithi is installed on this device
+            {t('appInstalled')}
           </div>
         </div>
       </Card>
@@ -44,9 +45,9 @@ function InstallAppCard() {
             <Icon name="plus" size={18} stroke={2.4} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Install Atithi as an app</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('installTitle')}</div>
             <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>
-              Faster to open · works offline · feels like a real app · no browser bar
+              {t('installSub')}
             </div>
           </div>
         </div>
@@ -55,16 +56,17 @@ function InstallAppCard() {
             onClick={handleInstall}
             disabled={busy}
             style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}
-          >{busy ? 'Opening installer…' : 'Install on this device'}</button>
+          >{busy ? t('installOpening') : t('installBtn')}</button>
         ) : isIosSafari ? (
           <button
             onClick={() => setIosOpen(true)}
             style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-          >Show how to install on iPhone / iPad</button>
+          >{t('installIosBtn')}</button>
         ) : (
-          <div style={{ padding: '10px 12px', background: T.bgSoft, borderRadius: 7, fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.5 }}>
-            Your browser doesn't expose a one-tap install button. Open your browser's menu (⋮ or share icon) and look for <strong>"Install app"</strong>, <strong>"Add to Home Screen"</strong>, or <strong>"Add to Desktop"</strong>.
-          </div>
+          <button
+            onClick={() => setHowOpen(true)}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >{t('installHowBtn')}</button>
         )}
       </Card>
       {iosOpen && (
@@ -75,10 +77,10 @@ function InstallAppCard() {
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 24 }}>
             <div style={{ width: 32, height: 4, background: T.border, borderRadius: 2, margin: '0 auto 18px' }} />
             <div style={{ fontSize: 17, fontWeight: 800, color: T.ink, marginBottom: 14, textAlign: 'center' }}>
-              Add Atithi to your home screen
+              {t('installSheetTitle')}
             </div>
             <ol style={{ paddingLeft: 24, color: T.ink2, fontSize: 13, lineHeight: 1.7, marginBottom: 18 }}>
-              <li>Tap the <strong>Share</strong> icon at the bottom of Safari
+              <li>{t('installIosStep1')}
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, background: T.bgSoft, marginLeft: 6, verticalAlign: 'middle' }}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M10 3v10M10 3l-3 3M10 3l3 3" stroke={T.primary} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
@@ -86,13 +88,39 @@ function InstallAppCard() {
                   </svg>
                 </span>
               </li>
-              <li>Scroll down → tap <strong>Add to Home Screen</strong></li>
-              <li>Tap <strong>Add</strong> in the top-right corner</li>
+              <li>{t('installIosStep2')}</li>
+              <li>{t('installIosStep3')}</li>
             </ol>
             <button
               onClick={() => setIosOpen(false)}
               style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-            >Got it</button>
+            >{t('gotIt')}</button>
+          </div>
+        </div>
+      )}
+      {/* Generic install instructions for browsers that don't fire the
+          native install event and aren't iOS Safari (e.g. desktop
+          Firefox, or Chrome before the event arrives). Ensures the card
+          always has an actionable button, not just a wall of text. */}
+      {howOpen && (
+        <div
+          onClick={() => setHowOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 220, display: 'flex', alignItems: 'flex-end' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 24 }}>
+            <div style={{ width: 32, height: 4, background: T.border, borderRadius: 2, margin: '0 auto 18px' }} />
+            <div style={{ fontSize: 17, fontWeight: 800, color: T.ink, marginBottom: 14, textAlign: 'center' }}>
+              {t('installSheetTitle')}
+            </div>
+            <ol style={{ paddingLeft: 24, color: T.ink2, fontSize: 13, lineHeight: 1.7, marginBottom: 18 }}>
+              <li>{t('installGenStep1')}</li>
+              <li>{t('installGenStep2')}</li>
+              <li>{t('installGenStep3')}</li>
+            </ol>
+            <button
+              onClick={() => setHowOpen(false)}
+              style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >{t('gotIt')}</button>
           </div>
         </div>
       )}
@@ -3016,7 +3044,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             because anyone might want to add the app to their home
             screen. Hides itself when already running standalone. */}
         <SectionHead title={t('appSection')} style={{ marginTop: 16 }} />
-        <InstallAppCard />
+        <InstallAppCard t={t} />
 
         {session && (
           <>

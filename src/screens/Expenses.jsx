@@ -77,6 +77,18 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
   }, [property]);
   const CATEGORIES = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
+  // Translated display labels. Default categories + payment methods map to
+  // i18n keys; custom categories keep their user-entered name. The CSV export
+  // deliberately stays in English (raw .label) for clean accountant handoff.
+  const CAT_KEY = { groceries: 'catGroceries', salaries: 'catSalaries', utilities: 'catUtilities', maintenance: 'catMaintenance', supplies: 'catSupplies', transport: 'catTransport', marketing: 'catMarketing', other: 'catOther' };
+  const catLabelById = (id) => {
+    if (CAT_KEY[id]) return t(CAT_KEY[id]);
+    const c = CATEGORIES.find(x => x.id === id);
+    return c ? c.label : id;
+  };
+  const PAY_KEY = { cash: 'payCash', upi: 'payUpi', card: 'payCard', bank: 'payBank' };
+  const payLabel = (p) => (PAY_KEY[p] ? t(PAY_KEY[p]) : p);
+
   // Add-expense form state. Reset after each successful add.
   const today = ymd(new Date(ANCHOR));
   const [date, setDate] = useState(today);
@@ -178,15 +190,15 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader
-        title="Expenses"
-        subtitle={`${filtered.length} entries · ${fmtINR(summary.total)} this period`}
+        title={t('expensesTitle')}
+        subtitle={`${filtered.length} ${t('expEntries')} · ${fmtINR(summary.total)} ${t('expThisPeriod')}`}
         onBack={() => go('more')}
-        right={<button onClick={exportCsv} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="download" size={13} stroke={2} color={T.primary} /> Export</button>}
+        right={<button onClick={exportCsv} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="download" size={13} stroke={2} color={T.primary} /> {t('exportLabel')}</button>}
       />
 
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         {/* Add new expense */}
-        <SectionHead title="Add an expense" style={{ marginTop: 0 }} />
+        <SectionHead title={t('addExpenseSection')} style={{ marginTop: 0 }} />
         <Card padding={14} style={{ marginBottom: 16 }}>
           {/* Big amount input — the focal point. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: T.bgSoft, border: `1.5px solid ${T.primary}`, borderRadius: 10, marginBottom: 12 }}>
@@ -205,13 +217,13 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
 
           {/* Date + paid-via row */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <DatePill value={date} onChange={setDate} label="Date" />
+            <DatePill value={date} onChange={setDate} label={t('expDate')} />
           </div>
 
           {/* Category picker — defaults + custom (with × delete on custom)
               + an 'Add custom' pill at the end. Tapping the add pill
               expands an inline input to name the new category. */}
-          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>CATEGORY</div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>{t('expCategory')}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
             {CATEGORIES.map(c => {
               const sel = category === c.id;
@@ -230,11 +242,11 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                   }}
                 >
                   <Icon name={c.icon} size={10} color={sel ? T.primaryDk : T.ink3} />
-                  {c.label}
+                  {catLabelById(c.id)}
                   {isCustom && (
                     <span
                       onClick={(e) => { e.stopPropagation(); removeCustomCategory(c.id); }}
-                      title={`Remove "${c.label}" category`}
+                      title={t('removeCatTip').replace('{label}', c.label)}
                       style={{ marginLeft: 2, color: sel ? T.primaryDk : T.ink3, opacity: 0.7, fontSize: 13, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
                     >×</span>
                   )}
@@ -253,7 +265,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 }}
               >
                 <Icon name="plus" size={10} color={T.ink3} stroke={2.2} />
-                Add custom
+                {t('addCustomCat')}
               </button>
             )}
           </div>
@@ -264,23 +276,23 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 value={newCatLabel}
                 onChange={(e) => setNewCatLabel(e.target.value.slice(0, 24))}
                 onKeyDown={(e) => { if (e.key === 'Enter') saveNewCategory(); if (e.key === 'Escape') { setAddingCategory(false); setNewCatLabel(''); } }}
-                placeholder="New category name (e.g. Laundry, Wellness)"
+                placeholder={t('newCatPlaceholder')}
                 style={{ flex: 1, padding: '7px 10px', border: `1px solid ${T.primary}`, borderRadius: 7, fontSize: 12, color: T.ink, background: T.card, outline: 'none' }}
               />
               <button
                 onClick={saveNewCategory}
                 disabled={!newCatLabel.trim()}
                 style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newCatLabel.trim() ? T.primary : T.bgSoft, color: newCatLabel.trim() ? '#fff' : T.ink3, fontSize: 11, fontWeight: 700, cursor: newCatLabel.trim() ? 'pointer' : 'not-allowed' }}
-              >Save</button>
+              >{t('saveShort')}</button>
               <button
                 onClick={() => { setAddingCategory(false); setNewCatLabel(''); }}
                 style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-              >Cancel</button>
+              >{t('cancel')}</button>
             </div>
           )}
 
           {/* Paid via */}
-          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>PAID VIA</div>
+          <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>{t('paidViaLabel')}</div>
           <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
             {PAID_VIA.map(p => {
               const sel = paidVia === p;
@@ -295,7 +307,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                     color: sel ? T.primaryDk : T.ink3,
                     fontSize: 10.5, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
                   }}
-                >{p}</button>
+                >{payLabel(p)}</button>
               );
             })}
           </div>
@@ -304,7 +316,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Note (optional) — e.g. vegetables for kitchen"
+            placeholder={t('expNotePlaceholder')}
             style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: `1px solid ${T.border}`, borderRadius: 7, fontSize: 12, color: T.ink, background: T.card, outline: 'none', marginBottom: 12 }}
           />
 
@@ -318,21 +330,21 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
               color: (!amount || +amount <= 0) ? T.ink3 : '#fff',
               fontSize: 13, fontWeight: 700, cursor: (!amount || +amount <= 0) ? 'not-allowed' : 'pointer',
             }}
-          >Add expense</button>
+          >{t('addExpenseBtn')}</button>
         </Card>
 
         {/* Period picker + summary */}
-        <SectionHead title="Ledger" />
+        <SectionHead title={t('ledger')} />
         <Card padding={12} style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label="From" />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label="To" />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
           </div>
           {summary.total > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {Object.entries(summary.byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
-                const label = (CATEGORIES.find(c => c.id === cat) || { label: cat }).label;
+                const label = catLabelById(cat);
                 const pct = summary.total ? Math.round((amt / summary.total) * 100) : 0;
                 return (
                   <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, padding: '3px 0' }}>
@@ -345,13 +357,13 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 );
               })}
               <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Total</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{t('total')}</span>
                 <span className="tnum" style={{ fontSize: 16, fontWeight: 800, color: T.primaryDk, letterSpacing: -0.3 }}>{fmtINR(summary.total)}</span>
               </div>
             </div>
           ) : (
             <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic', padding: '6px 2px' }}>
-              No expenses in this period.
+              {t('noExpensesPeriod')}
             </div>
           )}
         </Card>
@@ -371,14 +383,14 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                     <Icon name={c.icon} size={14} stroke={2} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{c.label}{e.paidVia ? <span style={{ marginLeft: 6, fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>· {e.paidVia.toUpperCase()}</span> : ''}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{catLabelById(e.category)}{e.paidVia ? <span style={{ marginLeft: 6, fontSize: 9, color: T.ink3, fontWeight: 700, letterSpacing: 0.3 }}>· {payLabel(e.paidVia).toUpperCase()}</span> : ''}</div>
                     {e.note && <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>{e.note}</div>}
                     <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 2 }} className="tnum">{dateLabel}</div>
                   </div>
                   <span className="tnum" style={{ fontSize: 14, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{fmtINR(e.amount)}</span>
                   <button
                     onClick={() => onRemove && onRemove(e.id)}
-                    title="Delete this expense"
+                    title={t('deleteExpense')}
                     style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 4 }}
                   ><Icon name="x" size={13} /></button>
                 </div>

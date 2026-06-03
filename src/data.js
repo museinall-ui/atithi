@@ -382,6 +382,49 @@ export function defaultRatePlanId() {
   return 'standard';
 }
 
+// Rate-plan price multiplier (Standard = 1.0; Flexible / Non-refundable
+// per their configured multiplierPct). Shared so the hotelier's NewBooking
+// flow and the public widget apply the same tier adjustment.
+export function ratePlanMultiplier(property, ratePlanId) {
+  const rp = ratePlanById(property, ratePlanId);
+  return 1 + ((rp && rp.multiplierPct ? rp.multiplierPct : 0) / 100);
+}
+
+// SINGLE SOURCE OF TRUTH for the per-night room rate on a given day index
+// (0 = today / ANCHOR; negative = past). Used by BOTH NewBooking (hotelier)
+// and PublicBookingWidget (guest) so the same dates always price the same
+// way — previously the two had drifted (the widget applied seasons +
+// weekendRules but not per-day overrides, while NewBooking applied overrides
+// + a hardcoded Fri/Sat 1.2x but neither seasons nor the real weekendRules,
+// and pulled day-0's rate for every night). Precedence:
+//   1. An explicit per-day rate set in the Rates calendar (override.rate)
+//      wins outright — it's the hotelier's hand-set price for that day.
+//   2. Otherwise: category base × weekend uplift × season multiplier, where
+//      weekend days + uplift come from property.weekendRules and seasons
+//      from property.seasons.
+// The rate-plan tier is NOT folded in here — callers apply
+// ratePlanMultiplier() so each keeps its own per-night-vs-per-stay rounding.
+// `closed` / `closedUnits` are availability concerns handled elsewhere; this
+// helper is purely about price.
+export function ratePerNight(property, rateOverrides, roomTypeId, dayIdx) {
+  const room = effectiveRoomTypes(property).find(r => r.id === roomTypeId);
+  if (!room) return 0;
+  const override = rateOverrides ? rateOverrides[`${roomTypeId}:${dayIdx}`] : null;
+  if (override && override.rate != null) return Math.round(override.rate);
+  const d = new Date(ANCHOR);
+  d.setDate(d.getDate() + dayIdx);
+  const iso = ymd(d);
+  const weekendDays = (property && property.weekendRules && property.weekendRules.weekendDays) || [0, 6];
+  const upliftPct = (property && property.weekendRules && property.weekendRules.upliftPct != null)
+    ? property.weekendRules.upliftPct : 20;
+  const seasons = Array.isArray(property && property.seasons) ? property.seasons : [];
+  const isWknd = weekendDays.includes(d.getDay());
+  const matchingSeason = seasons.find(s => iso >= s.startIso && iso <= s.endIso);
+  const wkMult = isWknd ? (1 + upliftPct / 100) : 1;
+  const seasonMult = matchingSeason ? (1 + ((matchingSeason.multiplierPct || 0) / 100)) : 1;
+  return Math.round(room.base * wkMult * seasonMult);
+}
+
 // Total guest-count for cost math. Children count toward meals too by default
 // — most Indian hotels charge full meal rate for kids above ~5. The owner can
 // adjust price points per plan, so we keep the math simple here.

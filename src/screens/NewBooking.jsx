@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlanById, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -277,8 +277,14 @@ function nightRatesForItem(item, type, nights, rateForNight) {
 
 // Sum the cost of one room item across all nights of stay.
 function itemSubtotal(item, type, nights, rateForNight) {
-  const { uniform, perNight, nightRates } = nightRatesForItem(item, type, nights, rateForNight);
-  return perNight ? nightRates.reduce((s, v) => s + (+v || 0), 0) : uniform * nights;
+  const { defaults, perNight, nightRates } = nightRatesForItem(item, type, nights, rateForNight);
+  // Per-night custom rates → sum them. An explicit uniform rate the hotelier
+  // typed → that rate × nights. Otherwise sum each night's computed rate —
+  // `defaults` already vary by weekend / season / per-day override, so a
+  // stay spanning a weekend isn't mispriced as (first night × nights).
+  if (perNight) return nightRates.reduce((s, v) => s + (+v || 0), 0);
+  if (item.rate != null) return item.rate * nights;
+  return defaults.reduce((s, v) => s + (+v || 0), 0);
 }
 
 function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onChange, property }) {
@@ -1188,35 +1194,36 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   // rows in the folio).
   const withTax = plan === 'invoicing' && !!data.gstApplies;
 
-  // Rate per night: respects overrides set in Rates screen + weekend factor.
-  const rateForNight = useMemo(() => (roomTypeId, nightIdx) => {
-    const room = ROOM_TYPES.find(r => r.id === roomTypeId);
-    if (!room) return 0;
-    const dayIdx = nightIdx; // bookings start at day 0 in this prototype
-    const override = rateOverrides[`${roomTypeId}:${dayIdx}`];
-    if (override && override.closed) return room.base; // closed → still show base as fallback
-    if (override && override.rate != null) return override.rate;
-    const d = new Date(ANCHOR);
-    d.setDate(d.getDate() + dayIdx);
-    const isWknd = d.getDay() === 5 || d.getDay() === 6;
-    return Math.round(room.base * (isWknd ? 1.2 : 1));
-  }, [rateOverrides]);
+  // The booking's first night as a day index from ANCHOR (today). Past
+  // dates are allowed (a walk-in recorded late), so this can be negative.
+  const startIdx = data.checkIn ? dateToIdx(data.checkIn) : 0;
+  // Per-night rate: delegates to the shared ratePerNight() helper so the
+  // hotelier sees the EXACT same price the public widget would quote for the
+  // same date — honouring per-day overrides, property.weekendRules, and
+  // seasons. nightIdx is the offset within the stay (0 = first night), so the
+  // real calendar day is startIdx + nightIdx. (Previously this used
+  // dayIdx = nightIdx, pricing every booking as if it started today, plus a
+  // hardcoded Fri/Sat 1.2x and no seasons.) The rate-plan tier is applied
+  // separately on the room subtotal below so it isn't double-counted.
+  const rateForNight = useMemo(() => (roomTypeId, nightIdx) =>
+    ratePerNight(property, rateOverrides, roomTypeId, startIdx + nightIdx),
+  [property, rateOverrides, startIdx]);
 
   // Per-room subtotal: each item uses its own roomTypeId (with the booking-
   // level data.roomTypeId as a fallback for legacy single-type bookings).
   // The rate-plan multiplier (Standard / Flexible / Non-refundable) is
   // applied to the room subtotal — extras / meal plans / GST land on top.
-  const ratePlanObj = ratePlanById(property, data.ratePlanId) || { multiplierPct: 0 };
-  const ratePlanMult = 1 + ((ratePlanObj.multiplierPct || 0) / 100);
+  const ratePlanMult = ratePlanMultiplier(property, data.ratePlanId);
   const roomsSubtotalRaw = data.roomItems.reduce((sum, r) => {
     const typeId = r.roomTypeId || data.roomTypeId;
     const type = typeId ? ROOM_TYPES.find(rt => rt.id === typeId) : null;
     if (!type) return sum;
-    if (r.perNight && r.nightRates && r.nightRates.length === data.nights) {
-      return sum + r.nightRates.reduce((s, v) => s + (+v || 0), 0);
-    }
-    const rate = r.rate != null ? r.rate : rateForNight(type.id, 0);
-    return sum + rate * data.nights;
+    // itemSubtotal sums each night's real rate (startIdx + n) via
+    // rateForNight, so a stay spanning a weekend / season / per-day override
+    // is priced night-by-night instead of (first night × nights). Same
+    // function the RoomItemCard uses, so the per-room display and the
+    // booking total never disagree.
+    return sum + itemSubtotal(r, type, data.nights, rateForNight);
   }, 0);
   const roomsSubtotal = Math.round(roomsSubtotalRaw * ratePlanMult);
 

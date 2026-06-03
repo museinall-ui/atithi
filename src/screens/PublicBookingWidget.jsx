@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlanById, defaultRatePlanId, effectiveMealPlans, mealPlanById, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -105,8 +105,8 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     if (!data.checkIn) return [];
     const rt = ROOM_TYPES.find(r => r.id === typeId);
     if (!rt) return [];
-    const rpObj = ratePlanById(property, data.ratePlanId) || { multiplierPct: 0 };
-    const rpMult = 1 + ((rpObj.multiplierPct || 0) / 100);
+    const startIdx = dateToIdx(data.checkIn);
+    const rpMult = ratePlanMultiplier(property, data.ratePlanId);
     const out = [];
     for (let i = 0; i < (data.nights || 1); i++) {
       const d = new Date(data.checkIn + 'T00:00:00');
@@ -114,9 +114,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       const iso = ymd(d);
       const isWknd = weekendDays.includes(d.getDay());
       const matchingSeason = seasons.find(s => iso >= s.startIso && iso <= s.endIso);
-      const seasonMult = matchingSeason ? (1 + ((matchingSeason.multiplierPct || 0) / 100)) : 1;
-      const wkMult = isWknd ? (1 + upliftPct / 100) : 1;
-      const rate = Math.round(rt.base * wkMult * seasonMult * rpMult);
+      // Rate via the shared ratePerNight() helper so the guest sees the SAME
+      // price the hotelier's NewBooking flow computes for the same date —
+      // including per-day overrides set in the Rates calendar, which this
+      // widget previously ignored (causing widget vs reception price drift).
+      const rate = Math.round(ratePerNight(property, rateOverrides, typeId, startIdx + i) * rpMult);
       out.push({ iso, rate, isWknd, seasonName: matchingSeason ? matchingSeason.name : null });
     }
     return out;

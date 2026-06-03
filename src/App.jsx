@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -1423,6 +1423,14 @@ export default function App() {
       // on top of the recomputed subtotal and carry the coupon fields.
       const keepDiscount = existing ? (existing.discountAmount || 0) : 0;
       const adjTotal = Math.max(0, total - keepDiscount);
+      // C-2 fix: the check-in date input is editable in edit mode (seeded
+      // from the existing booking's startIdx), but the patch never carried
+      // startIdx — so a changed date was silently dropped on save. Recompute
+      // it from data.checkIn; fall back to the existing idx if the field is
+      // somehow blank so we never accidentally bump a booking to "today".
+      const newStartIdx = data.checkIn
+        ? parseCheckInIdx(data.checkIn)
+        : (existing ? (existing.startIdx || 0) : 0);
       const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
       const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
       // Build a brief diff summary for the activity feed — only the
@@ -1431,6 +1439,7 @@ export default function App() {
       const diff = [];
       if (existing) {
         if (existing.guest !== (data.name || existing.guest)) diff.push(`guest: ${existing.guest} → ${data.name}`);
+        if ((existing.startIdx || 0) !== newStartIdx) diff.push(`check-in: ${idxToDate(existing.startIdx || 0)} → ${idxToDate(newStartIdx)}`);
         if ((existing.nights || 0) !== (data.nights || 0)) diff.push(`nights: ${existing.nights} → ${data.nights}`);
         if ((existing.total || 0) !== adjTotal) diff.push(`total: ₹${(existing.total || 0).toLocaleString('en-IN')} → ₹${adjTotal.toLocaleString('en-IN')}`);
         if (existing.roomTypeId !== data.roomTypeId) diff.push(`room type: ${existing.roomTypeId} → ${data.roomTypeId}`);
@@ -1443,6 +1452,7 @@ export default function App() {
       }
       const patch = {
         roomTypeId: data.roomTypeId, nights: data.nights,
+        startIdx: newStartIdx,
         guest: data.name || (existing && existing.guest) || '',
         total: adjTotal, paid: keepPaid, phone, email: data.email || '',
         couponCode: existing ? (existing.couponCode || '') : '',

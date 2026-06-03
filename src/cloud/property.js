@@ -48,7 +48,7 @@ function localToCloudProperty(local) {
     // widget URL displayed in Settings (which falls back to
     // slugify(name) locally) wouldn't resolve via the cloud lookup
     // (which is strict on the column value).
-    short_code: (p.shortCode || '').trim() || (p?.profile?.name ? slugify(p.profile.name) : ''),
+    short_code: (p.shortCode || '').trim() || (p.name ? slugify(p.name) : ''),
     // Styled-button customiser config: { text, style, size,
     // useCustomColour, color }. Used by Settings → Booking link to
     // generate the inline-styled HTML snippet.

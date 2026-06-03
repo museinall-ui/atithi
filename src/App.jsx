@@ -959,14 +959,21 @@ export default function App() {
             // they catch the auto-release in time. We give it a longer
             // 30-second window than manual cancels because the user
             // may not have been on the screen when it fired.
+            // M-11: log the auto-release as a status event so BookingDetail's
+            // activity feed shows the cancellation with a timestamp. Manual
+            // cancels already push a kind:'status' event; auto-releases used
+            // to flip the status silently, leaving a gap in the feed.
+            const evt = { kind: 'status', text: 'Auto-released — hold expired before payment', time: new Date(now).toISOString() };
+            const events = [...(Array.isArray(b.events) ? b.events : []), evt];
             changed.push({
               id: b.id,
               guest: b.guest,
               previousStatus: b.status,
               previousReleaseTs: b.releaseTs,
               previousReleaseAt: b.releaseAt,
+              events,
             });
-            return { ...b, status: 'cancelled', autoReleased: true };
+            return { ...b, status: 'cancelled', autoReleased: true, events };
           }
           return b;
         });
@@ -974,7 +981,7 @@ export default function App() {
       });
       if (cloudReadyRef.current && propertyIdRef.current && changed.length) {
         changed.forEach(c => {
-          syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true }));
+          syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true, events: c.events }));
         });
       }
       // Surface an undo snackbar for the FIRST one (if multiple fired

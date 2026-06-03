@@ -892,7 +892,13 @@ export default function App() {
       const pv = prev[key], nv = next[key];
       const pvRate = pv && pv.rate, pvClosed = !!(pv && pv.closed);
       const nvRate = nv && nv.rate, nvClosed = !!(nv && nv.closed);
-      if (!!pv === !!nv && pvRate === nvRate && pvClosed === nvClosed) continue;
+      // M-9: also compare closedUnits (per-unit maintenance close-outs,
+      // Rates F3). Without this, toggling a single unit closed/open without
+      // touching the rate or the whole-type close flag left the predicate
+      // unchanged, so the change never reached the cloud.
+      const pvUnits = JSON.stringify((pv && pv.closedUnits) || []);
+      const nvUnits = JSON.stringify((nv && nv.closedUnits) || []);
+      if (!!pv === !!nv && pvRate === nvRate && pvClosed === nvClosed && pvUnits === nvUnits) continue;
       const [roomTypeId, idxStr] = key.split(':');
       const idx = parseInt(idxStr, 10);
       if (!roomTypeId || !isFinite(idx)) continue;
@@ -916,7 +922,12 @@ export default function App() {
       if (pv === nv) continue;
       if (!nv) {
         syncFire('Clear cash close', setCashCloseCloud(propertyId, userId, date, null));
-      } else if (!pv || pv.cash !== nv.cash || pv.digital !== nv.digital || pv.note !== nv.note) {
+      } else if (!pv || pv.cash !== nv.cash || pv.digital !== nv.digital || pv.note !== nv.note
+        || JSON.stringify(pv.accounts || null) !== JSON.stringify(nv.accounts || null)) {
+        // H-8: also compare the multi-account accounts[] jsonb. Moving money
+        // between accounts (e.g. Owner UPI -> Manager UPI) can leave the
+        // legacy cash + digital sums unchanged, so without this the
+        // per-account breakdown never synced and went stale across devices.
         syncFire('Save cash close', setCashCloseCloud(propertyId, userId, date, nv));
       }
     }

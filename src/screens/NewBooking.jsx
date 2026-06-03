@@ -927,7 +927,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   </div>
                   {!isEditingPrice ? (
                     <div className="tnum" style={{ fontSize: 11, color: T.ink3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>{ex.sub} · ₹{ex.price.toLocaleString('en-IN')}</span>
+                      <span>{ex.sub || ex.unit || 'per stay'} · ₹{ex.price.toLocaleString('en-IN')}</span>
                       <button onClick={() => setEditingPriceId(ex.id)} style={{ background: 'none', border: 'none', color: T.primary, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
                         <Icon name="edit" size={10} stroke={2.2} />
                       </button>
@@ -1238,19 +1238,41 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     ...savedCustomExtras,
     ...(data.customExtras || []).filter(x => !savedCustomExtras.some(s => s.id === x.id)),
   ];
-  const allExtras = [...EXTRAS_DEFAULT, ...mergedCustoms].map(ex => ({
+  // Custom (saved) extras carry { name, unit } but the picker UI was written
+  // for the default shape { label, sub, icon, custom }. Normalise so a saved
+  // extra shows its name (instead of a blank row), gets the SAVED badge, and
+  // exposes its remove button — previously all three silently no-op'd because
+  // savedCustomExtras have no `label` / `custom` fields.
+  const allExtras = [
+    ...EXTRAS_DEFAULT,
+    ...mergedCustoms.map(ex => ({ ...ex, label: ex.label || ex.name, custom: true })),
+  ].map(ex => ({
     ...ex,
     price: data.extraPrices[ex.id] != null ? data.extraPrices[ex.id] : ex.price,
   }));
+  const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+  // Extras honour their unit, matching the public widget: per stay (×1) /
+  // per night (×nights) / per guest (×guests) / per guest per night
+  // (×guests×nights). Default extras carry no unit → per-stay (price × qty,
+  // unchanged). Saved custom extras with a unit were previously undercounted
+  // here as a flat price × qty — a "₹500 per night" add-on showed ₹500 for a
+  // 3-night stay on this screen but ₹1,500 on the widget for the same stay.
   const extrasTotal = Object.entries(data.extras).reduce((sum, [id, qty]) => {
     const ex = allExtras.find(x => x.id === id);
-    return ex ? sum + ex.price * qty : sum;
+    if (!ex || !qty) return sum;
+    let mult = 1;
+    switch (ex.unit) {
+      case 'per night': mult = data.nights || 1; break;
+      case 'per guest': mult = totalGuests; break;
+      case 'per guest per night': mult = totalGuests * (data.nights || 1); break;
+      default: mult = 1; // 'per stay' + all default extras
+    }
+    return sum + (ex.price || 0) * qty * mult;
   }, 0);
   // Meal plan cost: delta from the property's default plan × guests ×
   // nights. The calendar rate is treated as already including the
   // default plan, so picking the same plan costs 0; cheaper plans yield
   // a negative delta (discount); pricier plans add to the total.
-  const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
   const mealPlans = Array.isArray(property?.mealPlans) ? property.mealPlans.filter(p => p.enabled) : [];
   const selectedMealPlan = mealPlans.find(p => p.id === data.mealPlanId);
   const defaultMpId = property?.defaultMealPlanId || 'ep';

@@ -1098,6 +1098,23 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
   );
 }
 
+// Recover adults / children from a booking's `guests` label (e.g. "2A 1C")
+// for legacy bookings that have no roomItems[] to seed the edit form from.
+// Without this the edit form fell back to a hardcoded 2 adults / 0 children,
+// so editing an old "2A 1C" booking silently dropped the real adult count
+// and every child. The free/half/full band isn't encoded in the label, so
+// recovered children land in the half-rate band (`children`) — a sensible
+// default the hotelier can re-bucket; the point is to not lose the count.
+function parseGuestsLabel(label) {
+  const s = String(label || '');
+  const a = s.match(/(\d+)\s*A/i);
+  const c = s.match(/(\d+)\s*C/i);
+  return {
+    adults: a ? parseInt(a[1], 10) : 2,
+    children: c ? parseInt(c[1], 10) : 0,
+  };
+}
+
 export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [] }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const isEdit = !!editing;
@@ -1107,9 +1124,10 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // Seed roomItems with per-room roomTypeId. Legacy single-type
       // bookings have a booking-level roomTypeId but no per-item one;
       // copy it onto each item for the edit form.
+      const seedGuests = parseGuestsLabel(editing.guests);
       const seedItems = (editing.roomItems && editing.roomItems.length > 0)
         ? editing.roomItems.map(r => ({ ...r, roomTypeId: r.roomTypeId || editing.roomTypeId }))
-        : [{ roomTypeId: editing.roomTypeId, adults: 2, children: 0, rate: null }];
+        : [{ roomTypeId: editing.roomTypeId, adults: seedGuests.adults, children: seedGuests.children, rate: null }];
       return {
         // Editing path: seed check-in from the existing booking's startIdx.
         checkIn: idxToDate(editing.startIdx || 0),

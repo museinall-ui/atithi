@@ -956,7 +956,13 @@ export default function App() {
       const changed = [];
       setBookings(arr => {
         const next = arr.map(b => {
-          if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && (b.paid || 0) < (b.total || 0)) {
+          // R8-9: also release a zero-total hold. The `paid < total` guard
+          // means total=0 gives 0 < 0 = false, so a free/comp hold (or a widget
+          // booking whose computed rate rounded to 0) would tie up a unit
+          // forever past its releaseTs. A hold with nothing to pay should still
+          // expire on schedule.
+          const notFullyPaid = (b.paid || 0) < (b.total || 0) || (b.total || 0) <= 0;
+          if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && notFullyPaid) {
             // Snapshot the previous state so the hotelier can undo if
             // they catch the auto-release in time. We give it a longer
             // 30-second window than manual cancels because the user

@@ -641,7 +641,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', paddingBottom: 100, position: 'relative' }}>
+    <div id="atithi-dash-scroll" style={{ flex: 1, overflow: 'auto', paddingBottom: 100, position: 'relative' }}>
       <div style={{
         background: `linear-gradient(160deg, ${T.primary} 0%, ${T.primaryDk} 100%)`,
         padding: '56px 20px 18px', color: '#fff', position: 'relative', overflow: 'hidden',
@@ -791,7 +791,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
       <SetupNudge property={property} plan={plan} go={go} isHi={isHi} />
 
       {nudges.length > 0 && (
-        <div style={{ padding: '0 16px 14px' }}>
+        <div id="atithi-nudges" style={{ padding: '0 16px 14px' }}>
           <SectionHead title={isHi ? 'आज के सुझाव' : "Today's nudges"} />
           <Card padding={0} style={{ overflow: 'hidden' }}>
             {nudges.map((n, i) => (

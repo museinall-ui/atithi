@@ -1724,20 +1724,17 @@ export default function App() {
           <button
             onClick={() => {
               if (route.name !== 'home') { go('home'); return; }
-              // Best-effort scroll — find the Today's nudges card by heading.
-              const headings = [...document.querySelectorAll('div')];
-              const target = headings.find(d => {
-                const t = (d.textContent || '').trim();
-                return t === "TODAY'S NUDGES" || t === 'आज की सूचनाएँ';
-              });
+              // R8-10: scroll to the nudges card via a stable id (the old
+              // text-match failed — the heading renders uppercase via CSS so
+              // textContent never equalled "TODAY'S NUDGES", the Hindi string
+              // was wrong, and the [data-dashboard-scroll] fallback selector
+              // didn't exist). Fall back to scrolling the dashboard container
+              // to the top when there's no nudges card today.
+              const target = document.getElementById('atithi-nudges');
               if (target) {
                 target.scrollIntoView({ behavior: 'smooth', block: 'start' });
               } else {
-                // No nudges card today (calm dashboard). Scroll to top
-                // so the tap still does something useful instead of
-                // looking broken.
-                const scroll = document.querySelector('[data-dashboard-scroll]')
-                  || (document.scrollingElement || document.documentElement);
+                const scroll = document.getElementById('atithi-dash-scroll');
                 if (scroll && scroll.scrollTo) scroll.scrollTo({ top: 0, behavior: 'smooth' });
               }
             }}

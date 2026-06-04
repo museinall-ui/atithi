@@ -410,7 +410,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   // which would silently break if the heading was ever translated).
   const downloadsRef = useRef(null);
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
-  const issuedInvoices = useMemo(() => listIssuedInvoices(bookings), [bookings]);
+  const issuedInvoices = useMemo(() => listIssuedInvoices(bookings, property), [bookings, property]);
   const caEmail = property?.accountant?.email || '';
 
   // Date-range state — defaults to the current calendar month so the

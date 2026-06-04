@@ -18,11 +18,20 @@ const fmtDate = (iso) => {
 function buildHtml(invoices, property, period) {
   const p = property?.profile || {};
   const total = invoices.reduce((s, i) => s + (i.amount || 0), 0);
-  const gstTotal = Math.round(total * 12 / 112);
+  // Split each invoice's pre-tax vs GST using ITS OWN blended rate (5% / 18%,
+  // GST-inclusive) — attached by listIssuedInvoices(). Summing per invoice
+  // (rather than total × one flat rate) keeps the register correct when a
+  // property mixes slabs. Falls back to 5% (current mid slab) for any legacy
+  // invoice with no stored rate. Previously this hardcoded the retired 12%.
+  const gstFor = (inv) => {
+    const rate = (inv && inv.gstRate != null) ? inv.gstRate : 5;
+    return Math.round((inv.amount || 0) * rate / (100 + rate));
+  };
+  const gstTotal = invoices.reduce((s, i) => s + gstFor(i), 0);
   const preTax = total - gstTotal;
 
   const rows = invoices.map((inv, i) => {
-    const invGst = Math.round((inv.amount || 0) * 12 / 112);
+    const invGst = gstFor(inv);
     const invPre = (inv.amount || 0) - invGst;
     return `
     <tr>
@@ -102,9 +111,9 @@ function buildHtml(invoices, property, period) {
       <div class="sub">net of GST</div>
     </div>
     <div class="box">
-      <div class="label">GST (12% incl.)</div>
+      <div class="label">GST (incl.)</div>
       <div class="value mono">${fmtINR(gstTotal)}</div>
-      <div class="sub">CGST 6% + SGST 6%</div>
+      <div class="sub">CGST + SGST · 5% / 18% slab</div>
     </div>
     <div class="box">
       <div class="label">Grand total</div>
@@ -154,7 +163,7 @@ function buildHtml(invoices, property, period) {
 }
 
 export function exportInvoiceList(bookings, property) {
-  const all = listIssuedInvoices(bookings);
+  const all = listIssuedInvoices(bookings, property);
   const period = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const html = buildHtml(all, property || {}, period);
   const w = window.open('', '_blank', 'width=1100,height=900');

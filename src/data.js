@@ -665,12 +665,16 @@ export function mealCostFor(booking, property) {
 
 // All issued (non-voided) invoices across the given bookings, in the order they
 // were issued. Used by the month-end CA export.
-export function listIssuedInvoices(bookings) {
+export function listIssuedInvoices(bookings, property) {
   const all = [];
   for (const b of bookings) {
+    // Attach the booking's blended GST rate (5% / 18% post-22-Sep-2025) so
+    // downstream consumers (the CA register export) can split each invoice's
+    // pre-tax vs GST correctly instead of assuming the retired flat 12%.
+    const gstRate = property ? blendedGstRate(b, property) : null;
     for (const inv of (b.invoices || [])) {
       if (inv.voided) continue;
-      all.push({ ...inv, bookingId: b.id, guest: b.guest });
+      all.push({ ...inv, bookingId: b.id, guest: b.guest, gstRate });
     }
   }
   return all.sort((a, b) => a.number.localeCompare(b.number));

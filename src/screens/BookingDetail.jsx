@@ -722,7 +722,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);
               const preTax = withTax ? b.total - tx.gst : b.total;
-              const tariff = preTax - mealCost - extraGuests;
+              // R8-11: add any coupon discount back into the displayed tariff
+              // and show an explicit Discount row below — they cancel, so the
+              // rows still sum to the exact total, but the room rate no longer
+              // looks mysteriously low with no explanation.
+              const discountAmount = Math.max(0, +b.discountAmount || 0);
+              const tariff = preTax - mealCost - extraGuests + discountAmount;
               // Rate plan row — surfaced when the booking used something
               // other than the default Standard plan, so the hotelier can
               // see the cancellation terms at a glance.
@@ -758,6 +763,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     <Row label="Extra-guest charges" value={`₹${extraGuests.toLocaleString('en-IN')}`} />
                   )}
                   {mealRow}
+                  {discountAmount > 0 && (
+                    <Row label={b.couponCode ? `Discount · ${b.couponCode}` : 'Discount'} value={`− ₹${discountAmount.toLocaleString('en-IN')}`} />
+                  )}
                 </>
               );
             })()}

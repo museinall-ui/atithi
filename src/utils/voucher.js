@@ -232,7 +232,12 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   // Extra-adult / extra-child surcharge — surfaced as a separate folio
   // row so the guest sees why their bill exceeded the published rate.
   const extraGuests = isInvoice ? 0 : extraGuestCostFor(b, prop);
-  const tariffLine = preTax - extrasSum - mealCost - extraGuests;
+  // R8-11: a coupon discount reduced the stored total, silently shrinking the
+  // tariff line with no explanation. Add it back so the room rate shows in
+  // full and render an explicit Discount row below — the two cancel, so the
+  // rows still sum to the exact total.
+  const discountAmount = isInvoice ? 0 : Math.max(0, +b.discountAmount || 0);
+  const tariffLine = preTax - extrasSum - mealCost - extraGuests + discountAmount;
   const docNumber = isInvoice ? invoice.number : b.id;
 
   const html = `<!DOCTYPE html>
@@ -453,6 +458,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
         return `<tr><td>${L.mealPlan} · <strong>${esc(mealPlan.code)}</strong> · ${esc(mealPlan.label)}</td><td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>`;
       })()}
       ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
+      ${discountAmount > 0 ? `<tr><td>${lang === 'hi' ? 'छूट' : 'Discount'}${b.couponCode ? ` · <strong>${esc(b.couponCode)}</strong>` : ''}</td><td class="r">—</td><td class="r">—</td><td class="r" style="color:#0a7a3a;">− ${fmtINR(discountAmount)}</td></tr>` : ''}
       ${withTax ? (() => {
         const halfRate = (tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0);
         return `

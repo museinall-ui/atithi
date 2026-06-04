@@ -51,8 +51,12 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
       bookingGuests.set(key, {
         name: b.guest,
         phone: b.phone || '',
-        stays: (prev?.stays || 0) + 1,
-        spent: (prev?.spent || 0) + (b.total || 0),
+        // R8-7: cancelled bookings must not count toward stays or lifetime
+        // spend (1 real + 1 cancelled would falsely read "Repeat"; a single
+        // cancelled ₹60k booking would falsely tag "Whale"). The tag legend
+        // below already says "non-cancelled stays" — make the data match.
+        stays: (prev?.stays || 0) + (b.status === 'cancelled' ? 0 : 1),
+        spent: (prev?.spent || 0) + (b.status === 'cancelled' ? 0 : (b.total || 0)),
         vip: prev?.vip || b.vip || false,
         formC: prev?.formC || b.formC || false,
         inhouse: prev?.inhouse || b.status === 'checkedin',
@@ -110,7 +114,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
   const counts = useMemo(() => ({
     all:     liveGuests.length,
     vip:     liveGuests.filter(g => g.vip).length,
-    repeat:  liveGuests.filter(g => g.stays >= 2 && !g.formC).length,
+    repeat:  liveGuests.filter(g => g.stays >= 2).length,
     foreign: liveGuests.filter(g => g.formC).length,
     inhouse: liveGuests.filter(g => g.inhouse).length,
   }), [liveGuests]);
@@ -128,7 +132,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
     const q = search.trim().toLowerCase();
     return liveGuests.filter(g => {
       if (filter === 'vip' && !g.vip) return false;
-      if (filter === 'repeat' && (g.stays < 2 || g.formC)) return false;
+      if (filter === 'repeat' && g.stays < 2) return false; // R8-8: match the Repeat chip (don't exclude foreign repeat guests)
       if (filter === 'foreign' && !g.formC) return false;
       if (filter === 'inhouse' && !g.inhouse) return false;
       if (q && !(`${g.name} ${g.phone}`.toLowerCase().includes(q))) return false;

@@ -271,8 +271,11 @@ function SetupNudge({ property, plan = 'engine', go, isHi }) {
 }
 
 function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
-  const rt = roomTypes.find(r => r.id === b.roomTypeId);
-  const ch = CHANNELS[b.channel];
+  // Defensive defaults (R9-3): a deleted room category or unexpected
+  // channel must not white-screen the whole Dashboard when an affected
+  // booking arrives today.
+  const rt = roomTypes.find(r => r.id === b.roomTypeId) || { name: '—' };
+  const ch = CHANNELS[b.channel] || { label: b.channel || 'Direct', color: T.ink3, short: '?' };
   return (
     <Card padding={12} onClick={() => go('booking', b.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
       <Avatar name={b.guest} size={40} />
@@ -934,7 +937,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                 `*Tomorrow's arrivals · ${propName}*`,
                 '',
                 ...arrivingTomorrow.map(b => {
-                  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+                  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId) || { name: '—' };
                   const checkIn = new Date(ANCHOR);
                   checkIn.setDate(checkIn.getDate() + b.startIdx);
                   const checkInLbl = checkIn.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
@@ -988,7 +991,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
 <h1>Tomorrow's arrivals</h1>
 <div class="sub">${propName} · ${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} expected</div>
 ${arrivingTomorrow.map(b => {
-  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId) || { name: '—' };
   const checkIn = new Date(ANCHOR);
   checkIn.setDate(checkIn.getDate() + b.startIdx);
   const checkInLbl = checkIn.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
@@ -1207,7 +1210,7 @@ ${arrivingTomorrow.map(b => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {cfg.list.map(b => {
-                    const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
+                    const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId) || { name: '—' };
                     const initials = (b.guest || '?').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
                     const stay = b.startIdx + b.nights;
                     const waDigits = (b.phone || '').replace(/\D/g, '');

@@ -438,10 +438,18 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   const canCancel  = can('cancel_bookings');
   const canPay     = can('manage_payments');
   const canInvoice = can('manage_invoices');
-  const b = bookings.find(x => x.id === bookingId) || bookings[0];
+  // Defensive defaults (R9-3): a booking can reference a deleted room
+  // category (orphaned roomTypeId) or carry an unexpected channel/status
+  // (legacy row, OTA import, manual DB edit). Without these fallbacks,
+  // rt/ch/statusInfo would be undefined and the first dereference
+  // (rt.name, ch.label, statusInfo.bg) white-screens the whole page.
+  // `|| {}` on b guards the rare "opened a booking id with none in the
+  // store" case without crashing (and avoids a conditional early-return
+  // that would break the rules of hooks).
+  const b = bookings.find(x => x.id === bookingId) || bookings[0] || {};
   const ROOM_TYPES = effectiveRoomTypes(property);
-  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
-  const ch = CHANNELS[b.channel];
+  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId) || { name: '—', tag: 'tagSaffron' };
+  const ch = CHANNELS[b.channel] || { label: b.channel || 'Direct', color: T.ink3, short: '?' };
   // Fallback synthetic payment row for legacy bookings with `paid > 0` but
   // no actual payments[] ledger. Real bookings created through the app
   // populate b.payments properly. The hardcoded "Razorpay UPI · auto-
@@ -460,7 +468,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   }] : []);
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
   const balance = b.total - totalPaid;
-  const statusInfo = STATUS[b.status];
+  const statusInfo = STATUS[b.status] || STATUS.confirmed;
   // Invoicing is a paid add-on tier. Engine (core) and Channels do
   // bookings + vouchers but not tax invoices. The voucher PDF (download
   // icon in the header) stays core and works on every plan; only the

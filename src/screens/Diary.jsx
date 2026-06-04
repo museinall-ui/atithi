@@ -80,7 +80,9 @@ function expandToPillInstances(bookings, ROOM_TYPES) {
 }
 
 function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi }) {
-  const ch = CHANNELS[b.channel];
+  // Defensive default (R9-3): an unexpected channel value must not crash
+  // the pill (and with it the whole Diary) on ch.color below.
+  const ch = CHANNELS[b.channel] || { label: b.channel || 'Direct', color: T.ink3, short: '?' };
   const isHold = b.status === 'tentative';
   const isCheckedin = b.status === 'checkedin';
   const isCheckedout = b.status === 'checkout';

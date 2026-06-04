@@ -425,6 +425,85 @@ export function ratePerNight(property, rateOverrides, roomTypeId, dayIdx) {
   return Math.round(room.base * wkMult * seasonMult);
 }
 
+// Shared per-unit occupancy map (R8-1). Greedily assigns every ROOM of every
+// non-cancelled booking to a physical unit — including the extra rooms of a
+// multi-room booking, which live in roomItems[] with no stored unitIdx. The
+// Diary's expandToPillInstances() renders pills with this exact same greedy
+// logic + sort order, so any availability check that uses THIS function agrees
+// with what the Diary shows. Previously findFirstFreeUnit only looked at a
+// booking's top-level unitIdx, so it was blind to multi-room occupancy and
+// would hand out a unit that was already taken → silent double-booking.
+// Returns used[roomTypeId][unitIdx] = [{ startIdx, endIdx, id }].
+// KEEP THE SORT + GREEDY IN SYNC WITH src/screens/Diary.jsx expandToPillInstances.
+export function computeUnitUsage(bookings, roomTypes) {
+  const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
+  const used = {};
+  for (const rt of list) {
+    used[rt.id] = {};
+    for (let u = 0; u < rt.units; u++) used[rt.id][u] = [];
+  }
+  const sorted = [...(bookings || [])].sort((a, b) => {
+    const da = a.startIdx ?? 0, db = b.startIdx ?? 0;
+    if (da !== db) return da - db;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+  for (const b of sorted) {
+    if (b.status === 'cancelled') continue;
+    const items = (Array.isArray(b.roomItems) && b.roomItems.length)
+      ? b.roomItems
+      : [{ roomTypeId: b.roomTypeId, unitIdx: b.unitIdx }];
+    const startIdx = b.startIdx ?? 0;
+    const endIdx = startIdx + (b.nights || 1);
+    items.forEach((item, itemIndex) => {
+      const rtId = item.roomTypeId || b.roomTypeId;
+      if (!used[rtId]) return; // unknown room type — skip
+      let unitIdx = item.unitIdx;
+      if (unitIdx == null && itemIndex === 0 && b.unitIdx != null && rtId === b.roomTypeId) {
+        unitIdx = b.unitIdx;
+      }
+      if (unitIdx == null) {
+        const cnt = Object.keys(used[rtId]).length;
+        for (let u = 0; u < cnt; u++) {
+          if (!used[rtId][u].some(r => !(endIdx <= r.startIdx || startIdx >= r.endIdx))) { unitIdx = u; break; }
+        }
+        if (unitIdx == null) unitIdx = 0; // overflow fallback
+      }
+      if (used[rtId][unitIdx] == null) used[rtId][unitIdx] = [];
+      used[rtId][unitIdx].push({ startIdx, endIdx, id: b.id });
+    });
+  }
+  return used;
+}
+
+// Lowest free unit of a room type for [startIdx, startIdx+nights), accounting
+// for multi-room occupancy via computeUnitUsage. Returns null when every unit
+// is taken (caller surfaces an overbooking confirm instead of silently
+// stacking). `excludeId` skips a booking (used by drag-move so a booking
+// doesn't conflict with itself).
+export function firstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes, excludeId) {
+  const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
+  const room = list.find(r => r.id === roomTypeId);
+  if (!room) return null;
+  const used = computeUnitUsage(excludeId ? (bookings || []).filter(b => b.id !== excludeId) : bookings, list);
+  const endIdx = startIdx + nights;
+  for (let u = 0; u < room.units; u++) {
+    const ranges = (used[roomTypeId] && used[roomTypeId][u]) || [];
+    if (!ranges.some(r => !(endIdx <= r.startIdx || startIdx >= r.endIdx))) return u;
+  }
+  return null;
+}
+
+// Is a SPECIFIC unit free for [startIdx, startIdx+nights)? Used by the Diary's
+// drag-move conflict check so dropping onto a unit occupied by ANY room
+// (including a multi-room booking's extra room) is correctly blocked.
+export function isUnitFree(bookings, roomTypeId, unitIdx, startIdx, nights, roomTypes, excludeId) {
+  const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
+  const used = computeUnitUsage(excludeId ? (bookings || []).filter(b => b.id !== excludeId) : bookings, list);
+  const ranges = (used[roomTypeId] && used[roomTypeId][unitIdx]) || [];
+  const endIdx = startIdx + nights;
+  return !ranges.some(r => !(endIdx <= r.startIdx || startIdx >= r.endIdx));
+}
+
 // Total guest-count for cost math. Children count toward meals too by default
 // — most Indian hotels charge full meal rate for kids above ~5. The owner can
 // adjust price points per plan, so we keep the math simple here.

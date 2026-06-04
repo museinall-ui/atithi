@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, CHANNELS, effectiveRoomTypes, ANCHOR, ymd, dateToIdx } from '../data.js';
+import { DAYS, CHANNELS, effectiveRoomTypes, ANCHOR, ymd, dateToIdx, computeUnitUsage } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Btn from '../components/Btn.jsx';
@@ -637,21 +637,21 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   const newRt = confirmDrop && confirmDrop.newSlot ? ROOM_TYPES.find(r => r.id === confirmDrop.newSlot.roomTypeId) : null;
   const origRt = confirmDrop ? ROOM_TYPES.find(r => r.id === confirmDrop.b.roomTypeId) : null;
 
-  // Detect conflict: another booking already overlaps the target slot/dates.
+  // Detect conflict: another booking already occupies the target slot/dates.
+  // Occupancy-aware (R8-1): the old check only matched a booking's top-level
+  // unitIdx, so dropping onto a unit held by a multi-room booking's EXTRA room
+  // (stored in roomItems[] with no unitIdx) wasn't flagged. We build the shared
+  // per-unit usage map (excluding the dragged booking) and find who's there.
   const targetConflict = (() => {
     if (!confirmDrop) return null;
     const newRoomType = confirmDrop.newSlot ? confirmDrop.newSlot.roomTypeId : confirmDrop.b.roomTypeId;
     const newUnit = confirmDrop.newSlot ? confirmDrop.newSlot.unitIdx : confirmDrop.b.unitIdx;
     const start = confirmDrop.newStart;
     const end = start + confirmDrop.b.nights;
-    return bookings.find(x =>
-      x.id !== confirmDrop.id &&
-      x.roomTypeId === newRoomType &&
-      x.unitIdx === newUnit &&
-      x.status !== 'cancelled' &&
-      x.startIdx < end &&
-      (x.startIdx + x.nights) > start
-    );
+    const used = computeUnitUsage(bookings.filter(x => x.id !== confirmDrop.id), ROOM_TYPES);
+    const ranges = (used[newRoomType] && used[newRoomType][newUnit]) || [];
+    const hit = ranges.find(r => r.startIdx < end && r.endIdx > start);
+    return hit ? bookings.find(x => x.id === hit.id) : null;
   })();
 
   return (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -320,21 +320,14 @@ function parseCheckInIdx(checkInStr) {
 // date range. Returns null when every unit is taken so the caller can surface a clear
 // "this room type is fully booked — pick another" message instead of silently double-
 // booking unit 0 (which would just stack two pills on top of each other in the Diary).
+// R8-1: delegate to the shared occupancy-aware helper in data.js. The old
+// implementation here only checked each booking's top-level unitIdx, so it was
+// blind to the extra rooms of multi-room bookings (stored in roomItems[] with
+// no unitIdx) and would hand out a unit that was already occupied → silent
+// double-booking. firstFreeUnit() uses computeUnitUsage(), the same greedy
+// allocation the Diary renders with.
 function findFirstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes) {
-  const list = Array.isArray(roomTypes) && roomTypes.length ? roomTypes : ROOM_TYPES;
-  const room = list.find(r => r.id === roomTypeId);
-  if (!room) return null;
-  const endIdx = startIdx + nights;
-  for (let u = 0; u < room.units; u++) {
-    const conflict = bookings.some(b =>
-      b.status !== 'cancelled' &&
-      b.roomTypeId === roomTypeId &&
-      b.unitIdx === u &&
-      !(b.startIdx + b.nights <= startIdx || endIdx <= b.startIdx)
-    );
-    if (!conflict) return u;
-  }
-  return null;
+  return firstFreeUnit(bookings, roomTypeId, startIdx, nights, roomTypes);
 }
 
 // Public booking widget — wraps PublicBookingWidget with its own

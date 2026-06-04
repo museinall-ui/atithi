@@ -2,7 +2,7 @@
 
 When you're ready to switch Atithi from "runs entirely off localStorage" to "real Supabase backed product that real hoteliers can sign in to", work through this list top to bottom. It's deliberately small — the heavy lifting is paste-and-run SQL and a single one-line code change.
 
-Last updated: Jun 3, 2026 (round-7 audit fixes; added widget capacity-check RPC).
+Last updated: Jun 4, 2026 (round-9 security: added membership-insert guard migration 20260608).
 
 ---
 
@@ -27,8 +27,11 @@ supabase/migrations/20260603_team_invites.sql
 supabase/migrations/20260604_membership_permissions.sql            ← per-member permission picker
 supabase/migrations/20260605_widget_anon_access.sql                ← public booking widget (guest bookings reach the cloud)
 supabase/migrations/20260606_redeem_coupon.sql                     ← coupon maxUses actually counts down
-supabase/migrations/20260607_widget_capacity_check.sql             ← new (atomic capacity check — stops the widget double-book race)
+supabase/migrations/20260607_widget_capacity_check.sql             ← atomic capacity check — stops the widget double-book race
+supabase/migrations/20260608_membership_insert_guard.sql           ← ⚠️ SECURITY: stops a stranger joining any hotel as owner — paste ASAP
 ```
+
+> ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).
 
 After each `Run`, expect a green **Success. No rows returned** message. If you get a red error, copy it back to me — but `add column if not exists` should never error on an existing column.
 
@@ -58,10 +61,11 @@ To confirm the widget RPCs (anon access + capacity guard) are installed:
 
 ```sql
 select proname from pg_proc
-where proname in ('property_by_short_code', 'redeem_coupon', 'book_widget_slot');
+where proname in ('property_by_short_code', 'redeem_coupon', 'book_widget_slot',
+                 'property_has_members', 'caller_has_invite');
 ```
 
-All three should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit.
+All five should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1).
 
 ---
 

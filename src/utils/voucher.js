@@ -239,7 +239,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Voucher · ${b.id} · ${b.guest}</title>
+<title>Voucher · ${esc(b.id)} · ${esc(b.guest)}</title>
 <style>
   @page { size: A4; margin: 18mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -472,7 +472,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     ${invoice.note ? `<br/><strong>${L.note}:</strong> ${esc(invoice.note)}` : ''}
   </div>` : ''}
 
-  ${b.notes ? `<div class="note"><div class="lbl">${L.specialRequest}</div>${b.notes}</div>` : ''}
+  ${b.notes ? `<div class="note"><div class="lbl">${L.specialRequest}</div>${esc(b.notes).replace(/\n/g, '<br/>')}</div>` : ''}
 
   ${!isInvoice && Array.isArray(prop?.rules) && prop.rules.length > 0 ? `
   <div style="margin-bottom: 22px; padding: 14px 16px; background: #fff; border: 1px solid #E8E0D8; border-radius: 10px;">

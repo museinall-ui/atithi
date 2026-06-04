@@ -298,7 +298,22 @@ const loadLS = (key, fallback) => {
   } catch { return fallback; }
 };
 const saveLS = (key, val) => {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (e) {
+    // R9-9: don't swallow this completely. A QuotaExceededError means the
+    // offline mirror for this key is now STALE — the large base64 logo /
+    // payment-QR / room-photo / voice-note blobs can blow the ~5MB origin
+    // quota. When signed in the cloud copy is unaffected (it's the source of
+    // truth), so we don't block the action; but we log it loudly and dispatch
+    // an event so it's diagnosable / a listener can warn the hotelier instead
+    // of the offline copy silently drifting out of date.
+    const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    console.warn('[atithi] localStorage save failed' + (quota ? ` (quota exceeded — offline copy of "${key}" is stale)` : '') + ':', e && e.message);
+    if (quota && typeof window !== 'undefined' && window.dispatchEvent) {
+      try { window.dispatchEvent(new CustomEvent('atithi:storage-full', { detail: { key } })); } catch {}
+    }
+  }
 };
 
 // Map a check-in date string to a day index relative to today (data.js
@@ -1070,25 +1085,6 @@ export default function App() {
       'booking', bookingId,
       { guest: booking.guest, amount: entry.amount, method: entry.method, newPaid, newStatus }
     );
-  };
-
-  // Lightweight event-log helper. Each booking carries an optional
-  // events[] (kind, text, time iso) that the BookingDetail activity feed
-  // surfaces. Avoids the audit_log RPC for now — these read/write through
-  // the same booking row so cloud sync rides along on the bookings.events
-  // jsonb column added in migration 20260526.
-  const pushBookingEvent = (bookingId, kind, text) => {
-    const time = new Date().toISOString();
-    const event = { kind, text, time };
-    let nextEvents = null;
-    setBookings(arr => arr.map(b => {
-      if (b.id !== bookingId) return b;
-      nextEvents = [...(Array.isArray(b.events) ? b.events : []), event];
-      return { ...b, events: nextEvents };
-    }));
-    if (cloudReady && propertyId && nextEvents) {
-      syncFire('Append booking event', updateBookingCloud(bookingId, { events: nextEvents }));
-    }
   };
 
   const setStatus = (bookingId, status) => {

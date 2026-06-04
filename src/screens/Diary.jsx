@@ -875,6 +875,14 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
                 if (confirmDrop.newSlot) {
                   patch.roomTypeId = confirmDrop.newSlot.roomTypeId;
                   patch.unitIdx = confirmDrop.newSlot.unitIdx;
+                  // R8-6: a single-room booking renders its pill from
+                  // roomItems[0], so a cross-type move must rewrite that item's
+                  // type/unit too — otherwise the pill snaps back to the old
+                  // room type. Also makes the unit authoritative (R8-1).
+                  const moved = confirmDrop.b;
+                  if (Array.isArray(moved.roomItems) && moved.roomItems.length === 1) {
+                    patch.roomItems = [{ ...moved.roomItems[0], roomTypeId: confirmDrop.newSlot.roomTypeId, unitIdx: confirmDrop.newSlot.unitIdx }];
+                  }
                 }
                 if (moveBooking) moveBooking(confirmDrop.id, patch);
                 else setBookings(arr => arr.map(x => x.id === confirmDrop.id ? { ...x, ...patch } : x));

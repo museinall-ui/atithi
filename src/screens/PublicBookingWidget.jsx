@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -258,7 +258,23 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     if (c.maxUses && (c.usedCount || 0) >= c.maxUses) return null;
     return c;
   })();
-  const subtotal = roomCost + mealDelta + extrasCost;
+  // R8-5: extra-adult / extra-child surcharge (per-category rules) — the
+  // widget previously omitted this entirely, so a guest booking over base
+  // capacity was undercharged vs the same booking taken at reception, and the
+  // saved booking's folio/voucher then back-calculated a wrong tariff. Build
+  // the exact roomItems shape handleSubmit saves (children → half-rate band)
+  // so the live total matches what the hotelier's folio recomputes.
+  const extraGuestCost = data.roomTypeId ? extraGuestCostFor({
+    roomTypeId: data.roomTypeId,
+    nights: data.nights,
+    startIdx: data.checkIn ? dateToIdx(data.checkIn) : 0,
+    roomItems: Array.from({ length: rooms }, (_, i) => ({
+      roomTypeId: data.roomTypeId,
+      adults: adultsPerRoom[i] || 0,
+      children: childrenPerRoom[i] || 0,
+    })),
+  }, property) : 0;
+  const subtotal = roomCost + mealDelta + extrasCost + extraGuestCost;
   const discountAmount = (() => {
     if (!activeCoupon) return 0;
     const d = activeCoupon.discount || {};

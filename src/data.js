@@ -16,7 +16,16 @@ export function effectiveRoomTypes(property) {
   if (!cats || cats.length === 0) return ROOM_TYPES;
   return cats.map((c, i) => {
     const seed = ROOM_TYPES.find(r => r.id === c.id);
+    // Spread the raw category FIRST so per-category fields the rest of the app
+    // reads off the effective room type survive — extraAdult / extraChild
+    // (extra-guest surcharge), gstRate (per-category GST override),
+    // photoDataUrl (widget hero + voucher), etc. Previously this returned only
+    // a fixed subset, so extraGuestCostFor() (which looks the category up via
+    // effectiveRoomTypes) always saw no extraAdult/extraChild → the
+    // extra-guest charge was silently ₹0 across NewBooking, the folio, the
+    // voucher and the widget.
     return {
+      ...c,
       id: c.id,
       name: c.name || (seed && seed.name) || 'Room',
       units: typeof c.units === 'number' && c.units > 0 ? c.units : (seed?.units || 1),

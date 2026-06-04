@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, DAYS, ANCHOR, ymd, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
+import { CHANNELS, DAYS, ANCHOR, ymd, idxToDate, dateToIdx, effectiveRoomTypes, repeatGuestKeys, normPhone } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Card from '../components/Card.jsx';
 import Chip from '../components/Chip.jsx';
@@ -364,15 +364,18 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const [statSheet, setStatSheet] = useState(null);
   const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
 
+  // R8-3: occupancy + daily income must exclude cancelled bookings (use
+  // liveBookings), matching the In-house/Arriving tiles below — otherwise a
+  // cancelled in-house stay inflated both and contradicted those tiles.
   const catOcc = ROOM_TYPES.map(rt => {
-    const occ = bookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
+    const occ = liveBookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
     return { rt, occ, total: rt.units };
   });
   const occRooms = catOcc.reduce((a, c) => a + c.occ, 0);
 
-  const dailyIncome = bookings
+  const dailyIncome = liveBookings
     .filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX)
-    .reduce((a, b) => a + Math.round(b.total / b.nights), 0);
+    .reduce((a, b) => a + Math.round((b.total || 0) / (b.nights || 1)), 0); // R9-8: guard /0
   const collectedToday = bookings
     .filter(b => b.startIdx === TODAY_IDX)
     .reduce((a, b) => a + b.paid, 0);
@@ -386,14 +389,49 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     ? Math.round(((collectedToday - collectedYesterday) / collectedYesterday) * 100)
     : null;
 
-  // Live "month so far" numbers, computed from real bookings so labels and values agree.
-  const activeBookings = bookings.filter(b => b.status !== 'cancelled');
-  const monthBookings = activeBookings.length;
-  const monthRevenue = activeBookings.reduce((s, b) => s + (b.total || 0), 0);
-  const monthRoomNights = activeBookings.reduce((s, b) => s + (b.nights || 0), 0);
-  const availableRoomNights = totalRooms * DAYS.length;
-  const monthOccPct = availableRoomNights > 0 ? Math.round((monthRoomNights / availableRoomNights) * 100) : 0;
-  const monthAvgPerRoom = monthRoomNights > 0 ? Math.round(monthRevenue / monthRoomNights) : 0;
+  // "Month so far" — honest figures (R8-2). The card is labelled "EARNED THIS
+  // MONTH · Total received so far", but the old code summed all-time BILLED
+  // (b.total across every non-cancelled booking, any date) and divided
+  // room-nights by a fixed 14-day window — so it could read "₹2.8 lakh
+  // received" when only ₹50k was collected this month. Now: revenue actually
+  // RECEIVED this calendar month (payments collected within it, net of
+  // refunds) + occupancy over the month's real days.
+  const _now = new Date(ANCHOR);
+  const monthStartIso = ymd(new Date(_now.getFullYear(), _now.getMonth(), 1));
+  const monthEndIso = ymd(new Date(_now.getFullYear(), _now.getMonth() + 1, 0));
+  const daysInMonth = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate();
+  const monthStartIdx = dateToIdx(monthStartIso), monthEndIdx = dateToIdx(monthEndIso);
+  // Collection date of a payment (matches Reports' P&L): dateIso → parsed date
+  // → booking check-in as a last resort (so legacy paid-but-no-ledger bookings
+  // still attribute to a day instead of vanishing).
+  const payIsoDash = (p, b) => {
+    if (p && p.dateIso) return p.dateIso;
+    if (p && p.date && p.date !== 'now') { const d = new Date(p.date); if (!isNaN(d.getTime())) return ymd(d); }
+    return (b && b.startIdx != null) ? idxToDate(b.startIdx) : '';
+  };
+  const roomsHeldDash = (b) => (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems.length : 1;
+  let monthRevenue = 0;
+  for (const b of liveBookings) {
+    const pays = (b.payments && b.payments.length)
+      ? b.payments
+      : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', dateIso: idxToDate(b.startIdx || 0) }] : []);
+    for (const p of pays) {
+      const iso = payIsoDash(p, b);
+      if (!iso || iso < monthStartIso || iso > monthEndIso) continue;
+      monthRevenue += (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+    }
+  }
+  monthRevenue = Math.max(0, monthRevenue);
+  let monthOccNights = 0;
+  for (let idx = monthStartIdx; idx <= monthEndIdx; idx++) {
+    monthOccNights += liveBookings
+      .filter(b => (b.startIdx || 0) <= idx && idx < (b.startIdx || 0) + (b.nights || 1))
+      .reduce((s, b) => s + roomsHeldDash(b), 0);
+  }
+  const availableRoomNights = totalRooms * daysInMonth;
+  const monthOccPct = availableRoomNights > 0 ? Math.round((monthOccNights / availableRoomNights) * 100) : 0;
+  const monthBookings = liveBookings.filter(b => (b.startIdx || 0) <= monthEndIdx && (b.startIdx || 0) + (b.nights || 1) > monthStartIdx).length;
+  const monthAvgPerRoom = monthOccNights > 0 ? Math.round(monthRevenue / monthOccNights) : 0;
 
   // 12-bar trailing mini-chart for the Daily Income card. Builds the last
   // 12 days of paid amounts straight from the bookings ledger — was

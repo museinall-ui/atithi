@@ -482,7 +482,12 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   const colW = zoom;
   const rowH = 36;
   const labelW = 110;
-  const ROOM_TYPES = effectiveRoomTypes(property);
+  // R9-10: memoize so the pillInstances useMemo below actually caches (its
+  // deps are ROOM_TYPES + visibleBookings). effectiveRoomTypes() and
+  // bookings.filter() each return a fresh array every render, so without this
+  // the (expensive) expandToPillInstances ran on every render — including every
+  // drag pointermove.
+  const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const viewDays = useMemo(() => generateDays(pastDays, horizon), [pastDays, horizon]);
   const viewDaysStart = viewDays.length > 0 ? viewDays[0].idx : 0;
   const todayIso = ymd(ANCHOR);
@@ -529,7 +534,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
     return () => el.removeEventListener('scroll', onScroll);
   }, [colW]);
 
-  const visibleBookings = bookings.filter(b => matchesFilter(b, filter));
+  const visibleBookings = useMemo(() => bookings.filter(b => matchesFilter(b, filter)), [bookings, filter]);
   // Expand once per render; downstream RoomTypeBlocks just slice this list.
   const pillInstances = useMemo(
     () => expandToPillInstances(visibleBookings, ROOM_TYPES),

@@ -384,7 +384,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
                   Tax exclusive
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.3 }}>
-                  Add 12% GST on top
+                  Add {invRate % 1 ? invRate.toFixed(1) : invRate}% GST on top
                 </div>
               </button>
             </div>
@@ -687,7 +687,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
                   <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
                     {withTax
-                      ? `Yes — appears in the monthly CA export. ~₹${Math.round(b.total - b.total / 1.12).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
+                      ? `Yes — appears in the monthly CA export. ~₹${(tx?.gst || 0).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
                       : `No — direct/cash booking, kept out of the CA export.`}
                   </div>
                 </div>

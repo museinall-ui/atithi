@@ -1304,6 +1304,11 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     roomItems: data.roomItems,
     nights: data.nights,
     roomTypeId: data.roomTypeId,
+    // R8-12: pass startIdx so seasonOverrideFor() can apply a season's
+    // extra-guest override. Without it the live total used category-default
+    // rates while the saved booking's folio (which has startIdx) used the
+    // season rate — the two diverged.
+    startIdx: data.checkIn ? dateToIdx(data.checkIn) : 0,
   }, property);
   const subtotal = roomsSubtotal + extrasTotal + mealCost + extraGuestCost;
   // Blended GST rate across rooms — different categories sit in different

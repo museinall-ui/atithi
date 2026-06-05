@@ -445,6 +445,14 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
             console.warn('[atithi widget] booking not created — room type just sold out (capacity guard).', err);
             return;
           }
+          if (/rate_limited/i.test((err && err.message) || '')) {
+            // The optional per-property flood cap (20260612_widget_rate_limit)
+            // rejected this insert — too many website holds for this property
+            // in the trailing hour. Working as intended; the booking isn't
+            // created. Rare in normal use (cap is set well above real traffic).
+            console.warn('[atithi widget] booking not created — property hit the hourly website-booking cap (flood guard).', err);
+            return;
+          }
           // Cloud insert failed — most likely the anon RLS SQL
           // hasn't been pasted yet. We can't synchronously
           // surface this to the widget (the confirmation screen

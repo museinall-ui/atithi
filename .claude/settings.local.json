@@ -2,7 +2,37 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "PowerShell(npm install --no-audit --no-fund 2>&1)"
+      "PowerShell(npm install --no-audit --no-fund 2>&1)",
+      "Bash(git pull *)",
+      "Bash(git -c http.sslVerify=false fetch origin main)",
+      "Bash(git merge *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(git -c http.sslVerify=false push origin main)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "WebSearch",
+      "Bash(git push *)",
+      "PowerShell(git push origin main)",
+      "Bash(git config *)",
+      "Bash(ls \"C:/Program Files/Git/mingw64/etc/ssl/certs/\" 2>&1 | head -5)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('src/App.jsx', 'utf8'\\); console.log\\('readable'\\)\")",
+      "Bash(node --check src/App.jsx)",
+      "Bash(npx --yes esbuild src/App.jsx --bundle=false --loader=jsx --log-level=warning)",
+      "Bash(npx --yes esbuild src/App.jsx --loader=jsx)",
+      "Bash(npx --yes esbuild --loader:.jsx=jsx src/App.jsx)",
+      "Bash(npx --yes esbuild --loader:.jsx=jsx src/cloud/extras.js)",
+      "Bash(npx --yes esbuild --loader:.jsx=jsx --bundle src/App.jsx --outfile=/tmp/atithi_test.js --external:react --external:react-dom --external:react/jsx-runtime --external:@supabase/supabase-js)",
+      "Bash(git -c http.sslbackend=schannel push origin main)",
+      "Bash(git commit *)",
+      "Bash(grep -v \"//\")",
+      "Bash(npm run *)",
+      "Bash(git -c http.sslbackend=schannel push)",
+      "WebFetch(domain:atithi-seven.vercel.app)",
+      "Bash(npx --no-install vite build --logLevel error)",
+      "Bash(git --no-pager diff --stat src/data.js src/screens/NewBooking.jsx src/screens/PublicBookingWidget.jsx)",
+      "Bash(git --no-pager diff src/App.jsx)",
+      "Bash(key)",
+      "Bash(label)"
     ]
   }
 }

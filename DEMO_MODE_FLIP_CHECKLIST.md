@@ -2,7 +2,7 @@
 
 When you're ready to switch Atithi from "runs entirely off localStorage" to "real Supabase backed product that real hoteliers can sign in to", work through this list top to bottom. It's deliberately small — the heavy lifting is paste-and-run SQL and a single one-line code change.
 
-Last updated: Jun 4, 2026 (round-9 security: added membership-insert guard migration 20260608).
+Last updated: Jun 5, 2026 (round-9: added coupon-privacy 20260610, DB permission enforcement 20260611, optional widget rate-limit 20260612).
 
 ---
 
@@ -30,6 +30,9 @@ supabase/migrations/20260606_redeem_coupon.sql                     ← coupon ma
 supabase/migrations/20260607_widget_capacity_check.sql             ← atomic capacity check — stops the widget double-book race
 supabase/migrations/20260608_membership_insert_guard.sql           ← ⚠️ SECURITY: stops a stranger joining any hotel as owner — paste ASAP
 supabase/migrations/20260609_payment_collected_on.sql              ← payments.collected_on (correct P&L day across IST midnight / reloads)
+supabase/migrations/20260610_coupon_privacy.sql                    ← coupon codes no longer leak to the public; secure server-side coupon check
+supabase/migrations/20260611_enforce_permissions.sql               ← ⚠️ RBAC: staff permissions enforced in the DB (owner always safe — can't be locked out)
+supabase/migrations/20260612_widget_rate_limit.sql                 ← OPTIONAL: per-property flood cap on the public booking link (see file header for the trade-off)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).
@@ -63,10 +66,15 @@ To confirm the widget RPCs (anon access + capacity guard) are installed:
 ```sql
 select proname from pg_proc
 where proname in ('property_by_short_code', 'redeem_coupon', 'book_widget_slot',
-                 'property_has_members', 'caller_has_invite');
+                 'property_has_members', 'caller_has_invite',
+                 'validate_coupon', 'has_perm');
 ```
 
-All five should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1).
+All seven should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6).
+
+### Test the permission enforcement (R9-6) without risk
+
+`has_perm` returns TRUE for the **owner** role on every permission, so your owner account can never be locked out. To verify the gate actually restricts staff: invite a second email as **reception**, sign in as that user, and confirm it can take a booking + payment but the "Void invoice" / settings-save calls are blocked at the DB. If anything misbehaves, the kill-switch (drop the `perm %` policies) is documented at the bottom of `20260611_enforce_permissions.sql` and reverts to the prior behaviour without touching reads or your owner access.
 
 ---
 

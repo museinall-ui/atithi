@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extrasCostFor } from '../data.js';
+import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extrasCostFor } from '../data.js';
 import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -28,16 +28,20 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 import ExtendOptions from '../components/ExtendOptions.jsx';
 import VoiceRecorder from '../components/VoiceRecorder.jsx';
 
-const METHOD_LABELS = { cash: 'Cash', card: 'Card', upi: 'UPI', account: 'Bank a/c', other: 'Other' };
-const METHOD_OPTIONS = [
-  { id: 'cash',    label: 'Cash',     icon: 'inr',  hint: 'Counter / hand-collected' },
-  { id: 'card',    label: 'Card',     icon: 'card', hint: 'POS / swipe / online' },
-  { id: 'upi',     label: 'UPI',      icon: 'qr',   hint: 'GPay / PhonePe / Paytm' },
-  { id: 'account', label: 'Bank a/c', icon: 'bank', hint: 'NEFT / IMPS / cheque' },
-  { id: 'other',   label: 'Other',    icon: 'plus', hint: 'Voucher / barter / agent' },
+// Method labels resolved via t() at render. The ids are stable; only the
+// displayed text is localised. methodLabelFor / methodOptionsFor are the
+// translated accessors used everywhere a payment method is shown.
+const METHOD_LABEL_KEYS = { cash: 'payCash', card: 'payCard', upi: 'payUpi', account: 'pmBankAc', other: 'pmOther' };
+const methodLabelFor = (t, id) => (METHOD_LABEL_KEYS[id] ? t(METHOD_LABEL_KEYS[id]) : null);
+const methodOptionsFor = (t) => [
+  { id: 'cash',    label: t('payCash'),  icon: 'inr',  hint: t('pmCashHint') },
+  { id: 'card',    label: t('payCard'),  icon: 'card', hint: t('pmCardHint') },
+  { id: 'upi',     label: t('payUpi'),   icon: 'qr',   hint: t('pmUpiHint') },
+  { id: 'account', label: t('pmBankAc'), icon: 'bank', hint: t('pmBankHint') },
+  { id: 'other',   label: t('pmOther'),  icon: 'plus', hint: t('pmOtherHint') },
 ];
 
-function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty, canManageSettings }) {
+function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty, canManageSettings, t }) {
   const isRefund = kind === 'refund';
   const isCredit = kind === 'credit';
   const defaultAmt = isRefund || isCredit ? (balance < 0 ? Math.abs(balance) : '') : (balance > 0 ? balance : '');
@@ -51,14 +55,14 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
   // methods render alongside the 5 defaults; the hotelier picks them
   // the same way and saves the booking like any other payment.
   const customMethods = (property?.accountant?.customPaymentMethods || []);
-  const ALL_METHODS = [...METHOD_OPTIONS, ...customMethods];
+  const ALL_METHODS = [...methodOptionsFor(t), ...customMethods];
   const [addingMethod, setAddingMethod] = useState(false);
   const [newMethodLabel, setNewMethodLabel] = useState('');
   const saveNewMethod = () => {
     const label = newMethodLabel.trim();
     if (!label) return;
     const id = 'pm_' + Date.now().toString(36);
-    const next = [...customMethods, { id, label, icon: 'tag', hint: 'Custom · ref / txn id' }];
+    const next = [...customMethods, { id, label, icon: 'tag', hint: t('pmCustomHint') }];
     if (onChangeProperty) {
       onChangeProperty(prev => ({
         ...prev,
@@ -73,7 +77,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
     // R11-5: the × sits in the corner of a selectable payment tile, so a mis-tap
     // while picking the method could delete it. Confirm so it's never destructive.
     const target = customMethods.find(x => x.id === id);
-    if (!window.confirm(`Remove the "${(target && target.label) || 'custom'}" payment method?`)) return;
+    if (!window.confirm(t('removeMethodConfirm').replace('{label}', (target && target.label) || 'custom'))) return;
     const next = customMethods.filter(m => m.id !== id);
     if (onChangeProperty) {
       onChangeProperty(prev => ({
@@ -84,18 +88,18 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
     if (method === id) setMethod('cash');
   };
 
-  const title = isRefund ? 'Record refund' : isCredit ? 'Issue credit note' : 'Record payment';
-  const cta = isRefund ? 'Save refund' : isCredit ? 'Issue credit' : 'Save payment';
+  const title = isRefund ? t('recordRefund') : isCredit ? t('issueCreditNote') : t('recordPayment');
+  const cta = isRefund ? t('saveRefund') : isCredit ? t('issueCredit') : t('savePayment');
   const tone = isRefund ? T.danger : isCredit ? T.indigo : T.primary;
 
   const placeholderForMethod = {
-    cash: 'Where collected · who took it · receipt #',
-    card: 'Last 4 / terminal / approval code',
-    upi: 'UPI app · txn ID / UTR',
-    account: 'Bank · UTR / cheque #',
-    other: 'Source / agent / voucher #',
+    cash: t('phCash'),
+    card: t('phCard'),
+    upi: t('phUpi'),
+    account: t('phAccount'),
+    other: t('phOther'),
   };
-  const placeholderFor = (m) => placeholderForMethod[m] || 'Reference / txn id (optional)';
+  const placeholderFor = (m) => placeholderForMethod[m] || t('phRefDefault');
 
   const save = () => {
     const amt = +amount;
@@ -123,13 +127,13 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{title}</div>
             <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>
-              Total ₹{total.toLocaleString('en-IN')} · Balance {balance < 0 ? `−₹${Math.abs(balance).toLocaleString('en-IN')}` : `₹${balance.toLocaleString('en-IN')}`}
+              {t('totalBalanceLine').replace('{total}', total.toLocaleString('en-IN')).replace('{bal}', balance < 0 ? `−₹${Math.abs(balance).toLocaleString('en-IN')}` : `₹${balance.toLocaleString('en-IN')}`)}
             </div>
           </div>
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>AMOUNT</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('amountCap')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: T.bgSoft, border: `1.5px solid ${tone}`, borderRadius: 10 }}>
             <span style={{ fontSize: 18, color: T.ink3, fontWeight: 700 }}>₹</span>
             <input onFocus={(e) => e.target.select()} type="number" min={0} step="1" autoFocus value={amount} onChange={e => {
@@ -140,19 +144,19 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
               setAmount(v);
             }} placeholder="0" className="tnum" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 24, fontWeight: 700, color: T.ink, minWidth: 0 }} />
             {balance > 0 && !isRefund && !isCredit && (
-              <button onClick={() => setAmount(balance)} style={{ background: T.card, border: `1px solid ${T.border}`, color: T.primary, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>Balance</button>
+              <button onClick={() => setAmount(balance)} style={{ background: T.card, border: `1px solid ${T.border}`, color: T.primary, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>{t('balanceWord')}</button>
             )}
           </div>
           {!isRefund && !isCredit && +amount > balance && balance > 0 && (
             <div style={{ marginTop: 6, fontSize: 11, color: T.indigo, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="info" size={11} /> ₹{(+amount - balance).toLocaleString('en-IN')} extra · will show as overpayment
+              <Icon name="info" size={11} /> {t('overpaymentExtra').replace('{amt}', (+amount - balance).toLocaleString('en-IN'))}
             </div>
           )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>
-            {isCredit ? 'CREDIT TYPE' : isRefund ? 'REFUND VIA' : 'COLLECTED VIA'}
+            {isCredit ? t('creditType') : isRefund ? t('refundVia') : t('collectedVia')}
           </div>
           {/* Method grid: defaults first, then any saved custom
               methods, then an 'Add' tile for creating a new one.
@@ -197,7 +201,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
               }}
             >
               <Icon name="plus" size={14} color={T.ink3} stroke={2} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3 }}>Add</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3 }}>{t('add')}</span>
             </button>
             )}
           </div>
@@ -208,30 +212,30 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
                 value={newMethodLabel}
                 onChange={(e) => setNewMethodLabel(e.target.value.slice(0, 18))}
                 onKeyDown={(e) => { if (e.key === 'Enter') saveNewMethod(); if (e.key === 'Escape') { setAddingMethod(false); setNewMethodLabel(''); } }}
-                placeholder="Method name (e.g. Paytm wallet, Cheque, Razorpay link)"
+                placeholder={t('methodNamePlaceholder')}
                 style={{ flex: 1, padding: '7px 10px', border: `1px solid ${tone}`, borderRadius: 7, fontSize: 12, color: T.ink, background: T.card, outline: 'none' }}
               />
               <button
                 onClick={saveNewMethod}
                 disabled={!newMethodLabel.trim()}
                 style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newMethodLabel.trim() ? tone : T.bgSoft, color: newMethodLabel.trim() ? '#fff' : T.ink3, fontSize: 11, fontWeight: 700, cursor: newMethodLabel.trim() ? 'pointer' : 'not-allowed' }}
-              >Save</button>
+              >{t('saveShort')}</button>
               <button
                 onClick={() => { setAddingMethod(false); setNewMethodLabel(''); }}
                 style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-              >Cancel</button>
+              >{t('cancel')}</button>
             </div>
           )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>DETAILS</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('detailsCap')}</div>
           <input value={ref} onChange={e => setRef(e.target.value)} placeholder={placeholderFor(method)} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', marginBottom: 6 }} />
-          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={isCredit ? 'Reason · which future booking this credit is for' : isRefund ? 'Reason for refund' : 'Notes (optional)'} rows={2} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', resize: 'none', fontFamily: 'inherit' }} />
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={isCredit ? t('creditNoteReason') : isRefund ? t('refundReason') : t('notesOptional')} rows={2} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '10px 12px', fontSize: 13, color: T.ink, outline: 'none', resize: 'none', fontFamily: 'inherit' }} />
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn variant="ghost" full onClick={onClose}>Cancel</Btn>
+          <Btn variant="ghost" full onClick={onClose}>{t('cancel')}</Btn>
           <Btn full onClick={save} style={{ background: tone, borderColor: tone }}>{cta}</Btn>
         </div>
       </div>
@@ -264,18 +268,18 @@ function fmtIssued(iso) {
 //     common case where the hotelier already quoted a tax-inclusive figure.
 //   * exclusive: the entered amount is pre-tax; CGST + SGST (half the rate
 //     each) are added on top to compute the invoice total.
-function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, onIssue }) {
+function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, onIssue, t }) {
   const [name, setName] = useState(booking.guest || '');
   const [gstin, setGstin] = useState('');
   const [amount, setAmount] = useState(defaultAmount != null ? defaultAmount : (booking.total || 0));
   const [amountIncludesTax, setAmountIncludesTax] = useState(true);
-  const kindLabel = kind === 'advance' ? 'Advance invoice'
-    : kind === 'balance' ? 'Balance invoice'
-    : kind === 'full' ? 'Full invoice'
-    : 'Tax invoice';
-  const kindHint = kind === 'advance' ? `Guest has paid an advance of ₹${(defaultAmount || 0).toLocaleString('en-IN')}. Issue an invoice for that amount now; balance invoice goes out at check-out.`
-    : kind === 'balance' ? `An earlier advance invoice exists. This one covers the remaining ₹${(defaultAmount || 0).toLocaleString('en-IN')}.`
-    : kind === 'full' ? `Issue one invoice for the full booking amount.`
+  const kindLabel = kind === 'advance' ? t('advanceInvoice')
+    : kind === 'balance' ? t('balanceInvoice')
+    : kind === 'full' ? t('fullInvoice')
+    : t('taxInvoice');
+  const kindHint = kind === 'advance' ? t('advanceInvoiceHint').replace('{amt}', (defaultAmount || 0).toLocaleString('en-IN'))
+    : kind === 'balance' ? t('balanceInvoiceHint').replace('{amt}', (defaultAmount || 0).toLocaleString('en-IN'))
+    : kind === 'full' ? t('fullInvoiceHint')
     : null;
 
   const baseAmount = +amount || 0;
@@ -318,7 +322,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
                 <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.6, padding: '2px 6px', borderRadius: 4, background: kind === 'advance' ? T.warnLt : T.indigoLt, color: kind === 'advance' ? 'oklch(40% 0.14 75)' : T.indigo, textTransform: 'uppercase' }}>{kind}</span>
               )}
             </div>
-            <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>Once issued, the invoice number is locked (GST requirement).</div>
+            <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{t('invoiceNumberLocked')}</div>
           </div>
         </div>
 
@@ -329,7 +333,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
         )}
 
         <div style={{ background: T.bgSoft, borderRadius: 10, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>BOOKING TOTAL</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2 }}>{t('bookingTotalCap')}</span>
           <span className="tnum" style={{ fontSize: 18, fontWeight: 700, color: T.ink }}>₹{(booking.total || 0).toLocaleString('en-IN')}</span>
         </div>
 
@@ -337,13 +341,13 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="Recipient name"
+            placeholder={t('recipientName')}
             style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 600, color: T.ink, outline: 'none' }}
           />
           <input
             value={gstin}
             onChange={e => setGstin(e.target.value.toUpperCase())}
-            placeholder="GSTIN (optional · for B2B)"
+            placeholder={t('gstinB2b')}
             style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 7, padding: '8px 10px', fontSize: 12, fontWeight: 600, color: T.ink, outline: 'none', fontFamily: T.mono || 'monospace' }}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 7 }}>
@@ -361,7 +365,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
               Most owners quote tax-inclusive prices, so "Inclusive" is the
               default. Was previously a subtle checkbox the hotelier missed. */}
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>HOW IS GST HANDLED?</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('howIsGstHandled')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               <button
                 type="button"
@@ -374,10 +378,10 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 700, color: amountIncludesTax ? T.teal : T.ink }}>
-                  Tax inclusive
+                  {t('taxInclusive')}
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.3 }}>
-                  GST is inside the amount
+                  {t('gstInsideAmount')}
                 </div>
               </button>
               <button
@@ -391,10 +395,10 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 700, color: !amountIncludesTax ? T.teal : T.ink }}>
-                  Tax exclusive
+                  {t('taxExclusive')}
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 500, marginTop: 2, lineHeight: 1.3 }}>
-                  Add {invRate % 1 ? invRate.toFixed(1) : invRate}% GST on top
+                  {t('addGstOnTop').replace('{rate}', invRate % 1 ? invRate.toFixed(1) : invRate)}
                 </div>
               </button>
             </div>
@@ -405,10 +409,10 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
             the invoice before they tap Issue, in either tax mode. */}
         {baseAmount > 0 && (
           <div style={{ marginTop: 12, padding: 12, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 8 }}>INVOICE BREAKDOWN</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 8 }}>{t('invoiceBreakdown')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} className="tnum">
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
-                <span>Pre-tax</span>
+                <span>{t('preTax')}</span>
                 <span style={{ fontWeight: 600 }}>₹{preTax.toLocaleString('en-IN')}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.ink2 }}>
@@ -420,7 +424,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
                 <span style={{ fontWeight: 600 }}>₹{sgst.toLocaleString('en-IN')}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: T.ink, paddingTop: 6, borderTop: `1px solid ${T.borderSoft}` }}>
-                <span>Invoice total</span>
+                <span>{t('invoiceTotalRow')}</span>
                 <span>₹{invoiceTotal.toLocaleString('en-IN')}</span>
               </div>
             </div>
@@ -428,9 +432,9 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
         )}
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-          <Btn variant="ghost" full onClick={onClose}>Cancel</Btn>
+          <Btn variant="ghost" full onClick={onClose}>{t('cancel')}</Btn>
           <Btn full disabled={!valid} onClick={submit} style={{ background: T.teal, borderColor: T.teal }}>
-            Issue invoice
+            {t('issueInvoiceBtn')}
           </Btn>
         </div>
       </div>
@@ -564,23 +568,27 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: 100 }}>
         <div style={{ padding: '14px 16px', background: statusInfo.bg, borderBottom: `1px solid ${T.borderSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: 4, background: statusInfo.color }} className={b.status === 'tentative' ? 'pulse' : ''} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: statusInfo.color }}>{statusInfo.label}{b.autoReleased ? ' · auto-released' : ''}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: statusInfo.color }}>{statusLabel(b.status, lang)}{b.autoReleased ? ` · ${t('autoReleased')}` : ''}</span>
           {b.status === 'tentative' && (b.releaseAt || b.releaseTs) && (
-            <span className="tnum" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>releases {fmtRelease(b)}</span>
+            <span className="tnum" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>{t('releasesAt').replace('{when}', fmtRelease(b))}</span>
           )}
         </div>
         {b.status === 'tentative' && balance > 0 && (b.releaseAt || b.releaseTs) && (
           <div style={{ margin: '12px 16px 0', padding: '12px 14px', background: T.warnLt, border: `1px solid oklch(85% 0.10 75)`, borderLeft: `4px solid oklch(60% 0.14 75)`, borderRadius: 10, display: 'flex', gap: 10 }}>
             <Icon name="clock" size={18} color="oklch(48% 0.14 75)" stroke={2} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>Auto-release if unpaid</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{t('autoReleaseIfUnpaid')}</div>
               <div style={{ fontSize: 12, color: T.ink2, marginTop: 2, lineHeight: 1.4 }}>
-                ₹{balance.toLocaleString('en-IN')} due before <span className="tnum" style={{ fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{fmtRelease(b)}</span>, otherwise the booking will be released automatically and the inventory re-opened.
+                {(() => {
+                  const parts = t('autoReleaseDueBody').replace('{bal}', balance.toLocaleString('en-IN')).split('{when}');
+                  return <>{parts[0]}<span className="tnum" style={{ fontWeight: 700, color: 'oklch(40% 0.14 75)' }}>{fmtRelease(b)}</span>{parts[1] || ''}</>;
+                })()}
               </div>
               {onExtendHold && canEdit && (
                 <ExtendOptions
                   onExtend={(hours) => onExtendHold(b.id, hours)}
                   colors={{ border: 'oklch(75% 0.10 75)', text: 'oklch(40% 0.14 75)' }}
+                  hi={lang === 'hi'}
                 />
               )}
             </div>
@@ -602,7 +610,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   <button
                     onClick={() => canEdit && onSetVip && onSetVip(b.id, !b.vip)}
                     disabled={!canEdit}
-                    title={!canEdit ? "You don't have permission to edit bookings" : (b.vip ? 'Marked VIP — tap to unmark' : 'Tap to mark this booking VIP')}
+                    title={!canEdit ? t('noPermissionEditBookings') : (b.vip ? t('markedVipTapUnmark') : t('tapMarkVip'))}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '3px 9px', borderRadius: 999,
@@ -616,13 +624,13 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     <span style={{ fontSize: 12 }}>{b.vip ? '★' : '☆'}</span> VIP
                   </button>
                   {isRepeat && prevStays > 0 && (
-                    <Chip color="ok" icon="sync" style={{ fontSize: 10 }}>{prevStays === 1 ? '2nd stay' : `${prevStays + 1}th stay`}</Chip>
+                    <Chip color="ok" icon="sync" style={{ fontSize: 10 }}>{prevStays === 1 ? t('secondStay') : t('nthStay').replace('{n}', prevStays + 1)}</Chip>
                   )}
                 </div>
                 <div className="tnum" style={{ fontSize: 13, color: T.ink2, marginTop: 4 }}>{b.phone}</div>
                 <div style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
                   {b.guests}
-                  {b.formC ? ' · Foreign · Form C pending' : b.country === 'IN' ? ' · Indian guest' : ''}
+                  {b.formC ? ` · ${t('foreignFormCPending')}` : b.country === 'IN' ? ` · ${t('indianGuest')}` : ''}
                 </div>
               </div>
             </div>
@@ -637,9 +645,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const open = (url) => { if (url) window.open(url, '_blank', 'noopener'); };
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
-                  <Btn variant="wa" icon="wa" size="sm" disabled={!waUrl} onClick={() => open(waUrl)}>WhatsApp</Btn>
-                  <Btn variant="soft" icon="phone" size="sm" disabled={!telUrl} onClick={() => open(telUrl)}>Call</Btn>
-                  <Btn variant="soft" icon="mail" size="sm" disabled={!mailUrl} onClick={() => open(mailUrl)}>Email</Btn>
+                  <Btn variant="wa" icon="wa" size="sm" disabled={!waUrl} onClick={() => open(waUrl)}>{t('payWhatsapp')}</Btn>
+                  <Btn variant="soft" icon="phone" size="sm" disabled={!telUrl} onClick={() => open(telUrl)}>{t('callBtn')}</Btn>
+                  <Btn variant="soft" icon="mail" size="sm" disabled={!mailUrl} onClick={() => open(mailUrl)}>{t('emailBtn')}</Btn>
                 </div>
               );
             })()}
@@ -675,10 +683,10 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               if (items.length === 1) {
                 const item = items[0];
                 const itemRt = ROOM_TYPES.find(r => r.id === (item.roomTypeId || b.roomTypeId));
-                return <Row label="Room" value={`${itemRt ? itemRt.name : '—'} · #${(item.unitIdx ?? b.unitIdx ?? 0) + 1}`} />;
+                return <Row label={t('room')} value={`${itemRt ? itemRt.name : '—'} · #${(item.unitIdx ?? b.unitIdx ?? 0) + 1}`} />;
               }
               return (
-                <Row label="Rooms" value={
+                <Row label={t('roomsRow')} value={
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
                     {items.map((item, i) => {
                       const itemRt = ROOM_TYPES.find(r => r.id === (item.roomTypeId || b.roomTypeId));
@@ -689,16 +697,16 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 } />
               );
             })()}
-            <Row label="Channel" value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
+            <Row label={t('channelRow')} value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: 3, background: ch.color }} /> {ch.label}</span>} />
             {isInvoicingPlan && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px', borderTop: `1px dashed ${T.borderSoft}`, marginTop: 8 }}>
                 <Icon name="tag" size={14} color={withTax ? T.indigo : T.ink3} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{t('includeInInvoiceRegister')}</div>
                   <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
                     {withTax
-                      ? `Yes — appears in the monthly CA export. ~₹${(tx?.gst || 0).toLocaleString('en-IN')} treated as GST inside ₹${(b.total || 0).toLocaleString('en-IN')}.`
-                      : `No — direct/cash booking, kept out of the CA export.`}
+                      ? t('invInclYesDetail').replace('{gst}', (tx?.gst || 0).toLocaleString('en-IN')).replace('{total}', (b.total || 0).toLocaleString('en-IN'))
+                      : t('invInclNo')}
                   </div>
                 </div>
                 {onSetGst && canEdit && <Toggle on={withTax} onChange={(v) => onSetGst(b.id, v)} />}
@@ -710,7 +718,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   <Icon name="info" size={14} color={T.primary} />
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 2 }}>SPECIAL NOTE</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 2 }}>{t('specialNoteCap')}</div>
                     <div style={{ fontSize: 12, color: T.ink, lineHeight: 1.4 }}>{b.notes}</div>
                   </div>
                 </div>
@@ -722,7 +730,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
         <div style={{ padding: '0 16px 16px' }}>
           <SectionHead title={t('folio')} action={
             <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: balance > 0 ? T.danger : balance < 0 ? T.indigo : T.ok }}>
-              {balance > 0 ? `Balance ₹${balance.toLocaleString('en-IN')}` : balance < 0 ? `Overpaid ₹${Math.abs(balance).toLocaleString('en-IN')}` : 'Settled'}
+              {balance > 0 ? t('balanceAmt').replace('{amt}', balance.toLocaleString('en-IN')) : balance < 0 ? t('overpaidAmt').replace('{amt}', Math.abs(balance).toLocaleString('en-IN')) : t('settled')}
             </span>
           } />
           <Card>
@@ -750,35 +758,36 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               //   - delta < 0 → show as discount (negative)
               const mealRow = (() => {
                 if (!meal) return null;
+                const mealLabel = t('mealPlanLine').replace('{code}', meal.code).replace('{label}', meal.label);
                 if (meal.id === defaultId) {
-                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value="In room rate" />;
+                  return <Row label={mealLabel} value={t('inRoomRate')} />;
                 }
                 if (mealCost > 0) {
-                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`+ ₹${mealCost.toLocaleString('en-IN')}`} />;
+                  return <Row label={mealLabel} value={`+ ₹${mealCost.toLocaleString('en-IN')}`} />;
                 }
                 if (mealCost < 0) {
-                  return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value={`− ₹${Math.abs(mealCost).toLocaleString('en-IN')}`} />;
+                  return <Row label={mealLabel} value={`− ₹${Math.abs(mealCost).toLocaleString('en-IN')}`} />;
                 }
-                return <Row label={`Meal plan · ${meal.code} (${meal.label})`} value="—" />;
+                return <Row label={mealLabel} value="—" />;
               })();
               return (
                 <>
-                  <Row label={`Tariff · ${b.nights} night${b.nights > 1 ? 's' : ''}`} value={`₹${tariff.toLocaleString('en-IN')}`} />
+                  <Row label={t('tariffNights').replace('{n}', `${b.nights} ${b.nights > 1 ? t('nights') : t('nights')}`)} value={`₹${tariff.toLocaleString('en-IN')}`} />
                   {rp && rp.id !== 'standard' && (
                     <Row
-                      label="Rate plan"
-                      value={`${rp.label} · ${rp.cancellation === 'non-refundable' ? 'No refunds' : `free cancel ${rp.refundHours}h`}`}
+                      label={t('ratePlanRow')}
+                      value={`${rp.label} · ${rp.cancellation === 'non-refundable' ? t('noRefunds') : t('freeCancelH').replace('{h}', rp.refundHours)}`}
                     />
                   )}
                   {extraGuests > 0 && (
-                    <Row label="Extra-guest charges" value={`₹${extraGuests.toLocaleString('en-IN')}`} />
+                    <Row label={t('extraGuestChargesRow')} value={`₹${extraGuests.toLocaleString('en-IN')}`} />
                   )}
                   {extras > 0 && (
-                    <Row label="Add-ons / extras" value={`₹${extras.toLocaleString('en-IN')}`} />
+                    <Row label={t('addOnsExtras')} value={`₹${extras.toLocaleString('en-IN')}`} />
                   )}
                   {mealRow}
                   {discountAmount > 0 && (
-                    <Row label={b.couponCode ? `Discount · ${b.couponCode}` : 'Discount'} value={`− ₹${discountAmount.toLocaleString('en-IN')}`} />
+                    <Row label={b.couponCode ? t('discountCoupon').replace('{code}', b.couponCode) : t('discountRow')} value={`− ₹${discountAmount.toLocaleString('en-IN')}`} />
                   )}
                 </>
               );
@@ -786,11 +795,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             {withTax && <Row label={`CGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
             {withTax && <Row label={`SGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
-            <Row label="Total" value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
+            <Row label={t('total')} value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
 
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>PAYMENTS LEDGER</div>
-            {payments.length === 0 && <div style={{ fontSize: 12, color: T.ink3, padding: '6px 0' }}>No payments yet.</div>}
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('paymentsLedger')}</div>
+            {payments.length === 0 && <div style={{ fontSize: 12, color: T.ink3, padding: '6px 0' }}>{t('noPaymentsYet')}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {payments.map(p => {
                 const isOut = p.kind === 'refund' || p.kind === 'credit';
@@ -800,13 +809,13 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 // then fall back to the raw id (e.g. 'pm_xyz') if neither
                 // matches (custom method was deleted after the payment).
                 const customMethod = (property?.accountant?.customPaymentMethods || []).find(m => m.id === p.method);
-                const methodLabel = METHOD_LABELS[p.method] || (customMethod && customMethod.label) || p.method;
+                const methodLabel = methodLabelFor(t, p.method) || (customMethod && customMethod.label) || p.method;
                 return (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', background: T.bgSoft, borderRadius: 7, borderLeft: `3px solid ${tone}` }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: tone, textTransform: 'uppercase', letterSpacing: 0.2 }}>
-                          {p.kind === 'refund' ? 'Refund' : p.kind === 'credit' ? 'Credit note' : methodLabel}
+                          {p.kind === 'refund' ? t('refundWord') : p.kind === 'credit' ? t('creditNoteWord') : methodLabel}
                         </span>
                         {p.kind !== 'payment' && <span style={{ fontSize: 10, color: T.ink3 }}>· {methodLabel}</span>}
                       </div>
@@ -822,8 +831,8 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             </div>
 
             <div style={{ height: 1, background: T.borderSoft, margin: '10px 0 8px' }} />
-            <Row label="Total paid" value={`₹${totalPaid.toLocaleString('en-IN')}`} />
-            <Row label={balance < 0 ? 'Overpayment / due to guest' : 'Balance due'} value={
+            <Row label={t('totalPaid')} value={`₹${totalPaid.toLocaleString('en-IN')}`} />
+            <Row label={balance < 0 ? t('overpaymentDue') : t('balanceDue')} value={
               <span style={{ color: balance > 0 ? T.danger : balance < 0 ? T.indigo : T.ok, fontWeight: 700 }} className="tnum">
                 {balance < 0 ? `−₹${Math.abs(balance).toLocaleString('en-IN')}` : `₹${balance.toLocaleString('en-IN')}`}
               </span>
@@ -837,9 +846,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             {balance !== 0 && canPay && (
               <div style={{ marginTop: 12 }}>
                 {balance > 0 ? (
-                  <Btn variant="primary" icon="plus" full onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Add payment · ₹{balance.toLocaleString('en-IN')}</Btn>
+                  <Btn variant="primary" icon="plus" full onClick={() => { setPayKind('payment'); setPayOpen(true); }}>{t('addPaymentAmt').replace('{amt}', balance.toLocaleString('en-IN'))}</Btn>
                 ) : (
-                  <Btn variant="ghost" icon="arrow" full onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund overpayment · ₹{Math.abs(balance).toLocaleString('en-IN')}</Btn>
+                  <Btn variant="ghost" icon="arrow" full onClick={() => { setPayKind('refund'); setPayOpen(true); }}>{t('refundOverpaymentAmt').replace('{amt}', Math.abs(balance).toLocaleString('en-IN'))}</Btn>
                 )}
               </div>
             )}
@@ -848,10 +857,10 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 attention from the primary payment action. */}
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {balance === 0 && canPay && (
-                <Btn variant="ghost" icon="plus" size="sm" onClick={() => { setPayKind('payment'); setPayOpen(true); }}>Payment</Btn>
+                <Btn variant="ghost" icon="plus" size="sm" onClick={() => { setPayKind('payment'); setPayOpen(true); }}>{t('payment')}</Btn>
               )}
-              {canPay && <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>Refund</Btn>}
-              {canPay && <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>Credit</Btn>}
+              {canPay && <Btn variant="ghost" icon="arrow" size="sm" onClick={() => { setPayKind('refund'); setPayOpen(true); }}>{t('refundShort')}</Btn>}
+              {canPay && <Btn variant="ghost" icon="tag" size="sm" onClick={() => { setPayKind('credit'); setPayOpen(true); }}>{t('creditShort')}</Btn>}
               <Btn
                 variant="wa"
                 icon="wa"
@@ -879,7 +888,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     setShareHint(true);
                   }, 600);
                 }}
-              >Share booking</Btn>
+              >{t('shareBookingShort')}</Btn>
               {balance > 0 && (
                 <Btn
                   variant="ghost"
@@ -889,17 +898,21 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   onClick={() => {
                     const digits = String(b.phone || '').replace(/\D/g, '');
                     if (!digits) return;
-                    const msg = `Hi ${b.guest || ''},\n\nBalance of ₹${balance.toLocaleString('en-IN')} is due for your booking ${b.id} at ${property?.profile?.name || 'our property'}.\n\nPlease confirm payment so we can finalise your reservation.`;
+                    const msg = t('waBalanceDue')
+                      .replace('{guest}', b.guest || '')
+                      .replace('{bal}', balance.toLocaleString('en-IN'))
+                      .replace('{id}', b.id)
+                      .replace('{prop}', property?.profile?.name || t('ourProperty'));
                     window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
                   }}
                 >
-                  Remind ₹{balance.toLocaleString('en-IN')}
+                  {t('remindAmt').replace('{amt}', balance.toLocaleString('en-IN'))}
                 </Btn>
               )}
             </div>
             {balance < 0 && (
               <div style={{ marginTop: 8, padding: '8px 10px', background: T.indigoLt, borderRadius: 7, fontSize: 11, color: T.indigo, fontWeight: 600, lineHeight: 1.4 }}>
-                <Icon name="info" size={11} /> Guest has ₹{Math.abs(balance).toLocaleString('en-IN')} excess. Issue refund or convert to credit note for future bookings.
+                <Icon name="info" size={11} /> {t('guestExcessHint').replace('{amt}', Math.abs(balance).toLocaleString('en-IN'))}
               </div>
             )}
           </Card>
@@ -920,7 +933,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               display: 'flex', alignItems: 'flex-start', gap: 8,
             }}>
               <Icon name="info" size={14} color="#fff" stroke={2.2} />
-              <span>Voucher opened — <strong>save as PDF</strong> from the print dialog, then <strong>attach it</strong> in WhatsApp before sending.</span>
+              <span>{t('voucherOpenedHint')}</span>
             </div>
           </div>
         )}
@@ -933,6 +946,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             property={property}
             onChangeProperty={onChangeProperty}
             canManageSettings={can('manage_settings')}
+            t={t}
             onClose={() => setPayOpen(false)}
             onSave={(entry) => { onPayment && onPayment(b.id, entry); setPayOpen(false); }}
           />
@@ -948,10 +962,10 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32 }}
             >
               <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>
-                {voucherLangSheet.invoice ? 'Download invoice in…' : 'Download voucher in…'}
+                {voucherLangSheet.invoice ? t('downloadInvoiceIn') : t('downloadVoucherIn')}
               </div>
               <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>
-                Pick the language for this PDF. Your app language stays unchanged.
+                {t('pickPdfLang')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <button
@@ -998,15 +1012,15 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
 
         {isInvoicingPlan && (
         <div style={{ padding: '0 16px 16px' }}>
-          <SectionHead title="Invoices" action={
+          <SectionHead title={t('invoicesSection')} action={
             activeInvoices.length > 0 && remainingToInvoice <= 0
-              ? <Chip color="ok" icon="check" style={{ fontSize: 9 }}>Fully invoiced</Chip>
+              ? <Chip color="ok" icon="check" style={{ fontSize: 9 }}>{t('fullyInvoiced')}</Chip>
               : null
           } />
           <Card padding={0}>
             {invoices.length === 0 ? (
               <div style={{ padding: '16px 14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
-                No tax invoice issued yet. Issue one for the full booking total when the guest checks out.
+                {t('noInvoiceYetBody')}
               </div>
             ) : (
               invoices.map((inv, i, arr) => (
@@ -1018,7 +1032,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                         <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink, textDecoration: inv.voided ? 'line-through' : 'none' }}>{inv.number}</span>
-                        {inv.voided && <Chip color="danger" style={{ fontSize: 9 }}>VOIDED</Chip>}
+                        {inv.voided && <Chip color="danger" style={{ fontSize: 9 }}>{t('voided')}</Chip>}
                       </div>
                       <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>
                         {fmtIssued(inv.date)} · {inv.recipient?.name || '—'}{inv.recipient?.gstin ? ` · ${inv.recipient.gstin}` : ''}
@@ -1033,14 +1047,14 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                         className="atithi-tap"
                         style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
-                        <Icon name="download" size={11} stroke={2} /> View invoice PDF
+                        <Icon name="download" size={11} stroke={2} /> {t('viewInvoicePdf')}
                       </button>
                       <button
-                        onClick={() => { if (confirm(`Void invoice ${inv.number}? The number stays reserved (cannot be reused) per GST rules.`)) onVoidInvoice && onVoidInvoice(b.id, inv.id); }}
+                        onClick={() => { if (confirm(t('voidInvoiceConfirm').replace('{number}', inv.number))) onVoidInvoice && onVoidInvoice(b.id, inv.id); }}
                         className="atithi-tap"
                         style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
-                        <Icon name="x" size={11} stroke={2} /> Void
+                        <Icon name="x" size={11} stroke={2} /> {t('voidWord')}
                       </button>
                     </div>
                   )}
@@ -1049,7 +1063,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             )}
             {b.status === 'tentative' ? (
               <div style={{ padding: '10px 14px', background: T.bgSoft, fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>
-                Confirm this tentative booking before issuing an invoice.
+                {t('confirmBeforeInvoice')}
               </div>
             ) : remainingToInvoice > 0 && canInvoice ? (
               <div style={{ padding: 12, background: T.bgSoft, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1059,7 +1073,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none', background: T.teal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                 >
                   <Icon name="plus" size={12} stroke={2.2} />
-                  {invoices.length === 0 ? `Issue invoice (₹${remainingToInvoice.toLocaleString('en-IN')})` : `Issue another invoice (₹${remainingToInvoice.toLocaleString('en-IN')} left)`}
+                  {invoices.length === 0 ? t('issueInvoiceAmt').replace('{amt}', remainingToInvoice.toLocaleString('en-IN')) : t('issueAnotherInvoice').replace('{amt}', remainingToInvoice.toLocaleString('en-IN'))}
                 </button>
               </div>
             ) : null}
@@ -1070,6 +1084,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               property={property}
               defaultAmount={invoiceDefaultAmount}
               kind={invoiceKind}
+              t={t}
               onClose={() => setInvoiceOpen(false)}
               onIssue={(parts) => onIssueInvoice && onIssueInvoice(b.id, parts)}
             />
@@ -1087,9 +1102,10 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             existing notes from the activity feed below if needed. */}
         {canEdit && (
           <div style={{ padding: '0 16px 16px' }}>
-            <SectionHead title="Voice notes" />
+            <SectionHead title={t('voiceNotesSection')} />
             <Card padding={12}>
               <VoiceRecorder
+                t={t}
                 notes={b.voiceNotes || []}
                 onAdd={(note) => onAddVoiceNote && onAddVoiceNote(b.id, note)}
                 onRemove={(id) => onRemoveVoiceNote && onRemoveVoiceNote(b.id, id)}
@@ -1109,26 +1125,26 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // mocks that fired for every booking, including newly-
               // created ones where none of it had happened.
               const items = [];
-              items.push({ icon: 'tag', tone: T.primary, text: `Booking via ${ch.label}` });
+              items.push({ icon: 'tag', tone: T.primary, text: t('bookingVia').replace('{ch}', ch.label) });
               payments.forEach(p => {
                 const tone = p.kind === 'refund' ? T.danger : p.kind === 'credit' ? T.indigo : T.ok;
                 // Same custom-method resolution as the payments-ledger
                 // row above — defaults → custom-methods → raw id fallback.
                 const customMethod = (property?.accountant?.customPaymentMethods || []).find(m => m.id === p.method);
-                const methodLabel = METHOD_LABELS[p.method] || (customMethod && customMethod.label) || p.method;
-                const label = p.kind === 'refund' ? `Refund · ₹${p.amount.toLocaleString('en-IN')}`
-                  : p.kind === 'credit' ? `Credit note · ₹${p.amount.toLocaleString('en-IN')}`
-                  : `Payment received · ₹${p.amount.toLocaleString('en-IN')}${p.method ? ` · ${methodLabel}` : ''}`;
+                const methodLabel = methodLabelFor(t, p.method) || (customMethod && customMethod.label) || p.method;
+                const label = p.kind === 'refund' ? t('refundAmt').replace('{amt}', p.amount.toLocaleString('en-IN'))
+                  : p.kind === 'credit' ? t('creditNoteAmt').replace('{amt}', p.amount.toLocaleString('en-IN'))
+                  : t('paymentReceivedAmt').replace('{amt}', p.amount.toLocaleString('en-IN')) + (p.method ? ` · ${methodLabel}` : '');
                 items.push({ icon: p.kind === 'refund' ? 'arrow' : 'inr', tone, text: label, time: p.date });
               });
               (b.invoices || []).filter(inv => !inv.voided).forEach(inv => {
-                items.push({ icon: 'download', tone: T.teal, text: `Invoice ${inv.number} issued · ₹${(inv.amount || 0).toLocaleString('en-IN')}`, time: fmtIssued(inv.date) });
+                items.push({ icon: 'download', tone: T.teal, text: t('invoiceIssuedAmt').replace('{number}', inv.number).replace('{amt}', (inv.amount || 0).toLocaleString('en-IN')), time: fmtIssued(inv.date) });
               });
               if (b.status === 'tentative' && (b.releaseAt || b.releaseTs)) {
-                items.push({ icon: 'clock', tone: 'oklch(48% 0.14 75)', text: `On hold · auto-releases ${fmtRelease(b)}` });
+                items.push({ icon: 'clock', tone: 'oklch(48% 0.14 75)', text: t('onHoldReleases').replace('{when}', fmtRelease(b)) });
               }
-              if (b.vip) items.push({ icon: 'star', tone: T.primary, text: 'Marked VIP' });
-              if (b.formC) items.push({ icon: 'flag', tone: 'oklch(48% 0.14 75)', text: 'Foreign guest · Form C filing required' });
+              if (b.vip) items.push({ icon: 'star', tone: T.primary, text: t('markedVip') });
+              if (b.formC) items.push({ icon: 'flag', tone: 'oklch(48% 0.14 75)', text: t('foreignFormCFiling') });
               // Replay the structured event log (hold extensions, status
               // transitions, moves). The boolean status branches below
               // still cover the final-state case so freshly-imported
@@ -1143,13 +1159,13 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   time: ev.time ? new Date(ev.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : undefined,
                 });
               });
-              if (!b.events && b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: 'Checked in' });
-              if (!b.events && b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: 'Checked out · stay complete' });
-              if (b.status === 'cancelled' && !(b.events || []).some(e => /cancelled/i.test(e.text))) items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? 'Auto-released (hold expired)' : 'Booking cancelled' });
+              if (!b.events && b.status === 'checkedin') items.push({ icon: 'door', tone: T.indigo, text: t('checkedIn') });
+              if (!b.events && b.status === 'checkout') items.push({ icon: 'check', tone: T.ok, text: t('checkedOutComplete') });
+              if (b.status === 'cancelled' && !(b.events || []).some(e => /cancelled/i.test(e.text))) items.push({ icon: 'x', tone: T.danger, text: b.autoReleased ? t('autoReleasedExpired') : t('bookingCancelled') });
               return items.length === 0
                 ? (
                   <div style={{ padding: '14px', fontSize: 12, color: T.ink3, lineHeight: 1.45 }}>
-                    No activity yet.
+                    {t('noActivityYet')}
                   </div>
                 )
                 : items.map((a, i, arr) => (
@@ -1171,27 +1187,27 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
       <div style={{ background: T.card, borderTop: `1px solid ${T.borderSoft}`, padding: '10px 16px 24px' }}>
         {(b.status === 'confirmed' || b.status === 'checkedin') && (
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 6, textAlign: 'center', letterSpacing: 0.2 }}>
-            Optional · inventory + invoicing work without these
+            {t('optionalInventoryWorks')}
           </div>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           {b.status === 'confirmed' && canEdit && (
-            <Btn variant="soft" icon="door" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>Log check-in</Btn>
+            <Btn variant="soft" icon="door" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkedin')}>{t('logCheckIn')}</Btn>
           )}
           {b.status === 'checkedin' && canEdit && (
-            <Btn variant="soft" icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>Log check-out</Btn>
+            <Btn variant="soft" icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'checkout')}>{t('logCheckOut')}</Btn>
           )}
           {b.status === 'tentative' && (
             <>
-              {canCancel && <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => { if (window.confirm('Cancel this booking? You can undo for 10 seconds after.')) onSetStatus && onSetStatus(b.id, 'cancelled'); }}>Cancel</Btn>}
-              {canEdit && <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Confirm</Btn>}
+              {canCancel && <Btn variant="ghost" icon="x" style={{ flex: 1 }} onClick={() => { if (window.confirm(t('cancelBookingShortConfirm'))) onSetStatus && onSetStatus(b.id, 'cancelled'); }}>{t('cancel')}</Btn>}
+              {canEdit && <Btn icon="check" style={{ flex: 1 }} onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>{t('confirmWord')}</Btn>}
             </>
           )}
           {b.status === 'cancelled' && canCancel && (
-            <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>Re-open booking</Btn>
+            <Btn variant="ghost" icon="sync" full onClick={() => onSetStatus && onSetStatus(b.id, 'confirmed')}>{t('reopenBooking')}</Btn>
           )}
           {b.status === 'checkout' && (
-            <Btn variant="soft" icon="check" style={{ flex: 1 }} disabled>Stay complete</Btn>
+            <Btn variant="soft" icon="check" style={{ flex: 1 }} disabled>{t('stayComplete')}</Btn>
           )}
           {/* Cancel a confirmed / checked-in / checked-out booking.
               Real day-one need (no-show, walk-in cancel, duplicate entry,
@@ -1205,11 +1221,11 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               icon="x"
               style={{ flex: 1 }}
               onClick={() => {
-                if (window.confirm(`Cancel booking ${b.id}? This marks ${b.guest} as cancelled. You can undo for 10 seconds after, or Re-open the booking later.`)) {
+                if (window.confirm(t('cancelBookingConfirm').replace('{id}', b.id).replace('{guest}', b.guest))) {
                   onSetStatus && onSetStatus(b.id, 'cancelled');
                 }
               }}
-            >Cancel booking</Btn>
+            >{t('cancelBookingBtn')}</Btn>
           )}
         </div>
       </div>

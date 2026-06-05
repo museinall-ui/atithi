@@ -54,7 +54,7 @@ function todayKey() {
   return ymd(ANCHOR);
 }
 
-function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts }) {
+function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts, t }) {
   const dateKey = todayKey();
   const closes = cashCloses || {};
   const closed = closes[dateKey];
@@ -64,8 +64,8 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
   const accounts = (Array.isArray(cashAccounts) && cashAccounts.length)
     ? cashAccounts
     : [
-        { id: 'cash',    label: 'Cash drawer',         kind: 'cash' },
-        { id: 'digital', label: 'Digital (UPI / Card)', kind: 'upi' },
+        { id: 'cash',    label: t('cashDrawer'),     kind: 'cash' },
+        { id: 'digital', label: t('digitalUpiCard'), kind: 'upi' },
       ];
   const [open, setOpen] = useState(false);
   // Per-account amount inputs, keyed by account id. Reset on submit
@@ -103,13 +103,13 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
     const closedAccounts = Array.isArray(closed.accounts) && closed.accounts.length
       ? closed.accounts
       : [
-          { label: 'Cash', amount: closed.cash || 0 },
-          { label: 'Digital', amount: closed.digital || 0 },
+          { label: t('payCash'), amount: closed.cash || 0 },
+          { label: t('digitalShort'), amount: closed.digital || 0 },
         ];
     return (
       <div style={{ padding: '0 16px 14px' }}>
-        <SectionHead title={isHi ? 'दिन का हिसाब' : 'End of day'} action={
-          <button onClick={reopen} style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Reopen</button>
+        <SectionHead title={t('endOfDay')} action={
+          <button onClick={reopen} style={{ background: 'none', border: 'none', color: T.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{t('reopen')}</button>
         } />
         <Card padding={14}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: closedAccounts.length > 0 ? 10 : 0 }}>
@@ -117,12 +117,12 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
               <Icon name="check" size={16} stroke={2.4} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Closed at <span className="tnum">{closed.closedAt}</span></div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{t('closedAt')} <span className="tnum">{closed.closedAt}</span></div>
               <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>
-                Total ₹{(closed.total || 0).toLocaleString('en-IN')}
+                {t('totalVsBilled').replace('{total}', (closed.total || 0).toLocaleString('en-IN'))}
                 {Math.abs(gap) > 0 && (closed.expected || 0) > 0 && (
                   <span style={{ color: gap < 0 ? T.danger : T.indigo, marginLeft: 4 }}>
-                    · {gap > 0 ? `+₹${gap.toLocaleString('en-IN')}` : `−₹${Math.abs(gap).toLocaleString('en-IN')}`} vs billed
+                    · {gap > 0 ? t('vsBilledPlus').replace('{amt}', gap.toLocaleString('en-IN')) : t('vsBilledMinus').replace('{amt}', Math.abs(gap).toLocaleString('en-IN'))}
                   </span>
                 )}
               </div>
@@ -149,16 +149,16 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
 
   return (
     <div style={{ padding: '0 16px 14px' }}>
-      <SectionHead title={isHi ? 'दिन का हिसाब' : 'End of day'} />
+      <SectionHead title={t('endOfDay')} />
       <Card padding={0} style={{ overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: T.primaryLt, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="inr" size={16} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{isHi ? 'आज का हिसाब बंद करें' : "Close today's cash"}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('closeTodaysCash')}</div>
             <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} className="tnum">
-              {expected > 0 ? `${todayBookings.length} booking${todayBookings.length > 1 ? 's' : ''} · ₹${expected.toLocaleString('en-IN')} billed today` : 'No bookings today'}
+              {expected > 0 ? t('nBookingsBilled').replace('{n}', `${todayBookings.length} ${todayBookings.length > 1 ? t('bookingN') : t('booking1')}`).replace('{amt}', expected.toLocaleString('en-IN')) : t('noBookingsToday')}
             </div>
           </div>
           {!open && (
@@ -166,7 +166,7 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
               onClick={() => setOpen(true)}
               className="atithi-tap"
               style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-            >Close day</button>
+            >{t('closeDay')}</button>
           )}
         </div>
         {open && (
@@ -195,10 +195,10 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
                 </div>
               </div>
             ))}
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional) — e.g. ₹500 advance from walk-in" style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '8px 10px', fontSize: 12, color: T.ink, outline: 'none' }} />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('dayCloseNotePlaceholder')} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`, background: T.card, borderRadius: 8, padding: '8px 10px', fontSize: 12, color: T.ink, outline: 'none' }} />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setOpen(false); setAmounts({}); setNote(''); }} className="atithi-tap" style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={submit} className="atithi-tap" style={{ flex: 2, padding: '10px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Close day</button>
+              <button onClick={() => { setOpen(false); setAmounts({}); setNote(''); }} className="atithi-tap" style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.card, color: T.ink2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('cancel')}</button>
+              <button onClick={submit} className="atithi-tap" style={{ flex: 2, padding: '10px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('closeDay')}</button>
             </div>
           </div>
         )}
@@ -282,9 +282,9 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.guest}</span>
-          {b.vip && <Chip color="warn" style={{ padding: '1px 6px', fontSize: 9 }}>VIP</Chip>}
-          {b.formC && <Chip color="indigo" style={{ padding: '1px 6px', fontSize: 9 }}>Form C</Chip>}
-          {isRepeat && <Chip color="ok" icon="sync" style={{ padding: '1px 6px', fontSize: 9 }}>Repeat</Chip>}
+          {b.vip && <Chip color="warn" style={{ padding: '1px 6px', fontSize: 9 }}>{t('vipChip')}</Chip>}
+          {b.formC && <Chip color="indigo" style={{ padding: '1px 6px', fontSize: 9 }}>{t('formCChip')}</Chip>}
+          {isRepeat && <Chip color="ok" icon="sync" style={{ padding: '1px 6px', fontSize: 9 }}>{t('repeatChip')}</Chip>}
         </div>
         <div style={{ fontSize: 11, color: T.ink2, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 }} className="tnum">
           <Icon name="cal" size={10} color={T.ink3} stroke={2} />
@@ -302,8 +302,8 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
         <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>₹{(b.total/1000).toFixed(1)}k</span>
-        {b.paid < b.total && <Chip color="warn" style={{ fontSize: 9 }}>Bal ₹{((b.total-b.paid)/1000).toFixed(1)}k</Chip>}
-        {b.paid >= b.total && <Chip color="ok" style={{ fontSize: 9 }} icon="check">Paid</Chip>}
+        {b.paid < b.total && <Chip color="warn" style={{ fontSize: 9 }}>{t('balChip').replace('{amt}', ((b.total-b.paid)/1000).toFixed(1))}</Chip>}
+        {b.paid >= b.total && <Chip color="ok" style={{ fontSize: 9 }} icon="check">{t('paidChip')}</Chip>}
       </div>
     </Card>
   );
@@ -509,8 +509,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     const mins = Math.max(1, Math.round((first.releaseTs - nowMs) / 60000));
     nudges.push({
       icon: 'clock', tone: T.danger,
-      text: `${holdsImminent.length === 1 ? first.guest : holdsImminent.length + ' holds'} expire${holdsImminent.length > 1 ? '' : 's'} in ${mins} min · chase NOW`,
-      cta: holdsImminent.length === 1 ? 'Open' : 'View',
+      text: t('nudgeHoldsImminent').replace('{who}', holdsImminent.length === 1 ? first.guest : `${holdsImminent.length} ${t('nudgeHoldsWord')}`).replace('{mins}', mins),
+      cta: holdsImminent.length === 1 ? t('nudgeOpen') : t('nudgeView'),
       onClick: () => {
         if (holdsImminent.length === 1) go('booking', first.id);
         else go('diary');
@@ -521,8 +521,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     const first = newWebsiteBookings[0];
     nudges.push({
       icon: 'bell', tone: 'oklch(58% 0.16 200)',
-      text: `${newWebsiteBookings.length === 1 ? '1 new booking from your website' : newWebsiteBookings.length + ' new website bookings'} · ${first.guest}`,
-      cta: newWebsiteBookings.length === 1 ? 'Review' : 'View all',
+      text: `${newWebsiteBookings.length === 1 ? t('nudgeNewWebsite1') : t('nudgeNewWebsiteN').replace('{n}', newWebsiteBookings.length)} · ${first.guest}`,
+      cta: newWebsiteBookings.length === 1 ? t('nudgeReview') : t('nudgeViewAll'),
       onClick: () => {
         if (newWebsiteBookings.length === 1) {
           ackWebsite(first.id);
@@ -545,8 +545,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     const firstDigits = (first && first.phone || '').replace(/\D/g, '');
     nudges.push({
       icon: 'wa', tone: '#25D366',
-      text: `${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} arrive tomorrow — send directions?`,
-      cta: arrivingTomorrow.length > 1 ? `WhatsApp ${first.guest.split(' ')[0]}` : 'WhatsApp',
+      text: t('nudgeArriveTomorrow').replace('{n}', `${arrivingTomorrow.length} ${arrivingTomorrow.length > 1 ? t('guests').toLowerCase() : t('guest').toLowerCase()}`),
+      cta: arrivingTomorrow.length > 1 ? `${t('payWhatsapp')} ${first.guest.split(' ')[0]}` : t('payWhatsapp'),
       onClick: () => {
         if (!firstDigits) { go('diary'); return; }
         const propName = property?.profile?.name || 'our property';
@@ -574,8 +574,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         if (!digits) continue;
         nudges.push({
           icon: 'wa', tone: '#25D366',
-          text: `${reminder.text} — ${guest.guest} arrives tomorrow`,
-          cta: 'Send',
+          text: t('nudgeReminderArrive').replace('{text}', reminder.text).replace('{guest}', guest.guest),
+          cta: t('nudgeSend'),
           onClick: () => {
             const msg = `Hi ${guest.guest},\n\n${reminder.text}\n\nReach us anytime on this number — ${propName}.`;
             window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
@@ -588,16 +588,16 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   if (foreignOnProperty.length > 0) {
     nudges.push({
       icon: 'flag', tone: T.indigo,
-      text: `${foreignOnProperty.length} foreign guest${foreignOnProperty.length > 1 ? 's' : ''} on property — Form C ready`,
-      cta: 'Review',
+      text: t('nudgeForeignFormC').replace('{n}', `${foreignOnProperty.length} ${foreignOnProperty.length > 1 ? t('nudgeForeignGuests') : t('nudgeForeignGuest')}`),
+      cta: t('nudgeReview'),
       onClick: () => go('guests'),
     });
   }
   if (holdsExpiringSoon.length > 0) {
     nudges.push({
       icon: 'clock', tone: 'oklch(60% 0.14 75)',
-      text: `${holdsExpiringSoon.length} hold${holdsExpiringSoon.length > 1 ? 's' : ''} expire in next 4h — chase payment`,
-      cta: 'View',
+      text: t('nudgeHoldsSoon').replace('{n}', `${holdsExpiringSoon.length} ${holdsExpiringSoon.length > 1 ? t('nudgeHoldsWord') : t('nudgeHoldWord')}`),
+      cta: t('nudgeView'),
       onClick: () => go('diary'),
     });
   }
@@ -953,7 +953,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           WhatsApp Cloud API. */}
       {arrivingTomorrow.length > 0 && Array.isArray(property?.profile?.arrivalsRecipients) && property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>
-          <SectionHead title={isHi ? 'कल आ रहे हैं · टीम को भेजें' : "Tomorrow's arrivals · share with team"} />
+          <SectionHead title={t('tomorrowArrivalsShare')} />
           <Card padding={0}>
             <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${T.borderSoft}` }}>
               <div style={{ width: 38, height: 38, borderRadius: 10, background: 'oklch(96% 0.04 145)', color: 'oklch(35% 0.13 145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -961,10 +961,10 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>
-                  {arrivingTomorrow.length} guest{arrivingTomorrow.length > 1 ? 's' : ''} arriving tomorrow
+                  {t('guestsArrivingTomorrow').replace('{n}', `${arrivingTomorrow.length} ${arrivingTomorrow.length > 1 ? t('guests').toLowerCase() : t('guest').toLowerCase()}`)}
                 </div>
                 <div className="tnum" style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
-                  Goes to {property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length} recipient{property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length === 1 ? '' : 's'}
+                  {(() => { const rc = property.profile.arrivalsRecipients.filter(r => (r.phone || '').replace(/\D/g, '').length >= 7).length; return t('goesToNRecipients').replace('{n}', `${rc} ${rc === 1 ? t('recipient') : t('recipients')}`); })()}
                 </div>
               </div>
             </div>
@@ -1074,8 +1074,8 @@ ${arrivingTomorrow.map(b => {
                       >
                         <Icon name="wa" size={13} color={recipients.length === 0 ? T.ink3 : '#fff'} stroke={2} />
                         {recipients.length === 0
-                          ? (isHi ? 'Settings में फ़ोन नंबर जोड़ें' : 'Add a phone number in Settings')
-                          : (isHi ? 'WhatsApp पर भेजें' : 'Send on WhatsApp')}
+                          ? t('addPhoneInSettings')
+                          : t('sendOnWhatsapp')}
                       </button>
                       <button
                         onClick={downloadHtml}
@@ -1092,7 +1092,7 @@ ${arrivingTomorrow.map(b => {
                   ) : (
                     <>
                       <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 8, lineHeight: 1.5 }}>
-                        {recipients.length} recipients. Tap each one to send (browsers block bulk auto-open).
+                        {t('nRecipientsTapEach').replace('{n}', recipients.length)}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                         {recipients.map((r, i) => (
@@ -1122,7 +1122,7 @@ ${arrivingTomorrow.map(b => {
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                         }}
                       >
-                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> {isHi ? 'PDF डाउनलोड करें' : 'Download as PDF instead'}
+                        <Icon name="download" size={12} stroke={2} color={T.ink2} /> {t('downloadAsPdfInstead')}
                       </button>
                     </>
                   )}
@@ -1214,7 +1214,7 @@ ${arrivingTomorrow.map(b => {
         );
       })()}
 
-      {canDayClose && <DailyCloseCard todayBookings={today} isHi={isHi} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />}
+      {canDayClose && <DailyCloseCard todayBookings={today} isHi={isHi} t={t} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />}
 
       {statSheet && (() => {
         const map = {

@@ -28,7 +28,7 @@ function fmtDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
+export default function VoiceRecorder({ notes = [], onAdd, onRemove, t = (k) => k }) {
   const [recording, setRecording] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState('');
@@ -54,11 +54,11 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
   const start = async () => {
     setError('');
     if (notes.length >= MAX_NOTES) {
-      setError(`Up to ${MAX_NOTES} voice notes per booking. Delete one to add another.`);
+      setError(t('vnErrLimit').replace('{n}', MAX_NOTES));
       return;
     }
     if (!navigator.mediaDevices || !window.MediaRecorder) {
-      setError('Voice recording needs a modern browser with microphone support.');
+      setError(t('vnErrNoBrowser'));
       return;
     }
     try {
@@ -108,11 +108,11 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
       setRecording(false);
       setElapsedSec(0);
       if (e && e.name === 'NotAllowedError') {
-        setError('Mic access blocked. Enable it in your browser settings and try again.');
+        setError(t('vnErrBlocked'));
       } else if (e && e.name === 'NotFoundError') {
-        setError('No microphone found. Plug one in or use a device with a mic.');
+        setError(t('vnErrNoMic'));
       } else {
-        setError('Could not start recording: ' + (e?.message || 'unknown error'));
+        setError(t('vnErrGeneric') + (e?.message || t('vnErrUnknown')));
       }
     }
   };
@@ -140,8 +140,8 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
             {fmtDuration(n.durationSec)}
           </span>
           <button
-            onClick={() => { if (window.confirm("Delete this voice note? This can't be undone.")) onRemove && onRemove(n.id); }}
-            title="Delete this voice note"
+            onClick={() => { if (window.confirm(t('deleteVoiceNoteConfirm'))) onRemove && onRemove(n.id); }}
+            title={t('deleteVoiceNoteTitle')}
             style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', padding: 4 }}
           ><Icon name="x" size={13} /></button>
         </div>
@@ -158,7 +158,7 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
             animation: 'atithi-pulse 1.2s infinite',
           }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: T.danger }}>
-            Recording · {fmtDuration(elapsedSec)} / {fmtDuration(MAX_DURATION_SEC)}
+            {t('vnRecording')} · {fmtDuration(elapsedSec)} / {fmtDuration(MAX_DURATION_SEC)}
           </span>
           <button
             onClick={stop}
@@ -168,7 +168,7 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
               border: 'none', background: T.danger, color: '#fff',
               fontSize: 11, fontWeight: 700, cursor: 'pointer',
             }}
-          >Stop</button>
+          >{t('vnStop')}</button>
         </div>
       ) : (
         <button
@@ -185,7 +185,7 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
           }}
         >
           <Icon name="bell" size={13} color={notes.length >= MAX_NOTES ? T.ink3 : T.primaryDk} stroke={2.2} />
-          {notes.length === 0 ? 'Record voice note' : notes.length >= MAX_NOTES ? `${MAX_NOTES}-note limit reached` : 'Record another voice note'}
+          {notes.length === 0 ? t('vnRecord') : notes.length >= MAX_NOTES ? t('vnLimitReached').replace('{n}', MAX_NOTES) : t('vnRecordAnother')}
         </button>
       )}
 
@@ -197,7 +197,7 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
 
       {notes.length === 0 && !recording && !error && (
         <div style={{ fontSize: 10.5, color: T.ink3, fontStyle: 'italic', lineHeight: 1.5 }}>
-          Quick voice memo — e.g. "Guest mentioned a nut allergy", "Asked for late check-out", "Pickup at 6 PM tomorrow". Up to {MAX_DURATION_SEC}s, up to {MAX_NOTES} notes per booking.
+          {t('vnHint').replace('{sec}', MAX_DURATION_SEC).replace('{notes}', MAX_NOTES)}
         </div>
       )}
     </div>

@@ -113,12 +113,19 @@ export const BOOKINGS_SEED = [
 ];
 
 export const STATUS = {
-  confirmed:  { label: 'Confirmed',   color: 'oklch(58% 0.13 155)', bg: 'oklch(94% 0.05 155)' },
-  checkedin:  { label: 'Checked-in',  color: 'oklch(48% 0.14 265)', bg: 'oklch(94% 0.04 265)' },
-  checkout:   { label: 'Checked-out', color: 'oklch(55% 0.04 60)',  bg: 'oklch(95% 0.012 60)' },
-  tentative:  { label: 'On hold',     color: 'oklch(58% 0.14 75)',  bg: 'oklch(95% 0.05 75)' },
-  cancelled:  { label: 'Cancelled',   color: 'oklch(60% 0.04 60)',  bg: 'oklch(94% 0.01 60)' },
+  confirmed:  { label: 'Confirmed',   labelHi: 'कन्फर्म्ड', color: 'oklch(58% 0.13 155)', bg: 'oklch(94% 0.05 155)' },
+  checkedin:  { label: 'Checked-in',  labelHi: 'चेक-इन',    color: 'oklch(48% 0.14 265)', bg: 'oklch(94% 0.04 265)' },
+  checkout:   { label: 'Checked-out', labelHi: 'चेक-आउट',   color: 'oklch(55% 0.04 60)',  bg: 'oklch(95% 0.012 60)' },
+  tentative:  { label: 'On hold',     labelHi: 'होल्ड पर',  color: 'oklch(58% 0.14 75)',  bg: 'oklch(95% 0.05 75)' },
+  cancelled:  { label: 'Cancelled',   labelHi: 'रद्द',      color: 'oklch(60% 0.04 60)',  bg: 'oklch(94% 0.01 60)' },
 };
+
+// Localised status label — STATUS holds the colours/bg used everywhere; this
+// returns the right-language text. Hinglish (कन्फर्म्ड / होल्ड पर / चेक-इन …).
+export function statusLabel(status, lang) {
+  const s = STATUS[status] || STATUS.confirmed;
+  return lang === 'hi' ? (s.labelHi || s.label) : s.label;
+}
 
 export const CHANNELS = {
   direct:  { label: 'Direct',      color: 'oklch(60% 0.16 38)', short: 'D' },

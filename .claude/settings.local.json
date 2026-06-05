@@ -33,7 +33,11 @@
       "Bash(git --no-pager diff src/App.jsx)",
       "Bash(key)",
       "Bash(label)",
-      "Bash(powershell -NoProfile -Command \"\\(Get-Content src/i18n.js | Measure-Object -Line\\).Lines\")"
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content src/i18n.js | Measure-Object -Line\\).Lines\")",
+      "Bash(cd /c/atithi)",
+      "Bash(grep -c '    __TRACKED_VAR__:' src/i18n.js)",
+      "Bash(awk '/^  en: \\\\{/{f=1} /^  hi: \\\\{/{f=2} f==1{e++} f==2{h++} END{print \"en lines\",e,\"hi lines\",h}' src/i18n.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }

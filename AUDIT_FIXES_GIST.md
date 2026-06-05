@@ -5,23 +5,24 @@ Supabase, and what to sanity-check. Generated for the owner's review.
 
 ---
 
-## 1. What you need to paste into Supabase (do these 2)
+## 1. What you need to paste into Supabase
 
-You already pasted `20260607` (widget double-book guard) and `20260608`
-(security: stranger-can't-join-your-hotel). Two more are new since then —
-open each file from the repo, copy all, paste into **Supabase → SQL Editor →
-Run** (expect a green "Success"):
+You already pasted `20260607`–`20260610`. **One new required file** + **one
+optional file** since then — open each from the repo, copy all, paste into
+**Supabase → SQL Editor → Run** (expect a green "Success"):
 
-1. **`supabase/migrations/20260609_payment_collected_on.sql`**
-   Stores the real date a payment was collected, so the Reports money-by-day
-   numbers stay correct after a refresh (they could drift by a day for
-   late-night payments otherwise).
-2. **`supabase/migrations/20260610_coupon_privacy.sql`**
-   Stops your coupon codes from being readable by anyone who opens your
-   booking link, and switches coupon checks to a secure server lookup.
+1. **`supabase/migrations/20260611_enforce_permissions.sql`** ← required
+   Enforces staff permissions in the database (see §3 — this is R9-6, the
+   "what reception can/can't do is now real, not just hidden in the screen"
+   fix). **Designed so it can never lock you out** — your owner account always
+   has full access. Safe to re-run; has a one-line kill-switch in the file.
+2. **`supabase/migrations/20260612_widget_rate_limit.sql`** ← optional
+   A crude flood cap on the public booking link (see §3 — R9-5). Optional;
+   read the trade-off in the file header before deciding. Skip it if you'd
+   rather wait for the CAPTCHA approach I recommend below.
 
 Both are safe to re-run, and the app works fine even before you paste them
-(it falls back gracefully) — but paste them to get the full fix.
+(it falls back gracefully) — but paste `20260611` to get the permission fix.
 
 ---
 
@@ -69,17 +70,40 @@ gaps, etc.).
 
 ---
 
-## 3. Two items I deliberately did NOT rush (need a real decision/testing)
+## 3. The two items I'd flagged as "needs a decision" — now resolved
 
-- **Staff permissions enforced in the database (R9-6).** Today the limits on
-  what reception/manager staff can do are enforced in the screen only — a
-  technical person could bypass them. Enforcing this in the database is the
-  right fix, but doing it carelessly could lock *you* out of your own data, so
-  it needs careful design + testing of every role. Recommend a dedicated pass.
-- **Rate-limiting the public booking link (R9-5).** Stops a script from
-  flooding your diary with fake holds. The widget talks straight to Supabase
-  (not via the website host), so the fix is either a Supabase-level limit or a
-  CAPTCHA on the booking form — your call on which.
+**Staff permissions enforced in the database (R9-6) — DONE, lockout-safe.**
+Previously the limits on what reception/manager staff could do lived only in
+the screen, so a technical person could bypass them from the browser. Now
+`20260611_enforce_permissions.sql` enforces them in the database too. The
+design is built so it **cannot lock you out**:
+- Your **owner** account always has full access — the permission check returns
+  "yes" for the owner on everything, no matter how anything is configured.
+- Only *writing* is restricted; *reading* stays fully open, so a
+  mis-permissioned staffer can still see everything and you fix it in
+  Settings → Team.
+- It's *added on top of* the existing rules, so the kill-switch is just
+  "drop the new rules" (documented at the bottom of the file).
+- The database rules mirror the app's permission logic exactly, so screen and
+  database always agree.
+- **How to test safely:** invite a second email as *reception*, sign in as
+  them, confirm they can take a booking + payment but can't void an invoice or
+  change settings — while your owner account still does everything.
+
+**Rate-limiting the public booking link (R9-5) — my recommendation + an
+optional stopgap.** The booking widget talks **straight to Supabase**, not
+through your website host, so a Vercel/website-level limit can't see those
+calls — that rules out the "edge function" approach. The two real options:
+- **My recommendation: a CAPTCHA on the booking form** (Cloudflare Turnstile —
+  free, invisible for most users), verified inside the booking RPC. This stops
+  bots *without ever blocking a real guest*. It needs ~half a day of wiring +
+  a free Turnstile account. I'd do this when the public link goes live to real
+  traffic. **Tell me when you want it and I'll build it.**
+- **Optional stopgap now:** `20260612_widget_rate_limit.sql` caps website
+  holds at 40/property/hour. It's crude — because the RPC can't see the
+  visitor's IP, a flood that fills the cap would also briefly block real
+  guests. The cap is set high enough that normal traffic never trips it. Paste
+  it only if you want *some* ceiling before the CAPTCHA lands; otherwise skip.
 
 Neither is urgent for normal use; both matter more as the public booking link
 gets heavy traffic.

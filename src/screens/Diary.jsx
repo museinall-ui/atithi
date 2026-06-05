@@ -24,6 +24,10 @@ function initialsOf(name) {
 // first free unit in their roomTypeId during the booking's date range.
 // Cancelled bookings still produce instances (so the strike-through pill
 // renders) but don't reserve units against other bookings.
+// Stable empty array so RoomTypeBlocks for an empty room type get a constant
+// reference across renders (lets their useMemos cache).
+const EMPTY_INSTANCES = [];
+
 function expandToPillInstances(bookings, ROOM_TYPES) {
   // used[roomTypeId][unitIdx] = [{startIdx, endIdx}, ...]
   const used = {};
@@ -292,10 +296,27 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
   // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
   // pill instance. Used to decide whether to make the cell clickable for
   // quick-create.
-  const isOccupied = (ui, dayIdx) => instances.some(inst =>
-    inst.unitIdx === ui && inst.b.status !== 'cancelled' &&
-    inst.b.startIdx <= dayIdx && dayIdx < (inst.b.startIdx + (inst.b.nights || 1))
-  );
+  // P2 (perf): precompute occupied (unit:day) keys + per-unit pill lists ONCE
+  // per render instead of scanning all instances per (unit × day) cell and per
+  // unit row. Was O(units × days × instances) on every render incl. each drag move.
+  const occupiedSet = useMemo(() => {
+    const s = new Set();
+    for (const inst of instances) {
+      if (inst.b.status === 'cancelled') continue;
+      const start = inst.b.startIdx, end = inst.b.startIdx + (inst.b.nights || 1);
+      for (let d = start; d < end; d++) s.add(inst.unitIdx + ':' + d);
+    }
+    return s;
+  }, [instances]);
+  const instancesByUnit = useMemo(() => {
+    const m = new Map();
+    for (const inst of instances) {
+      const a = m.get(inst.unitIdx);
+      if (a) a.push(inst); else m.set(inst.unitIdx, [inst]);
+    }
+    return m;
+  }, [instances]);
+  const isOccupied = (ui, dayIdx) => occupiedSet.has(ui + ':' + dayIdx);
   const openQuickCreate = (date) => {
     // Gate on create_bookings so a Reception-only staffer (without
     // the perm) doesn't tap an empty cell, bounce to PermissionDenied,
@@ -370,8 +391,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                 />
               );
             })}
-            {instances
-              .filter(inst => inst.unitIdx === ui)
+            {(instancesByUnit.get(ui) || EMPTY_INSTANCES)
               // Hide pills whose stay ends before the first visible column
               // (their last night is before viewDaysStart). A past booking
               // that ended yesterday would otherwise render at a negative
@@ -540,6 +560,29 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
     () => expandToPillInstances(visibleBookings, ROOM_TYPES),
     [visibleBookings, ROOM_TYPES]
   );
+  // P1/P2 (perf): precompute occupancy + per-type grouping ONCE per render. The
+  // old code re-scanned pillInstances per day-column (occupancy header) and per
+  // (unit × day) cell (RoomTypeBlock.isOccupied) — O(days × units × instances),
+  // and it ran on every drag pointermove. These are single O(instances) passes
+  // the header + blocks then index into in O(1).
+  const occByDay = useMemo(() => {
+    const m = new Map();
+    for (const inst of pillInstances) {
+      if (inst.b.status === 'cancelled') continue;
+      const s = inst.b.startIdx, e = inst.b.startIdx + (inst.b.nights || 1);
+      for (let d = s; d < e; d++) m.set(d, (m.get(d) || 0) + 1);
+    }
+    return m;
+  }, [pillInstances]);
+  const totalRooms = useMemo(() => ROOM_TYPES.reduce((a, r) => a + r.units, 0), [ROOM_TYPES]);
+  const instancesByType = useMemo(() => {
+    const m = new Map();
+    for (const inst of pillInstances) {
+      const a = m.get(inst.roomTypeId);
+      if (a) a.push(inst); else m.set(inst.roomTypeId, [inst]);
+    }
+    return m;
+  }, [pillInstances]);
   const counts = {
     confirmed: bookings.filter(b => b.status === 'confirmed').length,
     hold:      bookings.filter(b => b.status === 'tentative').length,
@@ -791,13 +834,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>OCCUPANCY</div>
             </div>
             {viewDays.map((d) => {
-              // Each pill instance = one occupied unit on this day. So
-              // multi-room bookings correctly count as multiple rooms.
-              const occRooms = pillInstances.filter(inst =>
-                inst.b.status !== 'cancelled' &&
-                inst.b.startIdx <= d.idx && inst.b.startIdx + inst.b.nights > d.idx
-              ).length;
-              const totalRooms = ROOM_TYPES.reduce((a, r) => a + r.units, 0);
+              // P1: O(1) lookup from the precomputed per-day occupancy map
+              // (was an O(instances) filter per column).
+              const occRooms = occByDay.get(d.idx) || 0;
               const occ = totalRooms > 0 ? Math.round((occRooms / totalRooms) * 100) : 0;
               const isToday = d.iso === todayIso;
               return (
@@ -813,7 +852,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               key={rt.id} rt={rt}
               collapsed={collapsed[rt.id]}
               onToggle={() => setCollapsed(c => ({ ...c, [rt.id]: !c[rt.id] }))}
-              instances={pillInstances.filter(inst => inst.roomTypeId === rt.id)}
+              instances={instancesByType.get(rt.id) || EMPTY_INSTANCES}
               colW={colW} rowH={rowH} labelW={labelW}
               drag={drag}
               onPointerDown={onPointerDown}

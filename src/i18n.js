@@ -426,7 +426,7 @@ export const STRINGS = {
     diaryTitle: 'डायरी', diarySub: 'खींचकर बदलें · सेल पर टैप करके बुक करें',
     moveBooking: 'बुकिंग बदलें?', moveDesc: 'इससे रिज़र्वेशन अपडेट होगा और मेहमान को नया वाउचर भेजा जाएगा।',
     cancel: 'रद्द करें', confirmMove: 'पुष्टि करें', from: 'से', to: 'को',
-    newBooking: 'नई बुकिंग', stayDetails: 'ठहराव विवरण', pickRoom: 'कमरा चुनें', guest: 'मेहमान', payment: 'भुगतान',
+    newBooking: 'नई बुकिंग', stayDetails: 'ठहराव विवरण', pickRoom: 'कमरा चुनें', guest: 'मेहमान', payment: 'पेमेंट',
     step: 'चरण', of2: '/', when: 'कब', checkIn: 'चेक-इन', checkOut: 'चेक-आउट', nights: 'रातें',
     roomsGuests: 'कमरे और मेहमान', adults: 'वयस्क', children: 'बच्चे',
     blockRelease: 'ब्लॉक और ऑटो-रिलीज़', extras: 'अतिरिक्त सेवाएँ और नोट',
@@ -437,7 +437,7 @@ export const STRINGS = {
     edit: 'बदलें', editReservation: 'रिज़र्वेशन बदलें',
     stay: 'ठहराव', folio: 'फ़ोलियो', activity: 'गतिविधि',
     ratesTitle: 'दर और इन्वेंट्री', ratesSub: 'तारीख़ चुनें · खींचकर बढ़ाएँ',
-    bulkEdit: 'एक साथ बदलें', baseRate: 'मूल दर / रात',
+    bulkEdit: 'एक साथ बदलें', baseRate: 'बेस रेट / रात',
     dailyRate: 'दैनिक दर और उपलब्धता', selected: 'चुने',
     applyToSelection: 'चुनी तारीख़ों पर लागू करें', clearSelection: 'हटाएँ', selectAll: 'सब चुनें',
     setRate: 'दर सेट करें', closeOut: 'बंद करें', openDates: 'खोलें',
@@ -445,8 +445,8 @@ export const STRINGS = {
     inventory: 'इन्वेंट्री', avail: 'उपलब्ध',
     channelsTitle: 'चैनल मैनेजर', copyRates: 'दरें कॉपी करें',
     copyFromEngine: 'बुकिंग इंजन से कॉपी करें', copyTo: 'कॉपी करें',
-    websitePrice: 'वेबसाइट दर', otaPrice: 'OTA दर', sameAsWebsite: 'वेबसाइट जैसी ही',
-    customPrice: 'अलग दर', commission: 'कमीशन',
+    websitePrice: 'वेबसाइट प्राइस', otaPrice: 'OTA प्राइस', sameAsWebsite: 'वेबसाइट जैसी ही',
+    customPrice: 'कस्टम प्राइस', commission: 'कमीशन',
     roomsFreeMany: 'काफी कमरे खाली', roomsFreeTight: 'भर रहे हैं', roomsFreeNone: 'सब बुक',
     considerRaising: 'दर बढ़ाने का सोचें', indianHoliday: 'भारतीय त्यौहार', season: 'सीज़न',
     cellState: 'सेल स्थिति', roomsFree: 'खाली कमरे', extraMarkers: 'अतिरिक्त चिह्न',
@@ -464,11 +464,11 @@ export const STRINGS = {
     address: 'पता', city: 'शहर', state: 'राज्य', pincode: 'पिनकोड',
     checkInTime: 'चेक-इन समय', checkOutTime: 'चेक-आउट समय',
     contactPhone: 'फ़ोन', contactEmail: 'ईमेल', website: 'वेबसाइट',
-    roomCategories: 'कमरों की श्रेणी', addCategory: 'श्रेणी जोड़ें',
-    units: 'यूनिट', baseRateLabel: 'मूल दर',
-    houseRules: 'हाउस रूल्स', addRule: 'नियम जोड़ें',
+    roomCategories: 'रूम कैटेगरी', addCategory: 'कैटेगरी जोड़ें',
+    units: 'यूनिट', baseRateLabel: 'बेस रेट',
+    houseRules: 'हाउस रूल्स', addRule: 'रूल जोड़ें',
     rulesPlaceholder: 'जैसे: टेंट में बाहर का खाना मना है',
-    amenities: 'सुविधाएँ', wifi: 'वाई-फ़ाई', parking: 'पार्किंग', pool: 'पूल', restaurant: 'रेस्तरां',
+    amenities: 'एमेनिटीज़', wifi: 'वाई-फ़ाई', parking: 'पार्किंग', pool: 'पूल', restaurant: 'रेस्तरां',
     save: 'सहेजें', saved: 'सहेजा गया',
     planEngine: 'सिर्फ़ बुकिंग', planChannels: 'चैनल मैनेजर', planInvoicing: 'इनवॉइसिंग',
     planEngineDesc: 'सिर्फ़ डायरेक्ट बुकिंग',
@@ -501,14 +501,14 @@ export const STRINGS = {
     syncErrorTitle: 'बदलाव सहेजे नहीं गए',
     syncErrorHint: 'फिर कोशिश करेंगे। इंटरनेट देखें।',
     // Meal plans (Settings → Property profile → Meal plans)
-    mealPlansTitle: 'भोजन योजनाएँ',
+    mealPlansTitle: 'मील प्लान',
     mealPlansHint: 'नाम या कीमत बदलने के लिए टैप करें। यह कीमत प्रति-मेहमान प्रति-रात के हिसाब से कमरे की दर पर जोड़ी जाएगी। जो योजना आप नहीं देते उसे बंद कर दें — सिर्फ़ MAP देने वाले कैम्प EP बंद कर सकते हैं। EP/CP/MAP/AP के अलावा कुछ अलग चाहिए तो नीचे अपनी योजना जोड़ें।',
-    addCustomMealPlan: 'अपनी भोजन योजना जोड़ें',
-    mealPlanNamePlaceholder: 'योजना का नाम (जैसे: त्यौहार थाली)',
+    addCustomMealPlan: 'अपना मील प्लान जोड़ें',
+    mealPlanNamePlaceholder: 'प्लान का नाम (जैसे: फेस्टिवल थाली)',
     perGuestPerNight: '/ मेहमान / रात',
-    removeMealPlan: 'यह योजना हटाएँ',
+    removeMealPlan: 'यह प्लान हटाएँ',
     // NewBooking meal plan picker (Step 2)
-    mealPlanHeader: 'भोजन योजना',
+    mealPlanHeader: 'मील प्लान',
     mealPlanNoExtra: 'कोई अतिरिक्त शुल्क नहीं', mealPlanInRate: 'किराये में शामिल',
     // Repeat-guest banner (NewBooking Step 3)
     repeatGuestQ: 'पुराने मेहमान?',
@@ -836,3 +836,9 @@ export const STRINGS = {
 };
 
 export const useT = (lang) => (k) => (STRINGS[lang] && STRINGS[lang][k]) || STRINGS.en[k] || k;
+
+// Q4: date/time locale that follows the app language, so month + weekday names
+// render in Hindi when the UI is Hindi (digits are identical either way). Pass
+// the t() fn; we detect Hindi via a known key rather than threading lang
+// through every screen. CSV/CA-export dates stay 'en-IN' on purpose.
+export const dateLoc = (t) => ((t && t('home') === 'होम') ? 'hi-IN' : 'en-IN');

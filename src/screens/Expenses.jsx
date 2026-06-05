@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
+import { dateLoc } from '../i18n.js';
 import { ANCHOR, ymd } from '../data.js';
 import { buildCsv, downloadCsv } from '../utils/csv.js';
 import Icon from '../components/Icon.jsx';
@@ -40,7 +41,7 @@ function lastOfMonth(d) {
 
 // Native-date pill — same pattern Reports and Diary use so a tap
 // anywhere on the bar opens the OS date picker reliably.
-function DatePill({ value, onChange, label }) {
+function DatePill({ value, onChange, label, loc = 'en-IN' }) {
   const ref = useRef(null);
   const open = () => {
     const el = ref.current;
@@ -50,7 +51,7 @@ function DatePill({ value, onChange, label }) {
   };
   const filled = !!value;
   const display = filled
-    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(value + 'T00:00:00').toLocaleDateString(loc, { day: '2-digit', month: 'short', year: 'numeric' })
     : label;
   return (
     <div
@@ -223,7 +224,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
 
           {/* Date + paid-via row */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <DatePill value={date} onChange={setDate} label={t('expDate')} />
+            <DatePill value={date} onChange={setDate} label={t('expDate')} loc={dateLoc(t)} />
           </div>
 
           {/* Category picker — defaults + custom (with × delete on custom)
@@ -343,9 +344,9 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
         <SectionHead title={t('ledger')} />
         <Card padding={12} style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} loc={dateLoc(t)} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} loc={dateLoc(t)} />
           </div>
           {summary.total > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -379,7 +380,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
           <Card padding={0}>
             {filtered.map((e, i, arr) => {
               const c = CATEGORIES.find(c => c.id === e.category) || { label: e.category, icon: 'tag' };
-              const dateLabel = new Date(e.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+              const dateLabel = new Date(e.date + 'T00:00:00').toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short' });
               return (
                 <div key={e.id} style={{
                   padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10,

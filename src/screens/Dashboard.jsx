@@ -225,7 +225,7 @@ function SetupNudge({ property, plan = 'engine', go, isHi }) {
     ...(plan === 'invoicing' ? [
       { id: 'ca',    en: "CA's email (for monthly export)",     hi: 'CA का ईमेल (मासिक एक्सपोर्ट)', done: !!(property?.accountant?.email?.trim()) },
     ] : []),
-    { id: 'rooms',   en: 'At least one room category',          hi: 'कम-से-कम एक कमरा श्रेणी',     done: Array.isArray(property?.categories) && property.categories.length > 0 },
+    { id: 'rooms',   en: 'At least one room category',          hi: 'कम-से-कम एक रूम कैटेगरी',     done: Array.isArray(property?.categories) && property.categories.length > 0 },
   ];
   const done = items.filter(i => i.done).length;
   const total = items.length;
@@ -827,7 +827,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
 
       {pendingPayments.length > 0 && (
         <div style={{ padding: '0 16px 14px' }}>
-          <SectionHead title={isHi ? 'बकाया भुगतान' : 'Pending payments'} action={
+          <SectionHead title={isHi ? 'बकाया पेमेंट' : 'Pending payments'} action={
             <span className="tnum" style={{ fontSize: 11, fontWeight: 700, color: T.danger }}>
               ₹{pendingTotal.toLocaleString('en-IN')} {isHi ? 'बाकी' : 'due'}
             </span>
@@ -1251,7 +1251,7 @@ ${arrivingTomorrow.map(b => {
               </div>
               {cfg.list.length === 0 ? (
                 <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: T.ink3, fontStyle: 'italic' }}>
-                  {isHi ? 'इस श्रेणी में अभी कोई बुकिंग नहीं है।' : 'No bookings in this group right now.'}
+                  {isHi ? 'इस ग्रुप में अभी कोई बुकिंग नहीं है।' : 'No bookings in this group right now.'}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

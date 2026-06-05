@@ -1039,7 +1039,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               });
-              const dPlural = selCount === 1 ? '' : 's';
+              const dPlural = (lang === 'hi' || selCount === 1) ? '' : 's'; // Q4: no Latin 's' on the Hindi noun
               const hintTpl = N === total ? t('inventoryAllOpen')
                 : N === 0 ? t('inventoryAllClosed')
                 : t('inventoryHint');

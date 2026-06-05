@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef } from 'react';
 import { T } from '../tokens.js';
+import { dateLoc } from '../i18n.js';
 import { DAYS, ANCHOR, ymd, idxToDate, dateToIdx, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
 import { exportInvoiceList, emailToAccountant, sendInvoiceListViaResend } from '../utils/invoiceExport.js';
 import { buildCsv, downloadCsv } from '../utils/csv.js';
@@ -60,7 +61,7 @@ function lastOfMonth(d) {
 // Tap-to-open date pill, same pattern Diary / NewBooking use. Wraps a
 // native date input with our brand-styled chrome so taps reliably
 // trigger the OS picker on every browser.
-function DatePill({ value, onChange, label }) {
+function DatePill({ value, onChange, label, loc = 'en-IN' }) {
   const ref = useRef(null);
   const open = () => {
     const el = ref.current;
@@ -70,7 +71,7 @@ function DatePill({ value, onChange, label }) {
   };
   const filled = !!value;
   const display = filled
-    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(value + 'T00:00:00').toLocaleDateString(loc, { day: '2-digit', month: 'short', year: 'numeric' })
     : label;
   return (
     <div
@@ -351,8 +352,8 @@ function PnLCard({ pnl, rangeLabel, rangeStart, rangeEnd, property, expenseCateg
             {visibleDays.map(d => {
               const dateObj = new Date(d.iso + 'T00:00:00');
               const isToday = d.iso === ymd(new Date(ANCHOR));
-              const dayLabel = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-              const dowLabel = dateObj.toLocaleDateString('en-IN', { weekday: 'short' });
+              const dayLabel = dateObj.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short' });
+              const dowLabel = dateObj.toLocaleDateString(dateLoc(t), { weekday: 'short' });
               const pColor = d.profit > 0 ? T.ok : d.profit < 0 ? T.danger : T.ink3;
               return (
                 <div
@@ -431,10 +432,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const s = new Date(rangeStart + 'T00:00:00');
     const e = new Date(rangeEnd + 'T00:00:00');
     const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth();
-    if (sameMonth) return s.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    if (sameMonth) return s.toLocaleDateString(dateLoc(t), { month: 'long', year: 'numeric' });
     const sameYear = s.getFullYear() === e.getFullYear();
-    if (sameYear) return `${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${e.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-    return `${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} – ${e.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    if (sameYear) return `${s.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short' })} – ${e.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    return `${s.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short', year: 'numeric' })} – ${e.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short', year: 'numeric' })}`;
   })();
   // Shortcut buttons jump the range to a common preset.
   const setRangeToMonth = (delta = 0) => {
@@ -703,9 +704,9 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         <Card padding={12} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('reportPeriod')}</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} loc={dateLoc(t)} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} loc={dateLoc(t)} />
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
@@ -1104,7 +1105,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
               const dayIdx = rangeStartIdx + i;
               const dateObj = new Date(idxToDate(dayIdx) + 'T00:00:00');
               const isToday = dayIdx === 0;
-              const label = `${dateObj.getDate()} ${dateObj.toLocaleDateString('en-IN', { month: 'short' })} · ${v}%`;
+              const label = `${dateObj.getDate()} ${dateObj.toLocaleDateString(dateLoc(t), { month: 'short' })} · ${v}%`;
               return (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <div style={{

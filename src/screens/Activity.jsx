@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
+import { dateLoc } from '../i18n.js';
 import { ANCHOR, ymd } from '../data.js';
 import { loadActivity } from '../cloud/activity.js';
 import Icon from '../components/Icon.jsx';
@@ -100,10 +101,10 @@ function relativeTime(iso, t) {
   if (delta < 60) return t('justNow');
   if (delta < 3600) return Math.round(delta / 60) + t('minAgo');
   if (delta < 86400) return Math.round(delta / 3600) + t('hourAgo');
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleDateString(dateLoc(t), { day: '2-digit', month: 'short' }) + ' · ' + d.toLocaleTimeString(dateLoc(t), { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function DatePill({ value, onChange, label }) {
+function DatePill({ value, onChange, label, loc = 'en-IN' }) {
   const ref = useRef(null);
   const open = () => {
     const el = ref.current;
@@ -113,7 +114,7 @@ function DatePill({ value, onChange, label }) {
   };
   const filled = !!value;
   const display = filled
-    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(value + 'T00:00:00').toLocaleDateString(loc, { day: '2-digit', month: 'short', year: 'numeric' })
     : label;
   return (
     <div onClick={open} style={{ flex: 1, position: 'relative', height: 38, background: filled ? T.primaryLt : T.bgSoft, border: `1px solid ${filled ? T.primary : T.border}`, borderRadius: 8, cursor: 'pointer', minWidth: 0 }}>
@@ -194,9 +195,9 @@ export default function Activity({ go, t, propertyId, session }) {
         <Card padding={12} style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('activityRange')}</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} loc={dateLoc(t)} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} loc={dateLoc(t)} />
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
@@ -257,7 +258,7 @@ export default function Activity({ go, t, propertyId, session }) {
           grouped.map(([day, rows]) => {
             const dateObj = new Date(day + 'T00:00:00');
             const isToday = day === ymd(new Date(ANCHOR));
-            const heading = isToday ? t('today') : dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+            const heading = isToday ? t('today') : dateObj.toLocaleDateString(dateLoc(t), { weekday: 'short', day: '2-digit', month: 'short' });
             return (
               <div key={day} style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6, textTransform: 'uppercase' }}>{heading}</div>

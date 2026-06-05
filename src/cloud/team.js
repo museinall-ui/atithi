@@ -61,6 +61,23 @@ export async function revokeInvite(inviteId) {
   if (error) throw error;
 }
 
+// R10-D1: re-fetch just THIS user's role + permissions for a property. Used to
+// refresh the running session's RBAC when the user re-focuses the tab, so an
+// owner changing a staffer's permissions takes effect without a full sign-out.
+// Returns { role, permissions } or null if the membership is gone (removed).
+export async function loadMyMembership(userId, propertyId) {
+  if (!userId || !propertyId) return null;
+  const { data, error } = await supabase
+    .from('memberships')
+    .select('role, permissions')
+    .eq('user_id', userId)
+    .eq('property_id', propertyId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
 // Change an existing member's role.
 export async function setMemberRole(membershipId, role) {
   const { error } = await supabase

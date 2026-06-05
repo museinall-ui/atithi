@@ -1150,6 +1150,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     const endIso = checkOutIso.replace(/-/g, '');
                     const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
                     const loc = [property?.profile?.city, property?.profile?.state].filter(Boolean).join(', ');
+                    // R10-D4: escape user-controlled fields per RFC 5545 so a
+                    // comma / semicolon / backslash / newline in a property or
+                    // room name can't break the .ics structure. Backslash first.
+                    const icalEsc = (s) => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
                     const ics = [
                       'BEGIN:VCALENDAR',
                       'VERSION:2.0',
@@ -1161,9 +1165,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                       `DTSTAMP:${stamp}`,
                       `DTSTART;VALUE=DATE:${startIso}`,
                       `DTEND;VALUE=DATE:${endIso}`,
-                      `SUMMARY:${propName} · Stay (${createdBookingId})`,
-                      loc ? `LOCATION:${loc}` : '',
-                      `DESCRIPTION:Booking reference ${createdBookingId}\\n${data.nights} night${data.nights > 1 ? 's' : ''} · ${guestsStr}\\nRoom: ${selectedRT?.name || ''}\\nTotal: ₹${total.toLocaleString('en-IN')}`,
+                      `SUMMARY:${icalEsc(propName)} · Stay (${createdBookingId})`,
+                      loc ? `LOCATION:${icalEsc(loc)}` : '',
+                      `DESCRIPTION:Booking reference ${createdBookingId}\\n${data.nights} night${data.nights > 1 ? 's' : ''} · ${icalEsc(guestsStr)}\\nRoom: ${icalEsc(selectedRT?.name || '')}\\nTotal: ₹${total.toLocaleString('en-IN')}`,
                       'END:VEVENT',
                       'END:VCALENDAR',
                     ].filter(Boolean).join('\r\n');

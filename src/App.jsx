@@ -17,7 +17,7 @@ import {
 import {
   loadExpenses, addExpenseCloud, removeExpenseCloud, updateExpenseCloud,
 } from './cloud/expenses.js';
-import { acceptPendingInvitesForUser } from './cloud/team.js';
+import { acceptPendingInvitesForUser, loadMyMembership } from './cloud/team.js';
 import { logActivity } from './cloud/activity.js';
 import { effectivePermissions } from './components/TeamSection.jsx';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
@@ -569,30 +569,45 @@ export default function App() {
   }, [undoState]);
   const undoLast = () => {
     if (!undoState) return;
-    const { bookingId, previousStatus, previousReleaseTs, previousReleaseAt, previousAutoReleased } = undoState;
-    let nextEvents = null;
+    // R10-D5: a batch auto-release carries items[]; a single cancel carries the
+    // flat fields. Normalise to a list so Undo restores every affected booking.
+    const list = Array.isArray(undoState.items) && undoState.items.length
+      ? undoState.items
+      : [{
+          bookingId: undoState.bookingId,
+          previousStatus: undoState.previousStatus,
+          previousReleaseTs: undoState.previousReleaseTs,
+          previousReleaseAt: undoState.previousReleaseAt,
+          previousAutoReleased: undoState.previousAutoReleased,
+        }];
+    const byId = new Map(list.map(it => [it.bookingId, it]));
+    const eventsById = {};
     setBookings(arr => arr.map(b => {
-      if (b.id !== bookingId) return b;
-      const evt = { kind: 'status', text: `Restored from cancellation (was ${previousStatus})`, time: new Date().toISOString() };
-      nextEvents = [...(Array.isArray(b.events) ? b.events : []), evt];
+      const it = byId.get(b.id);
+      if (!it) return b;
+      const evt = { kind: 'status', text: `Restored from cancellation (was ${it.previousStatus})`, time: new Date().toISOString() };
+      const events = [...(Array.isArray(b.events) ? b.events : []), evt];
+      eventsById[b.id] = events;
       return {
         ...b,
-        status: previousStatus,
-        releaseTs: previousReleaseTs,
-        releaseAt: previousReleaseAt,
-        autoReleased: previousAutoReleased,
-        events: nextEvents,
+        status: it.previousStatus,
+        releaseTs: it.previousReleaseTs,
+        releaseAt: it.previousReleaseAt,
+        autoReleased: it.previousAutoReleased,
+        events,
       };
     }));
     if (cloudReady && propertyId) {
-      const patch = {
-        status: previousStatus,
-        releaseTs: previousReleaseTs || null,
-        releaseAt: previousReleaseAt || null,
-        autoReleased: previousAutoReleased,
-      };
-      if (nextEvents) patch.events = nextEvents;
-      syncFire('Undo cancellation', updateBookingCloud(bookingId, patch));
+      list.forEach(it => {
+        const patch = {
+          status: it.previousStatus,
+          releaseTs: it.previousReleaseTs || null,
+          releaseAt: it.previousReleaseAt || null,
+          autoReleased: it.previousAutoReleased,
+        };
+        if (eventsById[it.bookingId]) patch.events = eventsById[it.bookingId];
+        syncFire('Undo cancellation', updateBookingCloud(it.bookingId, patch));
+      });
     }
     setUndoState(null);
   };
@@ -772,6 +787,36 @@ export default function App() {
       window.removeEventListener('focus', checkStale);
     };
   }, []);
+
+  // R10-D1: refresh THIS user's role + permissions when they return to the tab.
+  // currentMember otherwise only loads on user.id change, so an owner changing a
+  // staffer's permissions wouldn't take effect on the staffer's open session
+  // until they fully signed out. Re-fetching on focus closes that gap (and so
+  // the UI gates match the DB rules promptly). No-op in DEMO (no session).
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid || !propertyId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const m = await loadMyMembership(uid, propertyId);
+        if (cancelled || !m) return;
+        setCurrentMember(prev => {
+          const same = prev && prev.role === m.role
+            && JSON.stringify(prev.permissions || []) === JSON.stringify(Array.isArray(m.permissions) ? m.permissions : []);
+          return same ? prev : { role: m.role, permissions: Array.isArray(m.permissions) ? m.permissions : [] };
+        });
+      } catch { /* keep current perms on a transient failure */ }
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [session?.user?.id, propertyId]);
 
   // Cloud load / bootstrap. Runs whenever the signed-in user changes. On
   // first sign-in we seed the cloud property + bookings from the current
@@ -1078,6 +1123,16 @@ export default function App() {
           previousReleaseTs: c.previousReleaseTs,
           previousReleaseAt: c.previousReleaseAt,
           previousAutoReleased: false,
+          // R10-D5: carry EVERY hold released this tick so Undo restores all of
+          // them, not just the first. A phone waking from sleep can expire
+          // several holds at once; previously only changed[0] was recoverable.
+          items: changed.map(x => ({
+            bookingId: x.id,
+            previousStatus: x.previousStatus,
+            previousReleaseTs: x.previousReleaseTs,
+            previousReleaseAt: x.previousReleaseAt,
+            previousAutoReleased: false,
+          })),
           // 30s window — twice the manual cancel because the auto-
           // release surprised them.
           expiresAt: Date.now() + 30 * 1000,
@@ -1681,7 +1736,7 @@ export default function App() {
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} can={can} />; break;
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} session={session} propertyId={propertyId} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
-    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
+    case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} bookings={bookings} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;

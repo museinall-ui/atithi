@@ -140,7 +140,7 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove }) {
             {fmtDuration(n.durationSec)}
           </span>
           <button
-            onClick={() => onRemove && onRemove(n.id)}
+            onClick={() => { if (window.confirm("Delete this voice note? This can't be undone.")) onRemove && onRemove(n.id); }}
             title="Delete this voice note"
             style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', padding: 4 }}
           ><Icon name="x" size={13} /></button>

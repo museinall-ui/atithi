@@ -319,7 +319,7 @@ function AccordionGroup({ title, hint, open, onToggle, children }) {
   );
 }
 
-function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, session, propertyId }) {
+function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, bookings = [], session, propertyId }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
@@ -1050,7 +1050,16 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               <div key={c.id} style={{ padding: 12, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input value={c.name} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, name: e.target.value } : x))} style={{ flex: 1, border: `1px solid ${T.borderSoft}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: T.ink, background: T.card }} />
-                  <button onClick={() => setCategories(arr => arr.filter(x => x.id !== c.id))} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
+                  <button onClick={() => {
+                    // R10-D2: deleting a category that still has live bookings
+                    // orphans them (they lose their room type → show "—" and
+                    // fall out of availability/occupancy). Warn with the count.
+                    const inUse = (bookings || []).filter(b => b.status !== 'cancelled' && (b.roomTypeId === c.id || (Array.isArray(b.roomItems) && b.roomItems.some(ri => ri.roomTypeId === c.id)))).length;
+                    const msg = inUse > 0
+                      ? `${inUse} active booking${inUse > 1 ? 's' : ''} still use "${c.name || 'this room type'}". Deleting it leaves them without a room type (they'll show "—" and drop out of availability). Delete anyway?`
+                      : `Delete room category "${c.name || 'this room type'}"?`;
+                    if (window.confirm(msg)) setCategories(arr => arr.filter(x => x.id !== c.id));
+                  }} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '6px 8px' }}>
@@ -2810,7 +2819,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   );
 }
 
-export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, t, session, propertyId, onSignOut, can = () => true }) {
+export default function Settings({ go, plan = 'engine', onChangePlan, lang, onChangeLang, property, onChangeProperty, savedExtras = [], onChangeSavedExtras, bookings = [], t, session, propertyId, onSignOut, can = () => true }) {
   // RBAC. manage_settings gates the property-profile EDIT sheet; the
   // card itself stays visible so non-settings members still see basic
   // property info (name, GSTIN status, room count). Plan picker stays
@@ -3112,7 +3121,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         )}
       </div>
 
-      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} bookings={bookings} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
 
       {/* Upgrade-tier popup. Shown when the hotelier taps a paid tier
           (Channels or Invoicing) in the plan selector. We don't have

@@ -216,3 +216,28 @@ export async function insertWidgetBooking(propertyId, booking) {
   // guest's confirmation screen.
   return null;
 }
+
+// Validate a single coupon code server-side (R9-4). The public property
+// lookup no longer ships the coupon book to the browser, so the cloud widget
+// checks codes one at a time via the validate_coupon RPC. Returns
+// { ok:true, code, discount } when valid, else { ok:false, reason }. If the
+// RPC isn't installed yet (migration not pasted) we return ok:false so the
+// guest just gets no discount — never a blocked booking.
+export async function validateCouponCloud(propertyId, code, nights) {
+  if (!propertyId || !code || !code.trim()) return { ok: false, reason: 'empty' };
+  try {
+    const { data, error } = await supabase.rpc('validate_coupon', {
+      p_property_id: propertyId,
+      p_code: code.trim(),
+      p_nights: nights || 1,
+    });
+    if (error) {
+      console.warn('[atithi widget] validate_coupon failed (migration pasted?)', error);
+      return { ok: false, reason: 'unavailable' };
+    }
+    return data || { ok: false, reason: 'invalid' };
+  } catch (e) {
+    console.warn('[atithi widget] validate_coupon error', e);
+    return { ok: false, reason: 'unavailable' };
+  }
+}

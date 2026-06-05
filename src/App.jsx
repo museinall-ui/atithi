@@ -26,7 +26,7 @@ import SearchOverlay from './components/SearchOverlay.jsx';
 import InstallPrompt from './components/InstallPrompt.jsx';
 import Icon from './components/Icon.jsx';
 import PublicBookingWidget from './screens/PublicBookingWidget.jsx';
-import { loadPropertyBySlug, loadWidgetInventory, insertWidgetBooking } from './cloud/widget.js';
+import { loadPropertyBySlug, loadWidgetInventory, insertWidgetBooking, validateCouponCloud } from './cloud/widget.js';
 import TabBar from './components/TabBar.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Diary from './screens/Diary.jsx';
@@ -471,6 +471,7 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
         rateOverrides={widgetOverrides || {}}
         savedCustomExtras={fallbackExtras || []}
         onSubmit={handleSubmit}
+        validateCoupon={cloudProperty ? (code, nights) => validateCouponCloud(cloudProperty.id, code, nights) : undefined}
       />
     </div>
   );

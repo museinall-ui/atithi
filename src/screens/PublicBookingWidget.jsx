@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
 import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
@@ -24,7 +24,7 @@ import { generateVoucher } from '../utils/voucher.js';
 // through a Supabase anon RLS policy that allows status='tentative'
 // inserts but rejects everything else — that policy work is queued.
 
-export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, savedCustomExtras = [], onSubmit }) {
+export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, savedCustomExtras = [], onSubmit, validateCoupon }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const ratePlans = effectiveRatePlans(property);
   const mealPlans = effectiveMealPlans(property).filter(mp => mp.enabled);
@@ -244,19 +244,44 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // expiry / min-nights / max-uses. Anything failing returns null so
   // the discount silently goes to ₹0 (with an error shown next to the
   // input). Case-insensitive match against property.coupons[].code.
+  // R9-4: cloud coupon validation. The public property lookup no longer ships
+  // the coupon book to the browser, so when a validateCoupon callback is
+  // provided (cloud mode) we validate the entered code server-side, debounced.
+  // Demo / local still validates synchronously against property.coupons.
+  const [serverCoupon, setServerCoupon] = useState(null); // { ok, code, discount, reason, forCode }
+  useEffect(() => {
+    if (!validateCoupon) return;
+    const code = (data.couponCode || '').trim();
+    if (!code) { setServerCoupon(null); return; }
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      const res = await validateCoupon(code, data.nights);
+      if (!cancelled) setServerCoupon({ ...(res || { ok: false }), forCode: code });
+    }, 450);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [validateCoupon, data.couponCode, data.nights]);
+
   const activeCoupon = (() => {
     const code = (data.couponCode || '').trim().toUpperCase();
     if (!code) return null;
     const coupons = Array.isArray(property?.coupons) ? property.coupons : [];
-    const c = coupons.find(x => (x.code || '').toUpperCase() === code && x.enabled !== false);
-    if (!c) return null;
-    if (c.expiryIso) {
-      const todayIso = ymd(new Date(ANCHOR));
-      if (todayIso > c.expiryIso) return null;
+    if (coupons.length) {
+      // Local / demo: validate against the in-memory coupon list.
+      const c = coupons.find(x => (x.code || '').toUpperCase() === code && x.enabled !== false);
+      if (!c) return null;
+      if (c.expiryIso) {
+        const todayIso = ymd(new Date(ANCHOR));
+        if (todayIso > c.expiryIso) return null;
+      }
+      if (c.minNights && (data.nights || 0) < c.minNights) return null;
+      if (c.maxUses && (c.usedCount || 0) >= c.maxUses) return null;
+      return c;
     }
-    if (c.minNights && (data.nights || 0) < c.minNights) return null;
-    if (c.maxUses && (c.usedCount || 0) >= c.maxUses) return null;
-    return c;
+    // Cloud: use the validate_coupon RPC result for the current code.
+    if (validateCoupon && serverCoupon && serverCoupon.ok && (serverCoupon.forCode || '').toUpperCase() === code) {
+      return { code: serverCoupon.code || code, discount: serverCoupon.discount };
+    }
+    return null;
   })();
   // R8-5: extra-adult / extra-child surcharge (per-category rules) — the
   // widget previously omitted this entirely, so a guest booking over base
@@ -903,7 +928,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 change to the input re-validates. If valid, summary
                 shows the discount line; if not (and the input is
                 non-empty), a small red error appears. */}
-            {Array.isArray(property?.coupons) && property.coupons.length > 0 && (
+            {((Array.isArray(property?.coupons) && property.coupons.length > 0) || !!validateCoupon) && (
               <>
                 <SectionTitle style={{ marginTop: 18 }}>Have a coupon code?</SectionTitle>
                 <Card>
@@ -930,13 +955,25 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                   </div>
                   {data.couponCode && !activeCoupon && (() => {
                     const code = data.couponCode.toUpperCase();
-                    const c = (property.coupons || []).find(x => (x.code || '').toUpperCase() === code);
-                    let reason = "Code not recognised";
-                    if (c) {
-                      if (c.enabled === false) reason = "This code is disabled";
-                      else if (c.expiryIso && ymd(new Date(ANCHOR)) > c.expiryIso) reason = `This code expired on ${c.expiryIso}`;
-                      else if (c.minNights && (data.nights || 0) < c.minNights) reason = `Minimum stay for this code is ${c.minNights} nights`;
-                      else if (c.maxUses && (c.usedCount || 0) >= c.maxUses) reason = "This code has reached its usage limit";
+                    const localCoupons = Array.isArray(property?.coupons) ? property.coupons : [];
+                    let reason = 'Code not recognised';
+                    if (localCoupons.length) {
+                      const c = localCoupons.find(x => (x.code || '').toUpperCase() === code);
+                      if (c) {
+                        if (c.enabled === false) reason = 'This code is disabled';
+                        else if (c.expiryIso && ymd(new Date(ANCHOR)) > c.expiryIso) reason = `This code expired on ${c.expiryIso}`;
+                        else if (c.minNights && (data.nights || 0) < c.minNights) reason = `Minimum stay for this code is ${c.minNights} nights`;
+                        else if (c.maxUses && (c.usedCount || 0) >= c.maxUses) reason = 'This code has reached its usage limit';
+                      }
+                    } else if (validateCoupon) {
+                      // Cloud: wait for the server result for THIS code before
+                      // showing anything (avoids flashing an error mid-typing).
+                      if (!serverCoupon || (serverCoupon.forCode || '').toUpperCase() !== code) return null;
+                      const r = serverCoupon.reason;
+                      if (r === 'unavailable') return null; // couldn't reach validator — don't scare the guest
+                      else if (r === 'expired') reason = 'This code has expired';
+                      else if (r === 'minNights') reason = `Minimum stay for this code is ${serverCoupon.minNights || ''} nights`;
+                      else if (r === 'maxUses') reason = 'This code has reached its usage limit';
                     }
                     return <div style={{ marginTop: 6, fontSize: 11, color: T.danger, fontWeight: 600 }}>{reason}</div>;
                   })()}

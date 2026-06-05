@@ -27,6 +27,7 @@ import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 import ExtendOptions from '../components/ExtendOptions.jsx';
 import VoiceRecorder from '../components/VoiceRecorder.jsx';
+import { useSheetDismiss } from '../components/useSheetDismiss.js';
 
 // Method labels resolved via t() at render. The ids are stable; only the
 // displayed text is localised. methodLabelFor / methodOptionsFor are the
@@ -42,6 +43,7 @@ const methodOptionsFor = (t) => [
 ];
 
 function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty, canManageSettings, t }) {
+  useSheetDismiss(true, onClose); // Q3: Android Back / Esc closes it; locks bg scroll
   const isRefund = kind === 'refund';
   const isCredit = kind === 'credit';
   const defaultAmt = isRefund || isCredit ? (balance < 0 ? Math.abs(balance) : '') : (balance > 0 ? balance : '');
@@ -269,6 +271,7 @@ function fmtIssued(iso) {
 //   * exclusive: the entered amount is pre-tax; CGST + SGST (half the rate
 //     each) are added on top to compute the invoice total.
 function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, onIssue, t }) {
+  useSheetDismiss(true, onClose); // Q3: Android Back / Esc closes it; locks bg scroll
   const [name, setName] = useState(booking.guest || '');
   const [gstin, setGstin] = useState('');
   const [amount, setAmount] = useState(defaultAmount != null ? defaultAmount : (booking.total || 0));

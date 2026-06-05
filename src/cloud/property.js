@@ -266,6 +266,24 @@ export async function bootstrapProperty(user, seedLocalProperty) {
 // ones (matched by `code`).
 export async function saveCloudProperty(propertyId, localProperty) {
   const propData = localToCloudProperty(localProperty);
+  // R8-15: never let a routine property save roll back the invoice counter.
+  // issue_invoice() (the DB RPC) is the authoritative writer; a stale device
+  // editing any other field would otherwise blind-overwrite the per-FY counter
+  // with an old value, so the next invoice reuses a seq (unique violation /
+  // broken gap-free numbering). Read the server's current counters and write
+  // per-FY MAX(server, local) — the counter only ever moves forward. The
+  // Settings "last invoice number" setter still works to RAISE it.
+  try {
+    const { data: cur } = await supabase
+      .from('properties').select('invoice_counters').eq('id', propertyId).single();
+    const serverCounters = (cur && cur.invoice_counters) || {};
+    const localCounters = propData.invoice_counters || {};
+    const merged = { ...serverCounters };
+    for (const fy of Object.keys(localCounters)) {
+      merged[fy] = Math.max(+serverCounters[fy] || 0, +localCounters[fy] || 0);
+    }
+    propData.invoice_counters = merged;
+  } catch { /* read failed — fall back to the local value (prior behaviour) */ }
   const { error: pErr } = await supabase
     .from('properties')
     .update(propData)
@@ -275,6 +293,12 @@ export async function saveCloudProperty(propertyId, localProperty) {
   const newList = Array.isArray(localProperty && localProperty.categories)
     ? localProperty.categories
     : [];
+  // Safety guard: if the incoming list is empty, treat it as "no category
+  // change" rather than "delete every category". A transient empty
+  // categories array (a loader blip, a future edit path that clears before
+  // repopulating) would otherwise permanently wipe all room_categories +
+  // their rates/amenities/photos via the DELETE below.
+  if (newList.length === 0) return;
   const newCodes = new Set(newList.map(c => c.id));
 
   const { data: existing, error: eErr } = await supabase

@@ -33,6 +33,7 @@ supabase/migrations/20260609_payment_collected_on.sql              ← payments.
 supabase/migrations/20260610_coupon_privacy.sql                    ← coupon codes no longer leak to the public; secure server-side coupon check
 supabase/migrations/20260611_enforce_permissions.sql               ← ⚠️ RBAC: staff permissions enforced in the DB (owner always safe — can't be locked out)
 supabase/migrations/20260612_widget_rate_limit.sql                 ← OPTIONAL: per-property flood cap on the public booking link (see file header for the trade-off)
+supabase/migrations/20260613_rbac_consistency_fixes.sql            ← ⚠️ RBAC follow-up: fixes payment/day-close/invoice permission mismatches (paste AFTER 20260611)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).

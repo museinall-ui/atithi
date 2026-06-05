@@ -16,13 +16,20 @@ optional file** since then — open each from the repo, copy all, paste into
    "what reception can/can't do is now real, not just hidden in the screen"
    fix). **Designed so it can never lock you out** — your owner account always
    has full access. Safe to re-run; has a one-line kill-switch in the file.
-2. **`supabase/migrations/20260612_widget_rate_limit.sql`** ← optional
+2. **`supabase/migrations/20260613_rbac_consistency_fixes.sql`** ← required, paste AFTER 20260611
+   The round-10 audit found that the permission rules in `20260611` were
+   stricter than what some screens allow — e.g. a staffer who can take
+   payments but not edit bookings would have had their payment half-saved.
+   This corrects three such mismatches (payments, day-close, invoices). Safe
+   to re-run; depends on `20260611` so paste that one first.
+3. **`supabase/migrations/20260612_widget_rate_limit.sql`** ← optional
    A crude flood cap on the public booking link (see §3 — R9-5). Optional;
    read the trade-off in the file header before deciding. Skip it if you'd
    rather wait for the CAPTCHA approach I recommend below.
 
-Both are safe to re-run, and the app works fine even before you paste them
-(it falls back gracefully) — but paste `20260611` to get the permission fix.
+All are safe to re-run, and the app works fine even before you paste them
+(it falls back gracefully) — but paste `20260611` **and** `20260613` together
+to get the permission fix correctly.
 
 ---
 
@@ -67,6 +74,31 @@ Both are safe to re-run, and the app works fine even before you paste them
 **Plus** the original round-7 list (check-in date on edit, widget URL slug,
 PWA install icons + an always-present "install app" button, cross-device sync
 gaps, etc.).
+
+**Round-10 (latest) — fixed today**
+- **Security:** the "tomorrow's arrivals" print sheet could run code from a
+  guest's name/note (same kind of hole as the voucher one, now closed).
+- **Crash:** opening a booking link that no longer exists no longer blanks the
+  screen.
+- **Staff permissions made consistent:** taking a payment, closing the day, and
+  issuing invoices now work for exactly the staff you'd expect (the database
+  rules and the on-screen buttons now agree — see §3 and the `20260613`
+  migration). A staffer who can't do something now gets a clear "you don't
+  have permission" message instead of a change that silently disappears.
+- **Invoice numbering safety:** if the cloud rejects an invoice, the app no
+  longer makes up a local number (which would break gap-free GST numbering).
+- **Multi-hotel sign-in:** a person who belongs to more than one property now
+  always lands in the same (their first) property, not a random one.
+- **Login link cleanup:** the one-time sign-in token is now wiped from the
+  address bar after you log in (so it can't linger in history/bookmarks).
+- **Add-ons shown consistently:** an add-on like "₹500 per night" now shows the
+  same amount on the booking page and the voucher (totals were always right —
+  only the line-item display differed).
+- **Open-overnight fix:** if you leave the app open past midnight, it now
+  refreshes to the new day when you come back to it (the diary/dashboard used
+  to keep showing yesterday).
+- A few smaller crash/display nits (null prices, a broken voucher stamp colour,
+  decimals in expenses).
 
 ---
 

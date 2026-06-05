@@ -672,6 +672,44 @@ export function mealCostFor(booking, property) {
   return delta * guests * nights;
 }
 
+// Add-on extras cost for a booking, honouring each extra's UNIT — the same
+// rule NewBooking + the public widget use to build the stored total:
+//   per stay (×1) / per night (×nights) / per guest (×guests) /
+//   per guest per night (×guests×nights). Default extras (EXTRAS_DEFAULT)
+//   carry no unit → per-stay. extraPrices[id] overrides the catalog price.
+// Returns a per-extra breakdown + the summed total so the BookingDetail
+// folio and the voucher itemise extras IDENTICALLY. Previously the folio
+// folded extras into the room tariff (no row at all) and the voucher
+// ignored the unit multiplier — two different wrong line-item numbers for
+// the same booking (R10-10). The grand total was always correct; only the
+// itemisation diverged. (R10-10)
+export function extrasBreakdownFor(booking, property) {
+  if (!booking || !booking.extras) return { items: [], total: 0 };
+  const catalog = [...EXTRAS_DEFAULT, ...(Array.isArray(booking.customExtras) ? booking.customExtras : [])];
+  const nights = booking.nights || 1;
+  const guests = bookingGuestCount(booking);
+  const items = [];
+  for (const [id, qty] of Object.entries(booking.extras)) {
+    if (!qty) continue;
+    const ex = catalog.find(x => x.id === id);
+    if (!ex) continue;
+    const price = (booking.extraPrices && booking.extraPrices[id] != null) ? booking.extraPrices[id] : (ex.price || 0);
+    let mult = 1;
+    switch (ex.unit) {
+      case 'per night': mult = nights; break;
+      case 'per guest': mult = guests; break;
+      case 'per guest per night': mult = guests * nights; break;
+      default: mult = 1; // 'per stay' + all default extras
+    }
+    items.push({ id, label: ex.label, qty, unit: ex.unit || 'per stay', price: price || 0, total: (price || 0) * qty * mult });
+  }
+  return { items, total: items.reduce((s, it) => s + it.total, 0) };
+}
+
+export function extrasCostFor(booking, property) {
+  return extrasBreakdownFor(booking, property).total;
+}
+
 // All issued (non-voided) invoices across the given bookings, in the order they
 // were issued. Used by the month-end CA export.
 export function listIssuedInvoices(bookings, property) {

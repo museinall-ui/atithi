@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
+import { CHANNELS, STATUS, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extrasCostFor } from '../data.js';
 import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -727,13 +727,14 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);
+              const extras = extrasCostFor(b, property);
               const preTax = withTax ? (b.total || 0) - tx.gst : (b.total || 0);
               // R8-11: add any coupon discount back into the displayed tariff
               // and show an explicit Discount row below — they cancel, so the
               // rows still sum to the exact total, but the room rate no longer
               // looks mysteriously low with no explanation.
               const discountAmount = Math.max(0, +b.discountAmount || 0);
-              const tariff = preTax - mealCost - extraGuests + discountAmount;
+              const tariff = preTax - extras - mealCost - extraGuests + discountAmount;
               // Rate plan row — surfaced when the booking used something
               // other than the default Standard plan, so the hotelier can
               // see the cancellation terms at a glance.
@@ -767,6 +768,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   )}
                   {extraGuests > 0 && (
                     <Row label="Extra-guest charges" value={`₹${extraGuests.toLocaleString('en-IN')}`} />
+                  )}
+                  {extras > 0 && (
+                    <Row label="Add-ons / extras" value={`₹${extras.toLocaleString('en-IN')}`} />
                   )}
                   {mealRow}
                   {discountAmount > 0 && (

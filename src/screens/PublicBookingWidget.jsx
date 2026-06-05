@@ -370,7 +370,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       // later edits the saved-extra catalog (price honesty principle).
       customExtras: Object.keys(data.extras).filter(id => (data.extras[id] || 0) > 0).map(id => {
         const ex = savedCustomExtras.find(x => x.id === id);
-        return ex ? { id: ex.id, label: ex.name || 'Extra', price: ex.price || 0 } : null;
+        // R10-10: persist the extra's unit so the folio / voucher can later
+        // re-itemise per-night / per-guest extras correctly (the live total
+        // already used it; without it stored, recompute fell back to per-stay).
+        return ex ? { id: ex.id, label: ex.name || 'Extra', price: ex.price || 0, unit: ex.unit || 'per stay' } : null;
       }).filter(Boolean),
       extras: Object.fromEntries(Object.entries(data.extras).filter(([, q]) => (q || 0) > 0)),
       extraPrices: Object.fromEntries(

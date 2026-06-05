@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -749,6 +749,28 @@ export default function App() {
       stripAuthFromUrl();
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
+  }, []);
+
+  // R10-9: ANCHOR (today at midnight) is frozen at module load and drives every
+  // day-index calc (Diary "today", Dashboard arrivals/in-house/departing, cash-
+  // close date key, Reports). A PWA that hoteliers install and leave open for
+  // days would, after midnight, silently show yesterday's "today". Detect a
+  // day rollover when the user RETURNS to the tab (visibility/focus) and reload
+  // so ANCHOR recomputes. Only fires on re-focus — never mid-interaction — and
+  // everything is cloud-synced, so nothing is lost. No-loop: after reload the
+  // module re-anchors to the new day, so the dates match again.
+  useEffect(() => {
+    const anchorDay = ymd(ANCHOR);
+    const checkStale = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (ymd(new Date()) !== anchorDay) window.location.reload();
+    };
+    document.addEventListener('visibilitychange', checkStale);
+    window.addEventListener('focus', checkStale);
+    return () => {
+      document.removeEventListener('visibilitychange', checkStale);
+      window.removeEventListener('focus', checkStale);
+    };
   }, []);
 
   // Cloud load / bootstrap. Runs whenever the signed-in user changes. On

@@ -1,4 +1,4 @@
-import { EXTRAS_DEFAULT, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
+import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 // Empty fallback used when the caller passes no property at all. We
@@ -207,13 +207,11 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   const releaseLabel = b.releaseTs
     ? new Date(b.releaseTs).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
     : (b.releaseAt || '');
-  const extrasList = Object.entries(b.extras || {}).map(([id, qty]) => {
-    const all = [...EXTRAS_DEFAULT, ...(b.customExtras || [])];
-    const ex = all.find(x => x.id === id);
-    if (!ex) return null;
-    const price = (b.extraPrices && b.extraPrices[id] != null) ? b.extraPrices[id] : ex.price;
-    return { label: ex.label, qty, price, total: price * qty };
-  }).filter(Boolean);
+  // R10-10: extras honour their unit (per night / per guest / etc.) via the
+  // shared helper — matching NewBooking + the BookingDetail folio. This used
+  // to be price × qty only, under-showing per-night extras and overstating
+  // the tariff line by the difference (grand total stayed correct).
+  const extrasList = extrasBreakdownFor(b, prop).items;
   const logoLetter = (p.name || 'A').trim().charAt(0).toUpperCase();
   // Tax invoices always show the GST breakdown; vouchers show it only when the
   // booking is GST-applicable per its channel/override flag. Always CGST 6% +

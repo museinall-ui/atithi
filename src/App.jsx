@@ -693,14 +693,36 @@ export default function App() {
     logActivity(propertyId, uid, action, targetType, targetId, meta);
   }, [propertyId, session]);
 
-  useEffect(() => { saveLS(LS_KEYS.bookings, bookings); }, [bookings]);
+  // P3 (perf): the bookings array is the heaviest localStorage payload — a
+  // voice note is base64 audio (~80–150 KB each, up to 3/booking), and the old
+  // immediate write re-serialised the WHOLE array on every mutation (each
+  // payment, 30s ticker tick, edit) — a visible main-thread jank on a mid-range
+  // phone once a few bookings carry audio. Debounce the write, and when signed
+  // in (cloud is the source of truth) drop the voice-note blobs from the
+  // OFFLINE MIRROR so the stringify stays small. In demo (no session) keep
+  // everything — localStorage is the only store there.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const lite = sessionRef.current
+        ? bookings.map(b => (Array.isArray(b.voiceNotes) && b.voiceNotes.length) ? { ...b, voiceNotes: [] } : b)
+        : bookings;
+      saveLS(LS_KEYS.bookings, lite);
+    }, 700);
+    return () => clearTimeout(id);
+  }, [bookings]);
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
   useEffect(() => { saveLS(LS_KEYS.overrides, rateOverrides); }, [rateOverrides]);
   useEffect(() => { saveLS(LS_KEYS.cashCloses, cashCloses); }, [cashCloses]);
   useEffect(() => { saveLS(LS_KEYS.expenses, expenses); }, [expenses]);
   useEffect(() => { saveLS(LS_KEYS.plan, plan); }, [plan]);
   useEffect(() => { saveLS(LS_KEYS.lang, lang); }, [lang]);
-  useEffect(() => { saveLS(LS_KEYS.property, property); }, [property]);
+  // P3 (perf): property carries base64 logo / payment-QR / room photos; the
+  // immediate write re-serialised all of it on every keystroke while editing
+  // Settings. Debounce it (cloud save is already debounced separately).
+  useEffect(() => {
+    const id = setTimeout(() => saveLS(LS_KEYS.property, property), 700);
+    return () => clearTimeout(id);
+  }, [property]);
   useEffect(() => { saveLS(LS_KEYS.onboarded, onboardingDismissed); }, [onboardingDismissed]);
 
   // Push the hotelier's chosen brand colour into CSS variables that all

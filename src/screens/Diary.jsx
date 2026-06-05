@@ -707,8 +707,8 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
       <ScreenHeader title={t('diaryTitle')} subtitle={t('diarySub')}
         onBack={() => go('home')}
         right={<div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setZoom(z => Math.max(40, z - 10))} style={iconBtn}><span style={{ fontSize: 18, lineHeight: 1, color: T.ink2 }}>−</span></button>
-          <button onClick={() => setZoom(z => Math.min(90, z + 10))} style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>
+          <button onClick={() => setZoom(z => Math.max(40, z - 10))} aria-label="Zoom out" style={iconBtn}><span style={{ fontSize: 18, lineHeight: 1, color: T.ink2 }}>−</span></button>
+          <button onClick={() => setZoom(z => Math.min(90, z + 10))} aria-label="Zoom in" style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>
         </div>}
       />
       {/* Jump-to-date bar — full-width, prominent. The real <input type="date">

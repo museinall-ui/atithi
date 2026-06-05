@@ -191,7 +191,7 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{t('roomN').replace('{n}', idx + 1)}</div>
                 {data_rooms > 1 && (
-                  <button onClick={() => set('roomItems', data.roomItems.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2 }}>
+                  <button onClick={() => set('roomItems', data.roomItems.filter((_, i) => i !== idx))} aria-label="Remove room" style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2 }}>
                     <Icon name="x" size={12} />
                   </button>
                 )}

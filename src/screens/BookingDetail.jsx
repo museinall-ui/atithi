@@ -70,6 +70,10 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
     setAddingMethod(false);
   };
   const removeCustomMethod = (id) => {
+    // R11-5: the × sits in the corner of a selectable payment tile, so a mis-tap
+    // while picking the method could delete it. Confirm so it's never destructive.
+    const target = customMethods.find(x => x.id === id);
+    if (!window.confirm(`Remove the "${(target && target.label) || 'custom'}" payment method?`)) return;
     const next = customMethods.filter(m => m.id !== id);
     if (onChangeProperty) {
       onChangeProperty(prev => ({

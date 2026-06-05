@@ -877,8 +877,8 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
               </div>
             )}
           </div>
-          <Field label="Mobile" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder="98100 00000 (required)" />
-          <Field label="Email (optional)" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="guest@email.com" />
+          <Field label="Mobile" type="tel" inputMode="tel" autoComplete="tel" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder="98100 00000 (required)" />
+          <Field label="Email (optional)" type="email" inputMode="email" autoComplete="email" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="guest@email.com" />
           {(!data.name.trim() || data.phone.trim().length < 6) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.warnLt, borderRadius: 8 }}>
               <Icon name="info" size={11} color="oklch(48% 0.14 75)" />

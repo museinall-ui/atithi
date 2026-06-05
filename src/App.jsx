@@ -797,8 +797,14 @@ export default function App() {
     const uid = session?.user?.id;
     if (!uid || !propertyId) return;
     let cancelled = false;
+    let lastAt = 0;
     const refresh = async () => {
       if (document.visibilityState !== 'visible') return;
+      // R11-3: throttle — focus/visibility fires rapidly (alt-tab, Android
+      // keyboard show/hide); don't hit Supabase more than once per ~45s.
+      const nowMs = Date.now();
+      if (nowMs - lastAt < 45000) return;
+      lastAt = nowMs;
       try {
         const m = await loadMyMembership(uid, propertyId);
         if (cancelled || !m) return;
@@ -1607,6 +1613,16 @@ export default function App() {
         ratePlanId: data.ratePlanId || 'standard',
         guests: guestsStr,
       };
+      // R11-2 (part A): if the room type changed on edit, the old unitIdx may
+      // not exist in the new type (old had 8 units, new has 3) or may collide
+      // with another booking. Re-allocate to the first free unit of the new
+      // type so the Diary places it cleanly instead of stacking / pointing at a
+      // non-existent unit. (unit_idx is NOT NULL in the DB, so we assign a real
+      // index rather than relying on the null→greedy path.)
+      if (existing && data.roomTypeId !== existing.roomTypeId) {
+        const others = bookings.filter(x => x.id !== editing);
+        patch.unitIdx = findFirstFreeUnit(others, data.roomTypeId, newStartIdx, data.nights, effectiveRoomTypes(property)) ?? 0;
+      }
       if (isHold) {
         patch.status = 'tentative';
         patch.releaseTs = releaseTs;

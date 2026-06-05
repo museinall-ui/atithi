@@ -201,7 +201,7 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
               <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>{L.propertySub}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <Field label={L.nameLabel} value={name} onChange={e => setName(e.target.value)} placeholder={L.namePh} />
-                <Field label={L.phoneLabel} value={phone} onChange={e => setPhone(e.target.value)} placeholder={L.phonePh} />
+                <Field label={L.phoneLabel} type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder={L.phonePh} />
                 <Field label={L.cityLabel} value={city} onChange={e => setCity(e.target.value)} placeholder={L.cityPh} />
               </div>
             </div>

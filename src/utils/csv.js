@@ -11,7 +11,16 @@
 
 function escapeCell(v) {
   if (v == null) return '';
-  const s = String(v);
+  // Numbers are safe and must stay numeric (never quote-prefix a negative
+  // amount — that would turn the profit column into text in Excel).
+  if (typeof v === 'number') return String(v);
+  let s = String(v);
+  // CSV formula-injection guard (R11-1): a cell a spreadsheet evaluates as a
+  // formula (leading = + - @, tab, or carriage return) can run code / exfil
+  // data when the CA opens the exported file in Excel — and guest names come
+  // from the untrusted public booking widget. Neutralise by prefixing a single
+  // quote so the cell is treated as literal text.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (/[",\r\n]/.test(s)) {
     return '"' + s.replace(/"/g, '""') + '"';
   }

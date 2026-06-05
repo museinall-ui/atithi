@@ -2,13 +2,15 @@
 
 When you're ready to switch Atithi from "runs entirely off localStorage" to "real Supabase backed product that real hoteliers can sign in to", work through this list top to bottom. It's deliberately small — the heavy lifting is paste-and-run SQL and a single one-line code change.
 
-Last updated: Jun 5, 2026 (round-9: added coupon-privacy 20260610, DB permission enforcement 20260611, optional widget rate-limit 20260612).
+Last updated: Jun 5, 2026 (final launch audit — corrected paste-order note + smoke tests; DEMO_MODE is already flipped to false and live, see Part 2).
+
+> **Status: the code flip is already DONE.** `HARDCODED_DEMO_MODE = false` is live — the site already requires real sign-in. So the only remaining go-live work is the Supabase setup below (Part 1) + the dashboard config (Part 2). Part 3 (public widget) and the CAPTCHA are optional/when-ready.
 
 ---
 
 ## Part 1 — Supabase SQL (you do this, ~5 minutes)
 
-Open https://supabase.com/dashboard → project `vaerzwmglfwslvqqcyhx` → **SQL Editor**. For each of these files, open the file from the repo, copy the entire contents, paste into the SQL Editor, click **Run**. Order doesn't matter; **all migrations are idempotent** so re-running is safe.
+Open https://supabase.com/dashboard → project `vaerzwmglfwslvqqcyhx` → **SQL Editor**. For each of these files, open the file from the repo, copy the entire contents, paste into the SQL Editor, click **Run**. **Paste them top-to-bottom in the order listed.** Each file is idempotent (safe to re-run), but a few depend on earlier ones — `20260611` must come before `20260613`, and `20260605` before `20260610` — so top-to-bottom is the safe order. (`20260518` is the one exception that errors if re-run on an existing DB — skip it if your DB already exists.)
 
 ```
 supabase/migrations/20260518_initial_schema.sql                    ← already done if your DB existed before
@@ -66,12 +68,13 @@ To confirm the widget RPCs (anon access + capacity guard) are installed:
 
 ```sql
 select proname from pg_proc
-where proname in ('property_by_short_code', 'redeem_coupon', 'book_widget_slot',
+where proname in ('property_by_short_code', 'room_categories_by_property',
+                 'bookings_by_property_public', 'redeem_coupon', 'book_widget_slot',
                  'property_has_members', 'caller_has_invite',
                  'validate_coupon', 'has_perm');
 ```
 
-All seven should be listed. `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6).
+All nine should be listed (`room_categories_by_property` + `bookings_by_property_public` are what the public widget reads to show room tiles + availability). `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6).
 
 ### Test the permission enforcement (R9-6) without risk
 
@@ -79,73 +82,40 @@ All seven should be listed. `book_widget_slot` is the atomic capacity check that
 
 ---
 
-## Part 2 — Code flip (I do this when you say go, ~10 seconds)
+## Part 2 — Code flip (DONE) + Supabase dashboard config (you confirm)
 
-In `src/App.jsx`, line ~42:
+**The code flip is already done.** `src/App.jsx` has `const HARDCODED_DEMO_MODE = false;` — committed and live. The site already shows the SignIn screen and requires a real magic-link sign-in. There is no code change left to make.
 
-```js
-const HARDCODED_DEMO_MODE = true;   // ← change to false
-```
+**But the live sign-in only works if the Supabase dashboard is configured. Confirm these two settings** (Supabase → Authentication → URL Configuration):
+1. **Site URL** = `https://atithi-seven.vercel.app`
+2. **Redirect URLs** includes `https://atithi-seven.vercel.app/` (and the GitHub Pages mirror `https://museinall-ui.github.io/atithi/` if you use it).
 
-I commit + push. Vercel auto-deploys in ~60s. The next time the live site loads:
-- The SignIn screen appears (instead of going straight to the Dashboard).
-- The first sign-in for your existing Supabase user creates the cloud property from your localStorage data (the bootstrap flow we tested).
-- From then on, every booking / payment / setting writes to Supabase.
+If these aren't set, the magic-link email's link won't land you signed in — sign-in will silently fail. **This is the single most common go-live gotcha.**
 
-**One-time onboarding for you on flip day:**
-1. Open `atithi-seven.vercel.app` on whichever browser you want to test with.
-2. SignIn screen → enter your email.
-3. Check inbox → click the magic-link → app opens signed in.
-4. The onboarding wizard fires (because your Supabase account is fresh). Fill in property basics → first room category → payment QR. ~2 minutes.
-5. From this point your real data lives in Supabase. Every other browser / device you sign in on from now pulls the same data.
+**Then test sign-in end to end:**
+1. Open `atithi-seven.vercel.app` (logged out).
+2. Enter your email → check inbox → click the magic-link → confirm the app opens signed in.
+3. First sign-in fires the onboarding wizard (fresh Supabase account): property basics → first room category → payment QR. ~2 minutes.
+4. From this point your data lives in Supabase and syncs across every device you sign in on.
 
-**Your existing DEMO localStorage data stays in your browser** but won't appear in the cloud app — that's expected and was the plan all along.
+**Optional auth + email setup (each degrades gracefully if skipped):**
+- **Google sign-in:** create a Google Cloud OAuth client + enable Google in Supabase → Authentication → Providers. Until then the "Continue with Google" button shows a friendly "not set up yet" hint; magic-link works regardless.
+- **"Send to CA" email (Resend):** add `RESEND_API_KEY` (+ optional `RESEND_FROM`) in Vercel → Settings → Environment Variables, then redeploy. Until then "Send to CA" falls back to opening your mail app + a printable register.
 
 ---
 
-## Part 3 — Optional: public booking widget production deploy
+## Part 3 — Optional: take the public booking widget live
 
-The widget (`/book/<slug>`) works perfectly when **you** open it (signed-in hotelier on their own device). To accept bookings from **strangers on your hotel's website**, you need one Supabase RLS policy that lets the anonymous role insert a booking with `status='tentative'` and `channel='website'` — and a way for the anon-mode widget to find your property from its URL slug.
+The widget (`/book/<slug>`) lets **strangers on your hotel's website** book directly. The anon access it needs is **already in the migrations in Part 1** — `20260605_widget_anon_access.sql` (read property by slug + room categories + public bookings, insert tentative website bookings), `20260607` (atomic capacity check), `20260610` (coupon privacy — keeps your codes off the public lookup). Once those are pasted, the widget works against the cloud.
 
-This is the only piece NOT yet wired. Three SQL steps when you want to enable it:
+> ⚠️ Do NOT paste any hand-written `property_by_short_code` SQL — an earlier version of this checklist had inline SQL here that would *re-leak* coupon codes to the public. The migration files (`20260605` + `20260610`) are the correct, current versions. Just paste the migrations.
 
-```sql
--- 1. Anonymous role can read just the property by slug (for the widget header)
-create or replace function public.property_by_short_code(p_short_code text)
-returns table(id uuid, name text, type text, city text, state text, theme jsonb,
-              logo_data_url text, payment_qr_data_url text, payment_qr_label text,
-              tagline text, photo_gallery jsonb, rules jsonb, meal_plans jsonb,
-              default_meal_plan_id text, base_capacity_adults integer,
-              rate_plans jsonb, weekend_rules jsonb, seasons jsonb,
-              channel_markups jsonb, coupons jsonb, embed_button jsonb,
-              short_code text)
-language sql security definer set search_path = public as $$
-  select id, name, type, city, state, theme,
-         logo_data_url, payment_qr_data_url, payment_qr_label,
-         tagline, photo_gallery, rules, meal_plans,
-         default_meal_plan_id, base_capacity_adults,
-         rate_plans, weekend_rules, seasons,
-         channel_markups, coupons, embed_button,
-         short_code
-  from properties where short_code = p_short_code limit 1;
-$$;
-grant execute on function public.property_by_short_code(text) to anon;
+**Test it before sharing the link:** open `atithi-seven.vercel.app/book/<your-short-code>` in a **private/logged-out** window, complete a booking, and confirm it lands in your diary as a tentative `website` booking.
 
--- 2. Anonymous role can read room_categories of a property (room tiles)
-create or replace function public.room_categories_by_property(p_property_id uuid)
-returns setof room_categories
-language sql security definer set search_path = public as $$
-  select * from room_categories where property_id = p_property_id order by sort_order;
-$$;
-grant execute on function public.room_categories_by_property(uuid) to anon;
-
--- 3. Anonymous role can insert ONLY website-channel tentative bookings
-create policy "anon insert widget bookings" on bookings
-  for insert to anon
-  with check (channel = 'website' and status = 'tentative');
-```
-
-Until you run these, the widget URL will load the property data only if a signed-in hotelier opens it. After Phase 5 we'd add rate-limiting (Edge Function token bucket) to prevent abuse; the policy above is the bare minimum to make the widget functional.
+**Before sharing the link publicly to untrusted traffic, do the anti-abuse step:**
+- **CAPTCHA (recommended):** Cloudflare Turnstile on the booking form, verified inside `book_widget_slot`. Free + invisible to real guests. **Owner action: create a free Turnstile account when ready, then I wire it.** (Tracked as an open to-do.)
+- Or the crude interim cap: paste the optional `20260612_widget_rate_limit.sql` (read its header for the trade-off).
+- Also when the widget goes public: the capacity RPC doesn't yet subtract maintenance close-outs, and `redeem_coupon` can be scripted — both are queued for the public-launch hardening pass.
 
 ---
 

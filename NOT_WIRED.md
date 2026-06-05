@@ -129,11 +129,11 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 ### Cloud sync for `customExtras`, `rateOverrides`, `cashCloses` (DONE)
 - **State:** Wired in `src/cloud/extras.js`. App.jsx loads + seeds on sign-in and diff-syncs per-cell changes (saved-extras add/remove, rate-override upsert/delete, cash-close upsert/delete) through `syncFire`/`syncCloud`. Dormant under DEMO_MODE but exercises real schema once flipped.
 
-### Magic-link sign-in (DISABLED via DEMO_MODE)
-- **At:** `src/App.jsx` — `const DEMO_MODE = true` at the top of the file.
-- **State:** The Supabase auth + SignIn screen still exist; just bypassed.
-- **Needs:** Flip `DEMO_MODE` back to `false` once basics are signed off. No further code work — just the flag.
-- **Phase:** 1 close-out
+### Magic-link sign-in (LIVE — DEMO_MODE already flipped)
+- **At:** `src/App.jsx` — `const HARDCODED_DEMO_MODE = false`. The flip is done; the live site requires a real Supabase magic-link sign-in.
+- **State:** Wired + live. Per-browser `?demo=1` opt-in + "Try the demo" button still let a prospect preview without an account.
+- **Remaining (owner, dashboard-side, not code):** confirm the Supabase Auth **Site URL** + **Redirect URLs** include the Vercel domain so magic links land (see DEMO_MODE_FLIP_CHECKLIST Part 2), and that all migrations are pasted. Google OAuth + Resend are optional and degrade gracefully.
+- **Phase:** 1 — done.
 
 ---
 

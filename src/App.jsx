@@ -620,6 +620,12 @@ export default function App() {
   const propertyIdRef = useRef(null);
   const cloudReadyRef = useRef(false);
   const sessionRef = useRef(null);
+  // R10-5 (F-6): the auto-release ticker cancels expired holds, which the new
+  // DB policy (20260611) only allows for members with cancel_bookings. Mirror
+  // that here so a reception device (no cancel) doesn't optimistically cancel
+  // locally and then loop a 403 on every sync — a cancel-permitted device
+  // (owner/manager) handles releases instead. Defaults true (DEMO / owner).
+  const canCancelRef = useRef(true);
   useEffect(() => { propertyIdRef.current = propertyId; }, [propertyId]);
   useEffect(() => { cloudReadyRef.current = cloudReady; }, [cloudReady]);
   useEffect(() => { sessionRef.current = session; }, [session]);
@@ -659,6 +665,8 @@ export default function App() {
     if (myPerms === null) return true;  // DEMO mode wildcard
     return myPerms.has(perm);
   }, [myPerms]);
+  // Keep the mount-once auto-release ticker's permission view current.
+  useEffect(() => { canCancelRef.current = can('cancel_bookings'); }, [can]);
 
   // Central activity-log shim. Every action that mutates property data
   // calls this so the Activity screen has a unified who-did-what feed.
@@ -711,15 +719,34 @@ export default function App() {
   // token from the URL hash automatically when the user lands back.
   useEffect(() => {
     let mounted = true;
+    // R10-8: once Supabase has consumed the magic-link / OAuth token from the
+    // URL, strip it so the access/refresh token (or PKCE ?code) doesn't sit in
+    // the address bar / browser history / a bookmarked-or-shared link. App
+    // params (?book=1, ?demo=1) and the path (/book/<slug>) are preserved.
+    const stripAuthFromUrl = () => {
+      try {
+        const hash = window.location.hash || '';
+        const hasHashToken = /access_token=|refresh_token=|[#&](type|error)=/.test(hash);
+        const params = new URLSearchParams(window.location.search);
+        const hadAuthQuery = params.has('code') || params.has('error') || params.has('error_description');
+        if (!hasHashToken && !hadAuthQuery) return;
+        params.delete('code'); params.delete('error'); params.delete('error_description');
+        const qs = params.toString();
+        const newUrl = window.location.pathname + (qs ? '?' + qs : '') + (hasHashToken ? '' : hash);
+        window.history.replaceState({}, document.title, newUrl);
+      } catch { /* history API unavailable — leave URL as-is */ }
+    };
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data?.session || null);
       setAuthReady(true);
+      stripAuthFromUrl();
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       if (!mounted) return;
       setSession(sess);
       setAuthReady(true);
+      stripAuthFromUrl();
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
@@ -975,7 +1002,7 @@ export default function App() {
       // otherwise we'd cancel-and-sync stale local-only data the cloud
       // doesn't know about, against booking IDs that may not exist in
       // the current user's property at all.
-      if (!cloudReadyRef.current || !sessionRef.current) return;
+      if (!cloudReadyRef.current || !sessionRef.current || !canCancelRef.current) return;
       const now = Date.now();
       const changed = [];
       setBookings(arr => {
@@ -1353,13 +1380,20 @@ export default function App() {
         logEvent('invoice.issue', 'invoice', inv.number, { bookingId, guest: booking.guest, amount: inv.amount, recipient: inv.recipient?.name });
         return [inv];
       } catch {
-        // syncCloud already notified the user via the error toast; fall
-        // through to the local-only path below so the hotelier still gets
-        // a usable invoice number on screen.
+        // R10-6: the cloud rejected the invoice (permission, or transient).
+        // syncCloud already surfaced the error toast. Do NOT fall through to
+        // the local fake-number path: invoice numbering must be gap-free per
+        // GST law and the authoritative counter lives in the DB (issue_invoice
+        // RPC). A locally-minted number would collide with / skip the server
+        // sequence the moment any cloud invoice issues. Abort and let the
+        // hotelier retry instead of corrupting the register.
+        return null;
       }
     }
 
-    // Local-only fallback (offline or cloud error).
+    // Local-only fallback — reached ONLY when offline / not cloud-backed
+    // (no session, or cloud not ready). Here the local counter IS the
+    // source of truth, so minting a number is correct.
     const baseSeq = (property.invoiceCounters && property.invoiceCounters[fy]) || 0;
     const nowIso = new Date().toISOString();
     const newInvoice = {
@@ -1626,7 +1660,7 @@ export default function App() {
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} session={session} propertyId={propertyId} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
-    case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
+    case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />;

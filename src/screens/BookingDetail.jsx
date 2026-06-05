@@ -37,7 +37,7 @@ const METHOD_OPTIONS = [
   { id: 'other',   label: 'Other',    icon: 'plus', hint: 'Voucher / barter / agent' },
 ];
 
-function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty }) {
+function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChangeProperty, canManageSettings }) {
   const isRefund = kind === 'refund';
   const isCredit = kind === 'credit';
   const defaultAmt = isRefund || isCredit ? (balance < 0 ? Math.abs(balance) : '') : (balance > 0 ? balance : '');
@@ -167,7 +167,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
                 }}>
                   <Icon name={m.icon} size={14} color={method === m.id ? tone : T.ink3} stroke={2} />
                   <span style={{ fontSize: 10, fontWeight: 700, color: method === m.id ? tone : T.ink2, textAlign: 'center', lineHeight: 1.2 }}>{m.label}</span>
-                  {isCustom && (
+                  {isCustom && canManageSettings && (
                     <span
                       onClick={(e) => { e.stopPropagation(); removeCustomMethod(m.id); }}
                       title={`Remove "${m.label}"`}
@@ -177,6 +177,11 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
                 </button>
               );
             })}
+            {/* R10-5 (F-2): adding a custom method writes property.accountant
+                (a properties UPDATE), which the DB now gates on manage_settings.
+                Hide the affordance for members without it (e.g. reception) so
+                they don't add a method that silently fails to persist. */}
+            {canManageSettings && (
             <button
               onClick={() => setAddingMethod(true)}
               style={{
@@ -190,6 +195,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
               <Icon name="plus" size={14} color={T.ink3} stroke={2} />
               <span style={{ fontSize: 10, fontWeight: 700, color: T.ink3 }}>Add</span>
             </button>
+            )}
           </div>
           {addingMethod && (
             <div style={{ display: 'flex', gap: 4, marginTop: 8, alignItems: 'center' }}>
@@ -918,6 +924,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             total={b.total || 0}
             property={property}
             onChangeProperty={onChangeProperty}
+            canManageSettings={can('manage_settings')}
             onClose={() => setPayOpen(false)}
             onSave={(entry) => { onPayment && onPayment(b.id, entry); setPayOpen(false); }}
           />

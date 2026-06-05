@@ -28,6 +28,21 @@ function emit() {
   listeners.forEach(fn => { try { fn(snap); } catch {} });
 }
 
+// R10-6: classify a write rejection as a permission (RBAC) error so the toast
+// can say something actionable instead of a raw Postgres message. Supabase
+// surfaces a failing RLS WITH CHECK as code 42501 / HTTP 403; our
+// SECURITY DEFINER guards (issue_invoice) also raise 42501. (Note: a failing
+// RLS *USING* on UPDATE/DELETE silently affects 0 rows and does NOT error, so
+// this only catches the INSERT / definer-guard paths.)
+function isPermissionError(err) {
+  if (!err) return false;
+  const code = err.code || err.status;
+  const msg = (err.message || '').toLowerCase();
+  return code === '42501' || code === 403 || code === '403' || code === 'PGRST301'
+    || /row-level security|permission denied|not authoris|not author/.test(msg);
+}
+const PERMISSION_HINT = "You don't have permission for this — ask the property owner to grant it.";
+
 export function getSyncState() { return state; }
 
 export function subscribeSync(fn) {
@@ -78,13 +93,15 @@ export function syncCloud(label, promise) {
     },
     (err) => {
       const pending = Math.max(0, state.pending - 1);
+      const perm = isPermissionError(err);
       state = {
         ...state,
         status: 'error',
         pending,
         lastError: {
           label,
-          message: (err && (err.message || String(err))) || 'Unknown error',
+          message: perm ? PERMISSION_HINT : ((err && (err.message || String(err))) || 'Unknown error'),
+          permission: perm,
           at: Date.now(),
         },
       };

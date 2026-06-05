@@ -175,10 +175,16 @@ function cloudToLocalProperty(row, categories) {
 // from the row — empty array means "use the role's defaults" (the
 // app resolves that via effectivePermissions()).
 export async function loadCurrentProperty(userId) {
+  // R10-7: order by created_at so a user who belongs to >1 property (now
+  // common via team invites — acceptPendingInvitesForUser adds a second
+  // membership) deterministically loads their OLDEST (home) property instead
+  // of a Postgres-arbitrary row that can change between sign-ins. A property
+  // switcher is future work; until then "first membership" must be stable.
   const { data: mems, error: memErr } = await supabase
     .from('memberships')
     .select('property_id, role, permissions')
     .eq('user_id', userId)
+    .order('created_at', { ascending: true })
     .limit(1);
   if (memErr) throw memErr;
   if (!mems || mems.length === 0) return null;

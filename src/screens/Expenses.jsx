@@ -66,7 +66,13 @@ function DatePill({ value, onChange, label }) {
   );
 }
 
-export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpdate, property, onChangeProperty }) {
+export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpdate, property, onChangeProperty, can = () => true }) {
+  // R10-5 (F-4): custom categories persist to property.accountant (a
+  // properties UPDATE), which the DB gates on manage_settings. Reception
+  // (manage_expenses, no manage_settings) can still log expenses + use
+  // existing categories, but the add/remove-category affordance is hidden
+  // so they don't create a category that silently fails to save.
+  const canManageSettings = can('manage_settings');
   // Merged category list: built-in defaults + property-defined custom
   // categories. Stored on accountant.expenseCategories — that field
   // is already a jsonb that round-trips cleanly, so no migration is
@@ -243,7 +249,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 >
                   <Icon name={c.icon} size={10} color={sel ? T.primaryDk : T.ink3} />
                   {catLabelById(c.id)}
-                  {isCustom && (
+                  {isCustom && canManageSettings && (
                     <span
                       onClick={(e) => { e.stopPropagation(); removeCustomCategory(c.id); }}
                       title={t('removeCatTip').replace('{label}', c.label)}
@@ -253,7 +259,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                 </button>
               );
             })}
-            {!addingCategory && (
+            {!addingCategory && canManageSettings && (
               <button
                 onClick={() => setAddingCategory(true)}
                 style={{

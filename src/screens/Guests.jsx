@@ -48,6 +48,15 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
     bookings.forEach(b => {
       const key = b.guest;
       const prev = bookingGuests.get(key);
+      const isCx = b.status === 'cancelled';
+      const bIdx = b.startIdx ?? 0;
+      // P6 (perf): track the booking to open when the row is tapped right here in
+      // the single group pass — prefer the most-recent non-cancelled, else the
+      // most-recent overall. Was an O(N) bookings.filter + sort PER ROW (O(G×N)).
+      let openId = prev?.openId, openIdx = prev?.openIdx ?? -Infinity;
+      let openNcId = prev?.openNcId, openNcIdx = prev?.openNcIdx ?? -Infinity;
+      if (bIdx >= openIdx) { openIdx = bIdx; openId = b.id; }
+      if (!isCx && bIdx >= openNcIdx) { openNcIdx = bIdx; openNcId = b.id; }
       bookingGuests.set(key, {
         name: b.guest,
         phone: b.phone || '',
@@ -55,13 +64,14 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
         // spend (1 real + 1 cancelled would falsely read "Repeat"; a single
         // cancelled ₹60k booking would falsely tag "Whale"). The tag legend
         // below already says "non-cancelled stays" — make the data match.
-        stays: (prev?.stays || 0) + (b.status === 'cancelled' ? 0 : 1),
-        spent: (prev?.spent || 0) + (b.status === 'cancelled' ? 0 : (b.total || 0)),
+        stays: (prev?.stays || 0) + (isCx ? 0 : 1),
+        spent: (prev?.spent || 0) + (isCx ? 0 : (b.total || 0)),
         vip: prev?.vip || b.vip || false,
         formC: prev?.formC || b.formC || false,
         inhouse: prev?.inhouse || b.status === 'checkedin',
         lastStatus: b.status,
-        ranges: [...(prev?.ranges || []), { startIdx: b.startIdx, nights: b.nights, cancelled: b.status === 'cancelled' }],
+        openId, openIdx, openNcId, openNcIdx,
+        ranges: [...(prev?.ranges || []), { startIdx: b.startIdx, nights: b.nights, cancelled: isCx }],
       });
     });
     // Build guest rows from the bookings store. The tag system is now
@@ -106,6 +116,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
         tag: tags[0],
         tags,
         lastStay: lastStayLabel,
+        openableId: g.openNcId || g.openId || null,
       });
     });
     return merged;
@@ -253,15 +264,12 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
           </div>
         )}
         {filtered.map((g, i) => {
-          // Pick the guest's most-recent non-cancelled booking; fall back
-          // to any booking for them; null if seed-only with no real
-          // booking. Clicking the row opens that booking's detail page.
-          const guestBookings = (bookings || []).filter(b => b.guest === g.name);
-          const openable = guestBookings.find(b => b.status !== 'cancelled')
-            || guestBookings.sort((a, b) => (b.startIdx || 0) - (a.startIdx || 0))[0]
-            || null;
+          // P6: the openable booking id was precomputed in the liveGuests pass
+          // (most-recent non-cancelled, else most-recent overall) — no per-row
+          // bookings.filter. Clicking the row opens that booking's detail page.
+          const openableId = g.openableId;
           const onOpen = () => {
-            if (openable && go) go('booking', openable.id);
+            if (openableId && go) go('booking', openableId);
           };
           return (
           <div
@@ -271,7 +279,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
             style={{
               padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12,
               borderBottom: `1px solid ${T.borderSoft}`, background: T.card,
-              cursor: openable ? 'pointer' : 'default',
+              cursor: openableId ? 'pointer' : 'default',
             }}
           >
             <Avatar name={g.name} size={44} />
@@ -309,7 +317,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
               <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>₹{(g.spent/1000).toFixed(0)}k</div>
               <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>lifetime</div>
             </div>
-            {openable && <Icon name="chev" size={14} color={T.ink3} />}
+            {openableId && <Icon name="chev" size={14} color={T.ink3} />}
           </div>
           );
         })}

@@ -8,8 +8,11 @@ export const T = {
 
   ink:       'oklch(22% 0.020 60)',
   ink2:      'oklch(38% 0.020 60)',
-  ink3:      'oklch(55% 0.018 60)',
-  ink4:      'oklch(70% 0.014 60)',
+  // Q3 follow-up: darkened the two faint greys a notch for readability (small
+  // 9-11px secondary text was hard to read for older users in daylight).
+  // Hierarchy preserved: ink(22) < ink2(38) < ink3(48) < ink4(60).
+  ink3:      'oklch(48% 0.020 60)',
+  ink4:      'oklch(60% 0.018 60)',
 
   // Brand colours read CSS variables so a hotelier can pick their own theme
   // in Settings (see applyTheme below). Fallbacks are the default Atithi orange.

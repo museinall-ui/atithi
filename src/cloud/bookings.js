@@ -296,7 +296,31 @@ export async function createBookingCloud(propertyId, userId, booking) {
     .select()
     .single();
   if (error) throw error;
-  return cloudBookingToLocal(data, [], []);
+  // Persist any payment collected at creation (e.g. an advance) as a real
+  // ledger row keyed to the server-assigned booking id, so it carries its
+  // method + collection date (the Daily P&L attributes income by collection
+  // date; without this the advance falls back to the check-in date). Best-
+  // effort + collected_on retry so it never blocks the booking — on a miss the
+  // booking still has `paid` set and BookingDetail's synthetic row covers it.
+  let payments = [];
+  if (Array.isArray(booking.payments) && booking.payments.length) {
+    const rows = booking.payments.map(p => ({
+      booking_id: data.id,
+      property_id: propertyId,
+      kind: (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? p.kind : 'payment',
+      method: p.method || '',
+      amount: p.amount || 0,
+      note: p.note || '',
+      created_by: userId || null,
+    }));
+    const withDate = rows.map((r, i) => ({ ...r, collected_on: booking.payments[i].dateIso || null }));
+    let { data: pData, error: pErr } = await supabase.from('payments').insert(withDate).select();
+    if (pErr && isMissingColumnError(pErr)) {
+      ({ data: pData, error: pErr } = await supabase.from('payments').insert(rows).select());
+    }
+    if (!pErr && Array.isArray(pData)) payments = pData;
+  }
+  return cloudBookingToLocal(data, payments, []);
 }
 
 // Patch an existing booking. Pass a local-shape partial object; only the

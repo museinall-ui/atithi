@@ -693,21 +693,20 @@ export default function App() {
     logActivity(propertyId, uid, action, targetType, targetId, meta);
   }, [propertyId, session]);
 
-  // P3 (perf): the bookings array is the heaviest localStorage payload — a
-  // voice note is base64 audio (~80–150 KB each, up to 3/booking), and the old
-  // immediate write re-serialised the WHOLE array on every mutation (each
+  // P3 (perf): the bookings array is the heaviest localStorage payload, and the
+  // old immediate write re-serialised the WHOLE array on every mutation (each
   // payment, 30s ticker tick, edit) — a visible main-thread jank on a mid-range
-  // phone once a few bookings carry audio. Debounce the write, and when signed
-  // in (cloud is the source of truth) drop the voice-note blobs from the
-  // OFFLINE MIRROR so the stringify stays small. In demo (no session) keep
-  // everything — localStorage is the only store there.
+  // phone. Debounce it (700 ms) so a burst of mutations serialises once.
+  // NOTE: we deliberately do NOT strip voice-note blobs from the mirror. An
+  // earlier version stripped them when signed in (cloud being the source of
+  // truth), but that removed the ONLY offline copy of an un-recreatable
+  // recording — if its cloud write failed, the note was lost. Voice notes are
+  // rare (most bookings have none), capped (3×60s ≈ 450 KB), and the
+  // QuotaExceeded path (R9-9) handles the worst case gracefully, so keeping
+  // them in the mirror is the safer trade-off. (Phase 4 moves audio to
+  // Supabase Storage and removes it from the row entirely.)
   useEffect(() => {
-    const id = setTimeout(() => {
-      const lite = sessionRef.current
-        ? bookings.map(b => (Array.isArray(b.voiceNotes) && b.voiceNotes.length) ? { ...b, voiceNotes: [] } : b)
-        : bookings;
-      saveLS(LS_KEYS.bookings, lite);
-    }, 700);
+    const id = setTimeout(() => saveLS(LS_KEYS.bookings, bookings), 700);
     return () => clearTimeout(id);
   }, [bookings]);
   useEffect(() => { saveLS(LS_KEYS.customExtras, savedCustomExtras); }, [savedCustomExtras]);
@@ -1700,6 +1699,18 @@ export default function App() {
         channel: 'direct',
         total,
         paid,
+        // Seed the advance collected at creation as a real ledger entry so it
+        // carries its method + collection date. The Daily P&L attributes income
+        // by collection date — without a real payment row the advance would
+        // fall back to the check-in date (wrong day) and show a guessed method.
+        payments: paid > 0 ? [{
+          id: 'pay_' + Date.now().toString(36),
+          kind: 'payment',
+          method: data.payMethod || 'cash',
+          amount: paid,
+          date: 'now',
+          dateIso: ymd(new Date()),
+        }] : [],
         guests: guestsStr,
         phone: dial + ' ' + data.phone,
         email: data.email || '',

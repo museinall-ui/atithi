@@ -297,6 +297,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       roomTypeId: data.roomTypeId,
       adults: adultsPerRoom[i] || 0,
       children: childrenPerRoom[i] || 0,
+      // Include the per-night rate the booking is SAVED with, so a percentage-
+      // mode extra-guest surcharge (rate × pct%) computes the same here as the
+      // folio/voucher recompute it later. Without it the live calc fell back to
+      // category.base and under/over-charged pct-mode properties.
+      rate: perNight,
     })),
   }, property) : 0;
   const subtotal = roomCost + mealDelta + extrasCost + extraGuestCost;

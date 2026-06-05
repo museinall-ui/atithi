@@ -171,11 +171,11 @@ Keep this list in sync with the code when you remove or stub a feature so we don
 ### Public booking engine widget (SHIPPED, partial)
 - **At:** `src/screens/PublicBookingWidget.jsx`. Customer-facing 3-step booking flow rendered when URL is `/book/<short-code>` or `?book=1`. Logo + brand colour + payment QR pulled from property. Mini calendar preview + voucher download + "Email a copy" mailto on confirmation.
 - **State:** Works fully against the property's localStorage in DEMO_MODE. Bookings land with `channel:'website'` + `status:'tentative'` + 24h auto-release.
-- **Needs (for production):**
-  - Supabase anon RLS policy allowing INSERT into bookings where `status='tentative'` AND `channel='website'` AND `property_id` matches the URL slug.
-  - `properties.short_code` column + a `loadPropertyBySlug` Supabase RPC so the widget can render against the right property in cloud mode.
-  - Rate-limiting on the anon insert (token bucket or trivial sliding window in an Edge Function) to spam-protect.
-- **Phase:** 1 close-out, after DEMO_MODE flips.
+- **Status update (round-9/10):**
+  - ✅ Anon RLS + `property_by_short_code` / `book_widget_slot` RPCs shipped (with an atomic per-(property, room-type) capacity check).
+  - ✅ `properties.short_code` column + slug lookup shipped.
+  - ⏳ **Anti-abuse rate-limiting — TO DO (the one open item before public launch).** Chosen fix: **Cloudflare Turnstile CAPTCHA** (free, invisible to real guests) on the widget submit, with the token verified **server-side inside `book_widget_slot`** (and ideally `redeem_coupon`) via `pg_net` or a Supabase Edge Function. Note: a Vercel/website-host rate limit can't work here — the widget calls `*.supabase.co` directly, bypassing the host. A crude interim per-property hourly cap exists (optional migration `20260612_widget_rate_limit.sql`) but it's a stopgap with a self-DoS trade-off, NOT a substitute for the CAPTCHA. **Owner action: create a free Turnstile account (site + secret keys) when ready; then I wire the widget + RPC verification.**
+- **Phase:** anti-abuse hardening, before the booking link is shared publicly.
 
 ---
 

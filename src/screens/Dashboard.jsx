@@ -422,11 +422,14 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     }
   }
   monthRevenue = Math.max(0, monthRevenue);
+  // P5 (perf): single O(bookings) pass instead of O(daysInMonth × bookings) —
+  // for each booking add (nights overlapping this month) × rooms held, which
+  // equals the old per-day sum (Fubini) without the nested day loop.
   let monthOccNights = 0;
-  for (let idx = monthStartIdx; idx <= monthEndIdx; idx++) {
-    monthOccNights += liveBookings
-      .filter(b => (b.startIdx || 0) <= idx && idx < (b.startIdx || 0) + (b.nights || 1))
-      .reduce((s, b) => s + roomsHeldDash(b), 0);
+  for (const b of liveBookings) {
+    const s = Math.max(monthStartIdx, b.startIdx || 0);
+    const e = Math.min(monthEndIdx + 1, (b.startIdx || 0) + (b.nights || 1));
+    if (e > s) monthOccNights += (e - s) * roomsHeldDash(b);
   }
   const availableRoomNights = totalRooms * daysInMonth;
   const monthOccPct = availableRoomNights > 0 ? Math.round((monthOccNights / availableRoomNights) * 100) : 0;

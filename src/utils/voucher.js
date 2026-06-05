@@ -293,7 +293,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   .note .lbl { font-size: 8pt; font-weight: 700; color: ${BRAND}; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
   .terms { font-size: 8pt; color: #888; line-height: 1.5; padding-top: 18px; border-top: 1px solid #E8E0D8; }
   .terms strong { color: #1a1a1a; }
-  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${isHold ? '#B45309' : balance > 0 ? '${BRAND}' : '#0E8A5F'}; color: ${isHold ? '#B45309' : balance > 0 ? '${BRAND}' : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
+  .stamp { display: inline-block; padding: 6px 14px; border: 2px solid ${isHold ? '#B45309' : balance > 0 ? BRAND : '#0E8A5F'}; color: ${isHold ? '#B45309' : balance > 0 ? BRAND : '#0E8A5F'}; font-size: 10pt; font-weight: 800; letter-spacing: 1.5px; border-radius: 6px; transform: rotate(-3deg); }
   .hold { padding: 14px 16px; background: #FFFBEB; border: 1.5px solid #FDE68A; border-left: 4px solid #B45309; border-radius: 8px; margin-bottom: 22px; }
   .hold .lbl { font-size: 9pt; font-weight: 800; color: #B45309; letter-spacing: 1.2px; margin-bottom: 4px; text-transform: uppercase; }
   .hold .msg { font-size: 11pt; color: #1a1a1a; line-height: 1.5; }

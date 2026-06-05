@@ -467,7 +467,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
     date: b.startIdx != null ? new Date(new Date(ANCHOR).setDate(new Date(ANCHOR).getDate() + b.startIdx)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
   }] : []);
   const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
-  const balance = b.total - totalPaid;
+  const balance = (b.total || 0) - totalPaid;
   const statusInfo = STATUS[b.status] || STATUS.confirmed;
   // Invoicing is a paid add-on tier. Engine (core) and Channels do
   // bookings + vouchers but not tax invoices. The voucher PDF (download
@@ -687,7 +687,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Include in invoice register</div>
                   <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.35, marginTop: 1 }}>
                     {withTax
-                      ? `Yes — appears in the monthly CA export. ~₹${(tx?.gst || 0).toLocaleString('en-IN')} treated as GST inside ₹${b.total.toLocaleString('en-IN')}.`
+                      ? `Yes — appears in the monthly CA export. ~₹${(tx?.gst || 0).toLocaleString('en-IN')} treated as GST inside ₹${(b.total || 0).toLocaleString('en-IN')}.`
                       : `No — direct/cash booking, kept out of the CA export.`}
                   </div>
                 </div>
@@ -721,7 +721,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);
-              const preTax = withTax ? b.total - tx.gst : b.total;
+              const preTax = withTax ? (b.total || 0) - tx.gst : (b.total || 0);
               // R8-11: add any coupon discount back into the displayed tariff
               // and show an explicit Discount row below — they cancel, so the
               // rows still sum to the exact total, but the room rate no longer
@@ -772,7 +772,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             {withTax && <Row label={`CGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
             {withTax && <Row label={`SGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
-            <Row label="Total" value={`₹${b.total.toLocaleString('en-IN')}`} bold />
+            <Row label="Total" value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
 
             <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>PAYMENTS LEDGER</div>
@@ -915,7 +915,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           <PaymentSheet
             kind={payKind}
             balance={balance}
-            total={b.total}
+            total={b.total || 0}
             property={property}
             onChangeProperty={onChangeProperty}
             onClose={() => setPayOpen(false)}

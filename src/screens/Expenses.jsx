@@ -149,7 +149,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
   }, [filtered]);
 
   const add = () => {
-    const amt = parseInt(amount, 10);
+    const amt = Math.round(parseFloat(amount));
     if (!isFinite(amt) || amt <= 0) return;
     const expense = {
       id: 'ex_' + Date.now().toString(36),

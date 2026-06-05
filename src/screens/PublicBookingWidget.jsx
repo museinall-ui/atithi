@@ -987,7 +987,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <SummaryRow label="Check-in" value={new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Check-out" value={new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} />
               <SummaryRow label="Room" value={`${rooms} × ${selectedRT?.name || ''}`} />
-              <SummaryRow label="Rate" value={ratesVary ? `Varies by night (see below)` : `₹${perNight?.toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}${rooms > 1 ? ` × ${rooms} rooms` : ''}`} />
+              <SummaryRow label="Rate" value={ratesVary ? `Varies by night (see below)` : `₹${(perNight || 0).toLocaleString('en-IN')} × ${data.nights} night${data.nights > 1 ? 's' : ''}${rooms > 1 ? ` × ${rooms} rooms` : ''}`} />
               {/* Per-night breakdown — only shown when rates differ
                   across nights (weekend uplift / season multiplier
                   kicks in mid-stay). Keeps the simple-stay case clean

@@ -1012,7 +1012,12 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                 // Printable HTML summary the hotelier can save as PDF
                 // or forward manually. Matches the voucher styling so
                 // it feels like part of the same product.
-                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Tomorrow's arrivals · ${propName}</title>
+                // esc(): guest name / notes / phone come from the public
+                // booking widget (untrusted), and this string is written
+                // into a new window via document.write — escape every
+                // interpolated field to prevent stored XSS (round-10 R10-1).
+                const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Tomorrow's arrivals · ${esc(propName)}</title>
 <style>
   body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 32px; max-width: 760px; margin: 0 auto; color: #1a1a1a; }
   h1 { font-size: 22pt; margin-bottom: 4px; }
@@ -1027,7 +1032,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   @media print { .actions { display: none; } }
 </style></head><body>
 <h1>Tomorrow's arrivals</h1>
-<div class="sub">${propName} · ${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} expected</div>
+<div class="sub">${esc(propName)} · ${arrivingTomorrow.length} guest${arrivingTomorrow.length > 1 ? 's' : ''} expected</div>
 ${arrivingTomorrow.map(b => {
   const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId) || { name: '—' };
   const checkIn = new Date(ANCHOR);
@@ -1035,13 +1040,13 @@ ${arrivingTomorrow.map(b => {
   const checkInLbl = checkIn.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
   const balance = (b.total || 0) - (b.paid || 0);
   return `<div class="arrival">
-  <div class="name">${b.guest || ''} · ${b.id}</div>
+  <div class="name">${esc(b.guest)} · ${esc(b.id)}</div>
   <div class="meta">
     <strong>Check-in:</strong> ${checkInLbl} · ${b.nights} night${b.nights > 1 ? 's' : ''}<br/>
-    <strong>Room:</strong> ${rt?.name || 'Room'} · ${b.guests || ''}<br/>
-    <strong>Phone:</strong> ${b.phone || ''}<br/>
+    <strong>Room:</strong> ${esc(rt?.name || 'Room')} · ${esc(b.guests)}<br/>
+    <strong>Phone:</strong> ${esc(b.phone)}<br/>
     <strong>Status:</strong> ${balance > 0 ? `<span class="balance">Balance ₹${balance.toLocaleString('en-IN')}</span>` : `<span class="paid">Paid in full · ₹${(b.total || 0).toLocaleString('en-IN')}</span>`}
-    ${b.notes ? `<br/><strong>Note:</strong> ${b.notes}` : ''}
+    ${b.notes ? `<br/><strong>Note:</strong> ${esc(b.notes)}` : ''}
   </div>
 </div>`;
 }).join('')}

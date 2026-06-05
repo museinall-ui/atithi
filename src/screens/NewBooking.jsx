@@ -458,7 +458,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
                             style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 0 }}
                           />
                           {variesByNight && nightTypeObj && nightTypeObj.id !== item.roomTypeId && (
-                            <span style={{ fontSize: 9, color: T.indigo, fontWeight: 700, letterSpacing: 0.3 }}>· {nightTypeObj.name.slice(0, 8)}</span>
+                            <span style={{ fontSize: 9, color: T.indigo, fontWeight: 700, letterSpacing: 0.3 }}>· {(nightTypeObj.name || '').slice(0, 8)}</span>
                           )}
                         </div>
                       </div>
@@ -927,7 +927,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   </div>
                   {!isEditingPrice ? (
                     <div className="tnum" style={{ fontSize: 11, color: T.ink3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>{ex.sub || ex.unit || 'per stay'} · ₹{ex.price.toLocaleString('en-IN')}</span>
+                      <span>{ex.sub || ex.unit || 'per stay'} · ₹{(ex.price || 0).toLocaleString('en-IN')}</span>
                       <button onClick={() => setEditingPriceId(ex.id)} style={{ background: 'none', border: 'none', color: T.primary, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
                         <Icon name="edit" size={10} stroke={2.2} />
                       </button>

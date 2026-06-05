@@ -7,6 +7,19 @@ import { idxToDate, dateToIdx } from '../data.js';
 // callers (and any external imports) keep working.
 export { idxToDate, dateToIdx };
 
+// True when a Supabase/PostgREST error is "this column doesn't exist" — used
+// so optional newer columns (e.g. payments.collected_on, R8-14) can be sent
+// best-effort and gracefully retried-without when the matching migration
+// hasn't been pasted yet. PostgREST surfaces a missing column as PGRST204
+// (schema cache) or Postgres 42703 (undefined_column).
+function isMissingColumnError(e) {
+  if (!e) return false;
+  // PGRST204 = column not in PostgREST schema cache; 42703 = Postgres
+  // undefined_column. Both specifically mean "that column doesn't exist".
+  if (e.code === 'PGRST204' || e.code === '42703') return true;
+  return /could not find the .* column|column .* does not exist|undefined column/i.test(e.message || '');
+}
+
 // ----------------------------------------------------------------------------
 // Shape converters
 // ----------------------------------------------------------------------------
@@ -54,13 +67,13 @@ function cloudBookingToLocal(row, payments, invoices) {
       note: p.note || '',
       date: p.created_at,
       // dateIso is what Reports.jsx P&L reads to attribute income to
-      // the day the cash was collected. Newly recorded payments
-      // persist their own dateIso (from PaymentSheet); any cloud
-      // payment that pre-dates that field gets a sensible ISO derived
-      // from created_at so the P&L doesn't fall back to the booking's
-      // check-in date (which would be off by days/weeks for advance
-      // payments).
-      dateIso: (() => {
+      // the day the cash was collected. R8-14: prefer the stored
+      // collected_on (the real local collection date) when present;
+      // otherwise derive from created_at (UTC server time) as a fallback
+      // for payments that pre-date the column. The created_at fallback can
+      // be off by a day near the IST midnight boundary — which is exactly
+      // what collected_on fixes for newly-recorded payments.
+      dateIso: p.collected_on || (() => {
         if (!p.created_at) return undefined;
         const d = new Date(p.created_at);
         if (isNaN(d.getTime())) return undefined;
@@ -229,6 +242,7 @@ export async function seedBookings(propertyId, userId, localBookings) {
         method: p.method || '',
         amount: p.amount || 0,
         note: p.note || '',
+        collected_on: p.dateIso || null, // R8-14
         created_by: userId || null,
       });
     });
@@ -250,7 +264,13 @@ export async function seedBookings(propertyId, userId, localBookings) {
   });
 
   if (paymentRows.length) {
-    const { error: pErr } = await supabase.from('payments').insert(paymentRows);
+    // R8-14: resilient to the collected_on migration not being pasted yet —
+    // strip the column and retry if it isn't on the table.
+    let { error: pErr } = await supabase.from('payments').insert(paymentRows);
+    if (pErr && isMissingColumnError(pErr)) {
+      const stripped = paymentRows.map(({ collected_on, ...rest }) => rest);
+      ({ error: pErr } = await supabase.from('payments').insert(stripped));
+    }
     if (pErr) throw pErr;
   }
   if (invoiceRows.length) {
@@ -295,7 +315,7 @@ export async function updateBookingCloud(bookingId, patch) {
 // same call. The caller computes the new values locally (matching the
 // existing UI logic) and passes them in.
 export async function addPaymentCloud({ bookingId, propertyId, userId, entry, newPaid, newStatus, clearReleaseFields }) {
-  const { error: pErr } = await supabase.from('payments').insert({
+  const baseRow = {
     booking_id: bookingId,
     property_id: propertyId,
     kind: entry.kind === 'refund' || entry.kind === 'credit' || entry.kind === 'credit_note' ? entry.kind : 'payment',
@@ -303,7 +323,15 @@ export async function addPaymentCloud({ bookingId, propertyId, userId, entry, ne
     amount: entry.amount || 0,
     note: entry.note || '',
     created_by: userId || null,
-  });
+  };
+  // R8-14: try to store the real local collection date. Resilient to the
+  // 20260609 migration not being pasted yet — if collected_on doesn't exist
+  // on the table, retry the insert without it so payments never break on the
+  // paste-order window (the live site auto-deploys; the owner pastes later).
+  let { error: pErr } = await supabase.from('payments').insert({ ...baseRow, collected_on: entry.dateIso || null });
+  if (pErr && isMissingColumnError(pErr)) {
+    ({ error: pErr } = await supabase.from('payments').insert(baseRow));
+  }
   if (pErr) throw pErr;
 
   const updates = { paid: newPaid };

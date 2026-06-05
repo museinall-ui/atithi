@@ -29,6 +29,7 @@ supabase/migrations/20260605_widget_anon_access.sql                ← public bo
 supabase/migrations/20260606_redeem_coupon.sql                     ← coupon maxUses actually counts down
 supabase/migrations/20260607_widget_capacity_check.sql             ← atomic capacity check — stops the widget double-book race
 supabase/migrations/20260608_membership_insert_guard.sql           ← ⚠️ SECURITY: stops a stranger joining any hotel as owner — paste ASAP
+supabase/migrations/20260609_payment_collected_on.sql              ← payments.collected_on (correct P&L day across IST midnight / reloads)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).

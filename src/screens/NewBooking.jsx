@@ -28,12 +28,12 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 import Row from '../components/Row.jsx';
 
 const stepBtn = {
-  width: 32, height: 32, borderRadius: 16, border: `1px solid ${T.border}`,
+  width: 36, height: 36, borderRadius: 18, border: `1px solid ${T.border}`,
   background: T.card, color: T.ink, fontSize: 18, fontWeight: 600, cursor: 'pointer', lineHeight: 1,
 };
 
 const miniStepBtn = {
-  width: 28, height: 28, borderRadius: 14, border: `1px solid ${T.border}`,
+  width: 34, height: 34, borderRadius: 17, border: `1px solid ${T.border}`,
   background: T.card, color: T.ink, fontSize: 15, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
@@ -43,9 +43,9 @@ function MiniStep({ label, value, onChange }) {
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, background: T.card, border: `1px solid ${T.borderSoft}`, borderRadius: 8, padding: '4px 6px 4px 10px' }}>
       <span style={{ fontSize: 11, fontWeight: 600, color: T.ink2 }}>{label}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <button onClick={() => onChange(value - 1)} style={{ width: 24, height: 24, borderRadius: 12, border: `1px solid ${T.border}`, background: T.bgSoft, color: T.ink, fontSize: 14, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>−</button>
+        <button onClick={() => onChange(value - 1)} style={{ width: 32, height: 32, borderRadius: 16, border: `1px solid ${T.border}`, background: T.bgSoft, color: T.ink, fontSize: 14, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>−</button>
         <span className="tnum" style={{ fontSize: 13, fontWeight: 700, minWidth: 14, textAlign: 'center', color: T.ink }}>{value}</span>
-        <button onClick={() => onChange(value + 1)} style={{ width: 24, height: 24, borderRadius: 12, border: `1px solid ${T.border}`, background: T.bgSoft, color: T.ink, fontSize: 14, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>+</button>
+        <button onClick={() => onChange(value + 1)} style={{ width: 32, height: 32, borderRadius: 16, border: `1px solid ${T.border}`, background: T.bgSoft, color: T.ink, fontSize: 14, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>+</button>
       </div>
     </div>
   );

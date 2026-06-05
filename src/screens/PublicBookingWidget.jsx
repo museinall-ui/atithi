@@ -1408,7 +1408,7 @@ function Stepper({ value, onChange }) {
 }
 
 const stepBtn = {
-  width: 30, height: 30, borderRadius: '50%',
+  width: 36, height: 36, borderRadius: '50%',
   border: `1px solid ${T.border}`, background: T.card, color: T.ink2,
   fontSize: 17, fontWeight: 700, cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

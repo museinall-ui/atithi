@@ -864,7 +864,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px', background: T.dangerLt, borderRadius: 10, marginBottom: 16 }}>
                 <Icon name="info" size={14} color={T.danger} stroke={2} />
                 <div style={{ fontSize: 11, color: T.danger, lineHeight: 1.4, fontWeight: 600 }}>
-                  Conflict: {targetConflict.guest} ({targetConflict.id}) already booked these dates. Pick a different unit or date.
+                  {t('conflictBanner').replace('{guest}', targetConflict.guest).replace('{id}', targetConflict.id)}
                 </div>
               </div>
             ) : (

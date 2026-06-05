@@ -30,7 +30,7 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
           context (going to 'new' would just relaunch the form). */}
       <button
         onClick={() => go('diary')}
-        aria-label="Back to diary"
+        aria-label={t('backToDiary')}
         style={{
           position: 'absolute', top: 14, left: 14, zIndex: 5,
           width: 36, height: 36, borderRadius: 10, border: 'none',
@@ -49,16 +49,16 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
         }}>
           <Icon name="check" size={44} stroke={2.5} />
         </div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.4 }}>Booking confirmed</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: -0.4 }}>{t('bookingConfirmed')}</div>
         {b ? (
           <div style={{ fontSize: 13, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 320 }}>
             <strong style={{ color: T.ink2 }}>{b.id}</strong> · {b.guest}{b.phone ? ` · ${b.phone}` : ''}
             <br />
-            Saved in {propName || 'your diary'}. Send the booking summary to the guest now, or jump back to the calendar.
+            {t('savedInSummary').replace('{name}', propName || (lang === 'hi' ? 'आपकी डायरी' : 'your diary'))}
           </div>
         ) : (
           <div style={{ fontSize: 13, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 280 }}>
-            Saved in your diary. Open it from Home or the calendar.
+            {t('savedInDiary')}
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 24, width: '100%', maxWidth: 320 }}>
@@ -69,22 +69,22 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
               style={{ width: '100%' }}
               onClick={() => window.open(waUrl, '_blank', 'noopener')}
             >
-              Send booking to guest on WhatsApp
+              {t('sendToGuestWa')}
             </Btn>
           )}
           {b && !waUrl && b.phone === '' && (
             <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
-              No phone on file — add one to send the confirmation.
+              {t('noPhoneAddOne')}
             </div>
           )}
           {b && (
             <Btn variant="ghost" icon="download" style={{ width: '100%' }} onClick={() => setVoucherSheet(true)}>
-              Download voucher
+              {t('downloadVoucher')}
             </Btn>
           )}
           <div style={{ display: 'flex', gap: 8, width: '100%' }}>
             {b && (
-              <Btn variant="ghost" icon="eye" style={{ flex: 1 }} onClick={() => go('booking', b.id)}>Open booking</Btn>
+              <Btn variant="ghost" icon="eye" style={{ flex: 1 }} onClick={() => go('booking', b.id)}>{t('openBooking')}</Btn>
             )}
             <Btn variant="ghost" icon="cal" style={{ flex: 1 }} onClick={() => go('diary')}>{t('diary')}</Btn>
           </div>
@@ -100,8 +100,8 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
           style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 60, display: 'flex', alignItems: 'flex-end' }}
         >
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', background: T.card, borderRadius: '16px 16px 0 0', padding: 18, paddingBottom: 32 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Download voucher in…</div>
-            <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>Pick the language for this PDF. Your app language stays unchanged.</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('downloadVoucherIn')}</div>
+            <div style={{ fontSize: 11, color: T.ink3, marginBottom: 14, lineHeight: 1.4 }}>{t('pickPdfLang')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button onClick={() => downloadIn('en')} className="atithi-tap" style={{ width: '100%', padding: 14, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${T.primary}`, background: T.card, color: T.ink, fontSize: 13, fontWeight: 700, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 18, color: T.primary, fontWeight: 800, width: 32, textAlign: 'center' }}>EN</span>

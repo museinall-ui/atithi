@@ -229,6 +229,18 @@ export const STRINGS = {
     installGenStep2: "Tap 'Install app' or 'Add to Home screen'",
     installGenStep3: 'Confirm — Atithi then opens like a normal app',
     gotIt: 'Got it',
+    // Booking confirmed screen
+    bookingConfirmed: 'Booking confirmed',
+    savedInSummary: 'Saved in {name}. Send the booking summary to the guest now, or jump back to the calendar.',
+    savedInDiary: 'Saved in your diary. Open it from Home or the calendar.',
+    sendToGuestWa: 'Send booking to guest on WhatsApp',
+    noPhoneAddOne: 'No phone on file — add one to send the confirmation.',
+    downloadVoucher: 'Download voucher',
+    openBooking: 'Open booking',
+    backToDiary: 'Back to diary',
+    downloadVoucherIn: 'Download voucher in…',
+    pickPdfLang: 'Pick the language for this PDF. Your app language stays unchanged.',
+    conflictBanner: 'Conflict: {guest} ({id}) already booked these dates. Pick a different unit or date.',
   },
   hi: {
     home: 'होम', diary: 'डायरी', guests: 'मेहमान', more: 'प्रबंधन', newBk: 'नया',
@@ -460,6 +472,18 @@ export const STRINGS = {
     installGenStep2: "'Install app' या 'Add to Home screen' टैप करें",
     installGenStep3: 'कन्फर्म करें — फिर Atithi नॉर्मल ऐप की तरह खुलेगा',
     gotIt: 'समझ गए',
+    // Booking confirmed screen
+    bookingConfirmed: 'बुकिंग कन्फर्म',
+    savedInSummary: '{name} में सेव हो गई। मेहमान को बुकिंग समरी अभी भेजें, या कैलेंडर पर वापस जाएँ।',
+    savedInDiary: 'आपकी डायरी में सेव हो गई। इसे होम या कैलेंडर से खोलें।',
+    sendToGuestWa: 'मेहमान को WhatsApp पर बुकिंग भेजें',
+    noPhoneAddOne: 'कोई फ़ोन नंबर नहीं है — कन्फर्मेशन भेजने के लिए एक जोड़ें।',
+    downloadVoucher: 'वाउचर डाउनलोड करें',
+    openBooking: 'बुकिंग खोलें',
+    backToDiary: 'डायरी पर वापस',
+    downloadVoucherIn: 'वाउचर इस भाषा में डाउनलोड करें…',
+    pickPdfLang: 'इस PDF की भाषा चुनें। आपकी ऐप भाषा वही रहती है।',
+    conflictBanner: 'कन्फ्लिक्ट: {guest} ({id}) ने ये तारीखें पहले से बुक की हैं। दूसरी यूनिट या तारीख चुनें।',
   },
 };
 

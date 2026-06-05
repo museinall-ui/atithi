@@ -32,7 +32,8 @@
       "Bash(git --no-pager diff --stat src/data.js src/screens/NewBooking.jsx src/screens/PublicBookingWidget.jsx)",
       "Bash(git --no-pager diff src/App.jsx)",
       "Bash(key)",
-      "Bash(label)"
+      "Bash(label)",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content src/i18n.js | Measure-Object -Line\\).Lines\")"
     ]
   }
 }

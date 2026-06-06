@@ -357,6 +357,7 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
   const [cloudProperty, setCloudProperty] = useState(null);
   const [cloudBookings, setCloudBookings] = useState(null);
   const [cloudCategories, setCloudCategories] = useState(null);
+  const [cloudOverrides, setCloudOverrides] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(!!slug);
 
@@ -383,6 +384,7 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
         setCloudProperty({ ...prop, categories: inv.categories });
         setCloudBookings(inv.bookings);
         setCloudCategories(inv.categories);
+        setCloudOverrides(inv.overrides || {});
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -421,10 +423,12 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
   // hotelier-preview-while-signed-in) otherwise.
   const widgetProperty = cloudProperty || fallbackProperty;
   const widgetBookings = cloudBookings || fallbackBookings;
-  // No rate overrides via anon path for now — widget uses base rates
-  // + property-level multipliers. Hotelier-side rate-override
-  // calendar still works on the diary as before.
-  const widgetOverrides = cloudCategories ? {} : fallbackOverrides;
+  // Rate overrides + close-outs from the Rates calendar. Cloud path uses
+  // the anon rate_overrides_by_property RPC (migration 20260615); if that
+  // RPC isn't pasted yet, inv.overrides is {} and the widget quotes base
+  // + weekend/season rates (its prior behaviour). Local/preview path uses
+  // the hotelier's in-memory overrides directly.
+  const widgetOverrides = cloudCategories ? (cloudOverrides || {}) : fallbackOverrides;
 
   const handleSubmit = (newBk) => {
     if (cloudProperty && cloudProperty.id) {

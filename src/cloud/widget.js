@@ -1,5 +1,5 @@
 import { supabase } from '../supabase.js';
-import { idxToDate } from '../data.js';
+import { idxToDate, dateToIdx } from '../data.js';
 
 // One-shot check: has the owner pasted the anon-RLS migration
 // (supabase/migrations/20260605_widget_anon_access.sql) into their
@@ -92,10 +92,11 @@ export async function loadPropertyBySlug(slug) {
 // Load room categories + active bookings for a property by id. Used
 // for the widget's availability check on the room-picker step.
 export async function loadWidgetInventory(propertyId) {
-  if (!propertyId) return { categories: [], bookings: [] };
-  const [catsRes, booksRes] = await Promise.all([
+  if (!propertyId) return { categories: [], bookings: [], overrides: {} };
+  const [catsRes, booksRes, ovRes] = await Promise.all([
     supabase.rpc('room_categories_by_property', { p_property_id: propertyId }),
     supabase.rpc('bookings_by_property_public', { p_property_id: propertyId }),
+    supabase.rpc('rate_overrides_by_property', { p_property_id: propertyId }),
   ]);
   const categories = (catsRes.data || []).map(r => ({
     id: r.code,
@@ -128,7 +129,24 @@ export async function loadWidgetInventory(propertyId) {
       roomItems: Array.isArray(r.room_items) ? r.room_items : [],
     };
   });
-  return { categories, bookings };
+  // Per-date rate overrides + close-outs (migration 20260615). Keyed the
+  // same way the widget + Rates calendar key them: `${code}:${dateIdx}`.
+  // If the RPC isn't installed yet, ovRes.error is set → overrides stays
+  // empty and the widget quotes base + weekend/season rates as before
+  // (and can't see close-outs). The `note` column is intentionally NOT
+  // exposed by the RPC — per-date notes are private to the hotelier.
+  const overrides = {};
+  if (!ovRes.error && Array.isArray(ovRes.data)) {
+    ovRes.data.forEach(r => {
+      const idx = dateToIdx(r.date);
+      overrides[`${r.room_category_code}:${idx}`] = {
+        rate: r.rate == null ? null : r.rate,
+        closed: !!r.closed_out,
+        closedUnits: Array.isArray(r.closed_units) ? r.closed_units : [],
+      };
+    });
+  }
+  return { categories, bookings, overrides };
 }
 
 // Insert a widget booking via the anon INSERT policy. The RLS check

@@ -36,6 +36,8 @@ supabase/migrations/20260610_coupon_privacy.sql                    ← coupon co
 supabase/migrations/20260611_enforce_permissions.sql               ← ⚠️ RBAC: staff permissions enforced in the DB (owner always safe — can't be locked out)
 supabase/migrations/20260612_widget_rate_limit.sql                 ← OPTIONAL: per-property flood cap on the public booking link (see file header for the trade-off)
 supabase/migrations/20260613_rbac_consistency_fixes.sql            ← ⚠️ RBAC follow-up: fixes payment/day-close/invoice permission mismatches (paste AFTER 20260611)
+supabase/migrations/20260614_rate_override_notes.sql               ← per-date notes on the Rates calendar (team-only; works locally without it)
+supabase/migrations/20260615_widget_rate_overrides.sql            ← public booking widget quotes your calendar rates + honours close-outs
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).
@@ -58,7 +60,7 @@ You should see (among others):
 - `properties`: `short_code`, `embed_button`, `arrivals_recipients`, `tagline`, `photo_gallery`, `coupons`, `meal_plans`, `default_meal_plan_id`, `channel_commissions`, `base_capacity_adults`, `rate_plans`, `seasons`, `weekend_rules`, `channel_markups`, `payment_qr_data_url`, `logo_data_url`, `cash_accounts`
 - `room_categories`: `extra_adult`, `extra_child`, `gst_rate`, `photo_data_url`
 - `bookings`: `meal_plan_id`, `rate_plan_id`, `email`, `events`, `coupon_code`, `discount_amount`, `voice_notes`
-- `rate_overrides`: `closed_units`
+- `rate_overrides`: `closed_units`, `note`
 - `memberships`: `permissions`
 - `pending_invites`: `permissions`
 
@@ -71,10 +73,10 @@ select proname from pg_proc
 where proname in ('property_by_short_code', 'room_categories_by_property',
                  'bookings_by_property_public', 'redeem_coupon', 'book_widget_slot',
                  'property_has_members', 'caller_has_invite',
-                 'validate_coupon', 'has_perm');
+                 'validate_coupon', 'has_perm', 'rate_overrides_by_property');
 ```
 
-All nine should be listed (`room_categories_by_property` + `bookings_by_property_public` are what the public widget reads to show room tiles + availability). `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6).
+All ten should be listed (`room_categories_by_property` + `bookings_by_property_public` are what the public widget reads to show room tiles + availability). `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6); `rate_overrides_by_property` feeds the public widget your per-date calendar prices + close-outs (note: it deliberately does NOT expose per-date notes, which stay private).
 
 ### Test the permission enforcement (R9-6) without risk
 

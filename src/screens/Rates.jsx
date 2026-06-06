@@ -92,6 +92,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const [dragStart, setDragStart] = useState(null);
   const [dragEnd, setDragEnd] = useState(null);
   const [dragMoved, setDragMoved] = useState(false);
+  // Mobile browsers fire synthetic mouse events (mousedown/up/enter) after a
+  // touch. Without this guard, that synthetic mousedown on the last dragged
+  // cell would re-open a one-cell "drag" and the synthetic mouseup would toggle
+  // it back off — silently dropping the last date you selected. We stamp the
+  // time of each touch and have the mouse handlers ignore events right after one.
+  const lastTouchRef = useRef(0);
   const [localOverrides, setLocalOverrides] = useState({});
   const overrides = overridesProp !== undefined ? overridesProp : localOverrides;
   const setOverrides = setOverridesProp || setLocalOverrides;
@@ -272,27 +278,26 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
 
-  // Mobile swipe across the calendar to flip months. Tracks one-finger
-  // horizontal travel; if dx > 60px and travel is mostly horizontal we
-  // navigate and cancel any in-progress cell selection so the swipe
-  // doesn't accidentally mark a date as well.
-  const swipeRef = useRef(null);
-  const onCalSwipeStart = (e) => {
-    const t = e.touches && e.touches[0];
-    if (!t) return;
-    swipeRef.current = { x: t.clientX, y: t.clientY };
-  };
-  const onCalSwipeEnd = (e) => {
-    const start = swipeRef.current;
-    swipeRef.current = null;
-    if (!start) return;
-    const t = e.changedTouches && e.changedTouches[0];
-    if (!t) return;
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return;
-    if (dx > 0) goPrevMonth(); else goNextMonth();
-    setDragStart(null); setDragEnd(null); setDragMoved(false);
+  // Touch drag-select: as the finger moves across the grid, find the cell
+  // under it (via data-cell-idx) and extend the selection. Desktop uses
+  // onMouseEnter per cell; touch fires no enter events, so we hit-test the
+  // finger position here. The grid sets touch-action:none so the browser
+  // doesn't scroll/zoom instead of letting us drag-select.
+  //
+  // (We dropped the old swipe-to-flip-month: a horizontal drag across a week
+  // row is the SAME gesture as a swipe, so the swipe handler was eating every
+  // drag-select and flipping the month instead. Month nav is the ‹ › chevrons
+  // + the From→To / jump-to-date picker.)
+  const onCalTouchMove = (e) => {
+    if (dragStart == null) return;
+    const tp = e.touches && e.touches[0];
+    if (!tp) return;
+    const el = document.elementFromPoint(tp.clientX, tp.clientY);
+    const cell = el && el.closest && el.closest('[data-cell-idx]');
+    if (cell) {
+      const idx = parseInt(cell.getAttribute('data-cell-idx'), 10);
+      if (!Number.isNaN(idx)) onCellEnter(idx);
+    }
   };
   const onCellEnter = (i) => {
     if (dragStart != null) {
@@ -693,14 +698,14 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             )}
           </div>
         } />
-        <div onTouchStart={onCalSwipeStart} onTouchEnd={onCalSwipeEnd}>
+        <div>
         <Card padding={10}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
             {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, ix) => (
               <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: ix >= 5 ? T.primary : T.ink3, letterSpacing: 0.3 }}>{d}</div>
             ))}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          <div onTouchMove={onCalTouchMove} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, touchAction: 'none' }}>
             {/* Leading blank cells so the first real date sits under its
                 weekday column. Without these the calendar always started
                 at Monday and the dates lied about their day-of-week. */}
@@ -726,9 +731,10 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               return (
                 <div
                   key={i}
-                  onMouseDown={(e) => { e.preventDefault(); onCellDown(i); }}
-                  onMouseEnter={() => onCellEnter(i)}
-                  onTouchStart={() => onCellDown(i)}
+                  data-cell-idx={i}
+                  onMouseDown={(e) => { if (Date.now() - lastTouchRef.current < 700) return; e.preventDefault(); onCellDown(i); }}
+                  onMouseEnter={() => { if (Date.now() - lastTouchRef.current < 700) return; onCellEnter(i); }}
+                  onTouchStart={() => { lastTouchRef.current = Date.now(); onCellDown(i); }}
                   title={titleParts.length ? titleParts.join(' · ') : undefined}
                   style={{
                     aspectRatio: '1 / 1.1', borderRadius: 7, padding: 3,

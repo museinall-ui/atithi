@@ -442,8 +442,13 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   };
 
   const applyBulkRate = () => {
-    const v = +bulkVal;
-    if (!v) return;
+    // Allow ₹0 (comp / complimentary nights); reject empty / negative / non-numeric.
+    const v = bulkVal === '' ? NaN : Number(bulkVal);
+    if (!Number.isFinite(v) || v < 0) return;
+    // Typo guard: a rate several times the base is almost always an extra zero.
+    const base = rt?.base || 0;
+    if (base > 0 && v > base * 5 &&
+        !window.confirm(`₹${v.toLocaleString('en-IN')} is much higher than the base of ₹${base.toLocaleString('en-IN')}. Set it anyway?`)) return;
     captureUndo(`Set rate ₹${v.toLocaleString('en-IN')} on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
@@ -457,9 +462,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       });
       return next;
     });
-    setBulkVal(''); setShowBulkSheet(null);
+    setBulkVal(''); setShowBulkSheet(null); setSelected(new Set());
   };
   const applyBlock = () => {
+    // Whole-type close is the most destructive bulk action — confirm with scope.
+    if (!window.confirm(`Block ${rt.name} on all ${selected.size} selected date${selected.size === 1 ? '' : 's'}? Guests won't be able to book it on those dates. You can undo for 10 seconds, or re-open later.`)) return;
     captureUndo(`Closed ${selected.size} ${selected.size === 1 ? 'date' : 'dates'} for ${rt.name}`);
     setOverrides(o => {
       const next = { ...o };
@@ -492,7 +499,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       return next;
     });
     setBlockUnits([]);
-    setShowBulkSheet(null);
+    setShowBulkSheet(null); setSelected(new Set());
   };
   const applyOpen = () => {
     captureUndo(`Cleared custom settings on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
@@ -501,7 +508,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       selected.forEach(i => { delete next[`${selectedType}:${i}`]; });
       return next;
     });
-    setShowBulkSheet(null);
+    setShowBulkSheet(null); setSelected(new Set());
   };
 
   // "Set inventory to N" — the aggregate counterpart to per-unit close-out.
@@ -544,7 +551,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       return next;
     });
     setBulkInv(null);
-    setShowBulkSheet(null);
+    setShowBulkSheet(null); setSelected(new Set());
   };
 
   // F2: copy rates from a source room type to the current type with a
@@ -624,6 +631,10 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 const names = weekendDays.map(d => dows[d]).join('/');
                 return upliftPct > 0 ? `${names} +${upliftPct}%` : 'No weekend uplift';
               })()}</div>
+              <button onClick={() => go('settings')} style={{
+                marginTop: 7, padding: 0, background: 'none', border: 'none',
+                color: T.primary, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}>{t('weekendSeasonLink')} →</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {/* Synced chip used to claim OTA sync regardless of plan.
@@ -779,7 +790,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                     <div style={{ fontSize: 8, fontWeight: 800, color: T.danger, letterSpacing: 0.3, lineHeight: 1, textTransform: 'uppercase' }}>{t('closed')}</div>
                   ) : (
                     <div className="tnum" style={{ fontSize: 9, fontWeight: 700, color: isOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
-                      ₹{Math.round(rate/100)/10}k
+                      {rate >= 100000
+                        ? `₹${(rate / 100000).toFixed(rate % 100000 === 0 ? 0 : 1)}L`
+                        : `₹${rate.toLocaleString('en-IN')}`}
                     </div>
                   )}
                   {/* Partial close-out: bottom-left badge "−N" tells the
@@ -1129,9 +1142,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             })()}
             {showBulkSheet === 'block' && (
               <>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('closeOut')}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('closeOut')} · {rt.name}</div>
                 <div style={{ fontSize: 12, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>
-                  Close {selCount} date{selCount > 1 ? 's' : ''} for <strong>{rt.name}</strong>. Choose to close the whole room type or just specific units (for maintenance, deep cleaning, etc).
+                  Stop taking bookings for <strong>{rt.name}</strong> on {selCount} date{selCount > 1 ? 's' : ''}. Block the whole room type, or just specific units (e.g. one tent under maintenance). You can re-open any time.
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SPECIFIC UNITS</div>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -1158,10 +1171,10 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                     style={{ background: T.danger, borderColor: T.danger, opacity: blockUnits.length === 0 ? 0.5 : 1 }}
                     onClick={applyBlockUnits}
                     disabled={blockUnits.length === 0}
-                  >Close {blockUnits.length || '—'} unit{blockUnits.length === 1 ? '' : 's'}</Btn>
-                  <Btn full style={{ background: T.danger, borderColor: T.danger }} onClick={applyBlock}>Close whole type</Btn>
+                  >Block {blockUnits.length || '—'} unit{blockUnits.length === 1 ? '' : 's'}</Btn>
+                  <Btn full style={{ background: T.danger, borderColor: T.danger }} onClick={applyBlock}>Block whole type</Btn>
                 </div>
-                <Btn variant="ghost" full onClick={applyOpen}>{t('openDates')} (clear close-out)</Btn>
+                <Btn variant="ghost" full onClick={applyOpen}>{t('openDates')}</Btn>
               </>
             )}
             {showBulkSheet === 'copy' && (() => {

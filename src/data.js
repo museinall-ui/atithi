@@ -389,6 +389,16 @@ export function effectiveRatePlans(property) {
   const all = Array.isArray(property && property.ratePlans) ? property.ratePlans : [];
   return all.filter(p => p.enabled);
 }
+// Whether the multi-rate-plan picker should appear (NewBooking + widget).
+// Defaults to ON when the property has more than the Standard plan, so
+// existing setups are unchanged. The Advanced settings master toggle
+// (accountant.ratePlansEnabled) can force it on or off explicitly.
+export function ratePlansActive(property) {
+  const plans = effectiveRatePlans(property);
+  if (plans.length <= 1) return false;
+  const flag = property && property.accountant ? property.accountant.ratePlansEnabled : undefined;
+  return flag === undefined ? true : !!flag;
+}
 export function ratePlanById(property, id) {
   const all = Array.isArray(property && property.ratePlans) ? property.ratePlans : [];
   return all.find(p => p.id === id) || null;

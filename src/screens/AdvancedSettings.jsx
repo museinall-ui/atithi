@@ -1,4 +1,5 @@
 import { T } from '../tokens.js';
+import { effectiveRatePlans } from '../data.js';
 import Card from '../components/Card.jsx';
 import Toggle from '../components/Toggle.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
@@ -43,6 +44,17 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
   const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const weekendLabel = weekendDays.map(d => dows[d]).join(', ');
 
+  // Multiple rate plans — master toggle. Default ON when the property
+  // already has more than the Standard plan (so existing setups aren't
+  // changed); explicit flag wins once the hotelier touches the toggle.
+  const enabledPlans = effectiveRatePlans(property);
+  const rpFlag = property.accountant && property.accountant.ratePlansEnabled;
+  const rpOn = rpFlag === undefined ? enabledPlans.length > 1 : !!rpFlag;
+  const setRatePlans = (v) => {
+    if (!canEdit) return;
+    onChangeProperty(p => ({ ...p, accountant: { ...(p.accountant || {}), ratePlansEnabled: v } }));
+  };
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('advancedTitle')} subtitle={t('advancedSub')} onBack={() => go('settings')} />
@@ -84,21 +96,51 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
           )}
         </Card>
 
-        {/* ── Coming soon: rate plans + occupancy ───────────────── */}
-        {[
-          { title: t('rpTitle'), desc: t('rpDesc') },
-          { title: t('occTitle'), desc: t('occDesc') },
-        ].map((f, i) => (
-          <Card key={i} padding={14} style={{ marginBottom: 12, opacity: 0.65 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{f.title}</div>
-                <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 3, lineHeight: 1.45 }}>{f.desc}</div>
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: T.ink3, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{t('comingSoon')}</span>
+        {/* ── Multiple rate plans (master toggle) ───────────────── */}
+        <Card padding={14} style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('rpTitle')}</div>
+              <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 3, lineHeight: 1.45 }}>{t('rpDesc')}</div>
             </div>
-          </Card>
-        ))}
+            <Toggle on={rpOn} onChange={setRatePlans} />
+          </div>
+          {rpOn && (
+            <div style={{ marginTop: 14 }}>
+              {enabledPlans.length > 1 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 12 }}>
+                  {enabledPlans.map(rp => {
+                    const pct = rp.multiplierPct || 0;
+                    return (
+                      <div key={rp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
+                        <span style={{ color: T.ink, fontWeight: 600 }}>{rp.label || rp.id}</span>
+                        <span className="tnum" style={{ fontWeight: 700, color: pct === 0 ? T.ink3 : (pct > 0 ? T.primary : T.teal) }}>
+                          {pct === 0 ? t('rpBaseRate') : `${pct > 0 ? '+' : ''}${pct}%`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: T.ink2, lineHeight: 1.45, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '8px 10px', marginBottom: 12 }}>
+                  {t('rpNoneHint')}
+                </div>
+              )}
+              <button onClick={() => go('settings')} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{t('rpManageLink')} →</button>
+            </div>
+          )}
+        </Card>
+
+        {/* ── Coming soon: single-occupancy & extra-bed ─────────── */}
+        <Card padding={14} style={{ marginBottom: 12, opacity: 0.65 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('occTitle')}</div>
+              <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 3, lineHeight: 1.45 }}>{t('occDesc')}</div>
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: T.ink3, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{t('comingSoon')}</span>
+          </div>
+        </Card>
 
         {!canEdit && (
           <div style={{ fontSize: 11, color: T.ink3, textAlign: 'center', marginTop: 8 }}>{t('viewOnly')}</div>

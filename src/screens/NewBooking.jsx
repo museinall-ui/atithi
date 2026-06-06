@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -664,7 +664,7 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans 
       {/* Rate plan picker — only when more than one is enabled. The
           Standard plan is the calendar rate; other plans apply their
           multiplier on top so the picker shows what the guest pays. */}
-      {ratePlans.length > 1 && (() => {
+      {ratePlansActive(property) && ratePlans.length > 1 && (() => {
         const selectedRpId = data.ratePlanId || 'standard';
         // Sample rate for preview: first room's per-night rate, or its
         // type's base if no rate yet, or 0.

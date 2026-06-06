@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -830,8 +830,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               </>
             )}
 
-            {/* Rate plan picker — only when multiple are enabled. */}
-            {ratePlans.length > 1 && data.roomTypeId && (
+            {/* Rate plan picker — only when multiple are enabled AND the
+                Advanced "Multiple rate plans" master toggle is on. */}
+            {ratePlansActive(property) && data.roomTypeId && (
               <>
                 <SectionTitle style={{ marginTop: 18 }}>Choose a rate plan</SectionTitle>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

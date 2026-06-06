@@ -83,8 +83,27 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
   );
 }
 
-function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
+function StepDates({ data, set, t, property, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
   const dateRef = useRef(null);
+  // Minimum-night reminder (Advanced settings → Minimum-night stays).
+  // Non-blocking: the hotelier can always take the booking — this is a
+  // reminder so reception doesn't accidentally undercut a weekend policy.
+  const ml = property && property.accountant && property.accountant.minNights;
+  let minWarn = null;
+  if (ml && ml.enabled && data.checkIn && data.nights) {
+    const inDate = new Date(data.checkIn + 'T00:00:00');
+    if (!isNaN(inDate.getTime())) {
+      const weekendDays = (property.weekendRules && property.weekendRules.weekendDays) || [0, 6];
+      let includesWeekend = false;
+      for (let k = 0; k < data.nights; k++) {
+        const d = new Date(inDate);
+        d.setDate(d.getDate() + k);
+        if (weekendDays.includes(d.getDay())) { includesWeekend = true; break; }
+      }
+      const need = includesWeekend ? (ml.weekend || 1) : (ml.allDays || 1);
+      if (data.nights < need) minWarn = need;
+    }
+  }
   // The native date picker needs to anchor to the input's rendered box, so
   // we keep the input full-size inside the bar with opacity:0 (same pattern
   // the Diary's jump-to-date bar uses). Tapping anywhere on the bar hits
@@ -175,6 +194,17 @@ function StepDates({ data, set, t, childAgeBelow, childFreeAge = 5, childHalfAge
           {t('checkOut')} · {checkOutLabel}
         </div>
       </Card>
+
+      {minWarn && (
+        <Card padding={14} style={{ borderColor: T.warnLt, background: 'oklch(98% 0.018 75)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <Icon name="info" size={16} color="oklch(48% 0.14 75)" />
+            <div style={{ fontSize: 12, color: T.ink2, lineHeight: 1.45 }}>
+              {t('mlWarn').replace('{need}', minWarn)}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card padding={16}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -1451,7 +1481,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
-        {step === 1 && <StepDates data={data} set={set} t={t} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />}
+        {step === 1 && <StepDates data={data} set={set} t={t} property={property} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
         {step === 4 && (

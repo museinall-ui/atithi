@@ -2971,6 +2971,23 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
           </div>
         </Card>
 
+        <SectionHead title={t('advancedSettings')} style={{ marginTop: 16 }} />
+        <Card padding={0} style={{ marginBottom: 14 }}>
+          <button onClick={() => go('advanced')} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+            padding: 14, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+          }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: T.primaryLt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon name="cog" size={18} color={T.primary} stroke={2} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('advancedSettings')}</div>
+              <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>{t('advancedSettingsSub')}</div>
+            </div>
+            <Icon name="chev" size={16} color={T.ink3} stroke={2.2} />
+          </button>
+        </Card>
+
         <SectionHead title={t('yourPlan')} style={{ marginTop: 16 }} />
         <Card padding={0} style={{ marginBottom: 14 }}>
           {[

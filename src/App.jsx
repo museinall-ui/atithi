@@ -38,6 +38,7 @@ import Channels from './screens/Channels.jsx';
 import Reports from './screens/Reports.jsx';
 import Guests from './screens/Guests.jsx';
 import Settings from './screens/Settings.jsx';
+import AdvancedSettings from './screens/AdvancedSettings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
 import Onboarding from './screens/Onboarding.jsx';
@@ -1794,6 +1795,7 @@ export default function App() {
     case 'channels':          screen = <Channels go={go} t={t} />; break;
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} session={session} propertyId={propertyId} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} bookings={bookings} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
+    case 'advanced':          screen = can('manage_settings') ? <AdvancedSettings go={go} t={t} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="change advanced settings" />; break;
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;

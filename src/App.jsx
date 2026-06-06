@@ -1045,7 +1045,11 @@ export default function App() {
       // unchanged, so the change never reached the cloud.
       const pvUnits = JSON.stringify((pv && pv.closedUnits) || []);
       const nvUnits = JSON.stringify((nv && nv.closedUnits) || []);
-      if (!!pv === !!nv && pvRate === nvRate && pvClosed === nvClosed && pvUnits === nvUnits) continue;
+      // Per-date notes: a note-only change must also sync, else editing
+      // just the note on a cell never reaches the cloud.
+      const pvNote = (pv && pv.note) || '';
+      const nvNote = (nv && nv.note) || '';
+      if (!!pv === !!nv && pvRate === nvRate && pvClosed === nvClosed && pvUnits === nvUnits && pvNote === nvNote) continue;
       const [roomTypeId, idxStr] = key.split(':');
       const idx = parseInt(idxStr, 10);
       if (!roomTypeId || !isFinite(idx)) continue;

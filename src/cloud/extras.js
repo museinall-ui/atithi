@@ -97,6 +97,17 @@ export async function updateSavedExtraCloud(extraId, patch) {
 // rate_overrides
 // ----------------------------------------------------------------------------
 
+// True when a write failed only because a column doesn't exist yet (the
+// owner hasn't pasted a newer migration). Lets us retry without that
+// column so the rest of the row still saves. PostgREST reports this as
+// code PGRST204 with a "Could not find the 'X' column ... in the schema
+// cache" message.
+function isMissingColumn(error, col) {
+  const m = ((error && (error.message || error.details || error.hint)) || '').toLowerCase();
+  return m.includes(col.toLowerCase()) &&
+    (m.includes('column') || m.includes('schema cache') || m.includes('does not exist'));
+}
+
 export async function loadRateOverrides(propertyId) {
   const { data, error } = await supabase
     .from('rate_overrides')
@@ -113,6 +124,9 @@ export async function loadRateOverrides(propertyId) {
       // out on this date. Empty array = no per-unit close-outs (the
       // whole-type closed flag above is the bigger hammer).
       closedUnits: Array.isArray(r.closed_units) ? r.closed_units : [],
+      // Per-date note (team-only reminder on a calendar cell). Empty
+      // string when unset, or when the `note` column doesn't exist yet.
+      note: r.note || '',
     };
   });
   return map;
@@ -133,12 +147,20 @@ export async function seedRateOverrides(propertyId, localMap) {
       rate: v.rate == null ? null : v.rate,
       closed_out: !!v.closed,
       closed_units: Array.isArray(v.closedUnits) ? v.closedUnits : [],
+      note: v.note || '',
     });
   }
   if (!rows.length) return;
-  const { error } = await supabase
+  let { error } = await supabase
     .from('rate_overrides')
     .upsert(rows, { onConflict: 'property_id,room_category_code,date' });
+  // Migration 20260614 (note column) not pasted yet → retry without note.
+  if (error && isMissingColumn(error, 'note')) {
+    const stripped = rows.map(({ note, ...r }) => r);
+    ({ error } = await supabase
+      .from('rate_overrides')
+      .upsert(stripped, { onConflict: 'property_id,room_category_code,date' }));
+  }
   if (error) throw error;
 }
 
@@ -156,7 +178,7 @@ export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value
     if (error) throw error;
     return;
   }
-  const row = {
+  const baseRow = {
     property_id: propertyId,
     room_category_code: roomTypeId,
     date,
@@ -164,9 +186,19 @@ export async function setRateOverrideCloud(propertyId, roomTypeId, dayIdx, value
     closed_out: !!value.closed,
     closed_units: Array.isArray(value.closedUnits) ? value.closedUnits : [],
   };
-  const { error } = await supabase
+  const row = { ...baseRow, note: value.note || '' };
+  let { error } = await supabase
     .from('rate_overrides')
     .upsert(row, { onConflict: 'property_id,room_category_code,date' });
+  // Graceful fallback: if the `note` column hasn't been added yet
+  // (migration 20260614 not pasted), retry without it so the rate /
+  // close-out still sync. The note stays in localStorage and syncs once
+  // the column exists.
+  if (error && isMissingColumn(error, 'note')) {
+    ({ error } = await supabase
+      .from('rate_overrides')
+      .upsert(baseRow, { onConflict: 'property_id,room_category_code,date' }));
+  }
   if (error) throw error;
 }
 

@@ -110,6 +110,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const setOverrides = setOverridesProp || setLocalOverrides;
   const [showBulkSheet, setShowBulkSheet] = useState(null);
   const [bulkVal, setBulkVal] = useState('');
+  // Per-date note draft (the "Note" bulk action). Prefilled from the
+  // first selected cell's existing note when the sheet opens.
+  const [noteVal, setNoteVal] = useState('');
   // "Set inventory" stepper value — the target number of rooms the
   // hotelier wants sellable on each selected date. Compared against
   // the category's total units (rt.units) to derive how many should
@@ -510,6 +513,29 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     });
     setShowBulkSheet(null); setSelected(new Set());
   };
+  // Per-date note. Empty text clears the note; if a cell then has no
+  // rate / close-out / unit-block left, its override key is removed
+  // entirely so it syncs back to "open at base rate".
+  const applyNote = () => {
+    const text = noteVal.trim();
+    captureUndo(`Note on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
+    setOverrides(o => {
+      const next = { ...o };
+      selected.forEach(i => {
+        const key = cellKey(i);
+        const prev = next[key] || {};
+        if (!text) {
+          const { note, ...rest } = prev;
+          const stillCustom = rest.rate != null || rest.closed || (rest.closedUnits && rest.closedUnits.length);
+          if (stillCustom) next[key] = rest; else delete next[key];
+        } else {
+          next[key] = { ...prev, note: text };
+        }
+      });
+      return next;
+    });
+    setShowBulkSheet(null); setSelected(new Set()); setNoteVal('');
+  };
 
   // "Set inventory to N" — the aggregate counterpart to per-unit close-out.
   // Translates a target count of sellable rooms into closedUnits indices by
@@ -738,6 +764,8 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               const isSel = selected.has(i);
               const inDrag = inDragRange(i);
               const isOverride = !!overrides[cellKey(i)];
+              const note = overrides[cellKey(i)]?.note;
+              const hasRateOverride = overrides[cellKey(i)]?.rate != null;
               const isFirstOfMonth = d.dom === 1;
               const free = freeUnitsFor(i);
               const tier = availabilityTier(i);
@@ -746,6 +774,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               if (!closed) titleParts.push(`${free} of ${rt.units} rooms free`);
               if (partialClosed.length > 0) titleParts.push(`Units #${partialClosed.map(u => u + 1).join(', #')} blocked`);
               if (occupiedCountFor(i) > 0) titleParts.push(`${occupiedCountFor(i)} booked`);
+              if (note) titleParts.push(`📝 ${note}`);
               return (
                 <div
                   key={i}
@@ -768,6 +797,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   {d.isToday && (
                     <div style={{ position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)', background: T.primary, color: '#fff', fontSize: 7, fontWeight: 800, letterSpacing: 0.4, padding: '1px 5px', borderRadius: 4, lineHeight: 1.3, whiteSpace: 'nowrap' }}>TODAY</div>
                   )}
+                  {/* Per-date note marker — a small indigo dot top-right.
+                      The note text rides in the cell's title (hover) and
+                      is editable via the Note bulk action. */}
+                  {note && (
+                    <div title={note} style={{ position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: 999, background: T.indigo, boxShadow: '0 0 0 1.5px #fff' }} />
+                  )}
                   <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: d.isWknd ? T.primary : T.ink, lineHeight: 1 }}>
                     {d.dom}
                     {isFirstOfMonth && <span style={{ fontSize: 7, fontWeight: 700, color: T.ink3, marginLeft: 2 }}>{d.monthShort}</span>}
@@ -789,7 +824,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   {closed ? (
                     <div style={{ fontSize: 8, fontWeight: 800, color: T.danger, letterSpacing: 0.3, lineHeight: 1, textTransform: 'uppercase' }}>{t('closed')}</div>
                   ) : (
-                    <div className="tnum" style={{ fontSize: 9, fontWeight: 700, color: isOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
+                    <div className="tnum" style={{ fontSize: 9, fontWeight: 700, color: hasRateOverride ? T.indigo : T.ink2, lineHeight: 1 }}>
                       {rate >= 100000
                         ? `₹${(rate / 100000).toFixed(rate % 100000 === 0 ? 0 : 1)}L`
                         : `₹${rate.toLocaleString('en-IN')}`}
@@ -931,16 +966,22 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
         <div style={{
           position: 'absolute', bottom: 78, left: 0, right: 0, zIndex: 20,
           background: T.ink, color: '#fff', padding: '10px 14px',
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex', flexDirection: 'column', gap: 8,
           boxShadow: '0 -4px 14px rgba(0,0,0,0.15)',
         }}>
-          <div style={{ flex: 1 }}>
-            <div className="tnum" style={{ fontSize: 13, fontWeight: 700 }}>{selCount} dates {t('selected')}</div>
-            <div style={{ fontSize: 10, opacity: 0.7 }}>{rt.name}</div>
+          <div className="tnum" style={{ fontSize: 13, fontWeight: 700 }}>
+            {selCount} {selCount === 1 ? 'date' : 'dates'} {t('selected')}
+            <span style={{ fontWeight: 500, opacity: 0.65 }}> · {rt.name}</span>
           </div>
-          <button onClick={() => setShowBulkSheet('rate')} style={bulkBtn(T.primary)}><Icon name="inr" size={12} stroke={2.4}/> {t('setRate')}</button>
-          <button onClick={() => { setBulkInv(rt.units); setShowBulkSheet('inventory'); }} style={bulkBtn(T.indigo)}><Icon name="bed" size={12} stroke={2.4}/> {t('setInventory')}</button>
-          <button onClick={() => setShowBulkSheet('block')} style={bulkBtn(T.danger)}><Icon name="x" size={12} stroke={2.4}/> {t('closeOut')}</button>
+          {/* Four equal-width actions so the bar fits any phone. Note is
+              styled as a secondary (translucent) action vs the three
+              primary coloured ones. */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setShowBulkSheet('rate')} style={{ ...bulkBtn(T.primary), flex: 1, justifyContent: 'center' }}><Icon name="inr" size={12} stroke={2.4}/> {t('setRate')}</button>
+            <button onClick={() => { setBulkInv(rt.units); setShowBulkSheet('inventory'); }} style={{ ...bulkBtn(T.indigo), flex: 1, justifyContent: 'center' }}><Icon name="bed" size={12} stroke={2.4}/> {t('setInventory')}</button>
+            <button onClick={() => setShowBulkSheet('block')} style={{ ...bulkBtn(T.danger), flex: 1, justifyContent: 'center' }}><Icon name="x" size={12} stroke={2.4}/> {t('closeOut')}</button>
+            <button onClick={() => { const first = [...selected].sort((a, b) => a - b)[0]; setNoteVal((first != null && overrides[cellKey(first)]?.note) || ''); setShowBulkSheet('note'); }} style={{ ...bulkBtn('rgba(255,255,255,0.16)'), flex: 1, justifyContent: 'center' }}><Icon name="edit" size={12} stroke={2.4}/> {t('noteLabel')}</button>
+          </div>
         </div>
       )}
 
@@ -1175,6 +1216,31 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                   <Btn full style={{ background: T.danger, borderColor: T.danger }} onClick={applyBlock}>Block whole type</Btn>
                 </div>
                 <Btn variant="ghost" full onClick={applyOpen}>{t('openDates')}</Btn>
+              </>
+            )}
+            {showBulkSheet === 'note' && (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('noteLabel')} · {rt.name}</div>
+                <div style={{ fontSize: 12, color: T.ink2, marginBottom: 12, lineHeight: 1.4 }}>
+                  {t('noteDesc').replace('{n}', selCount).replace('{s}', selCount === 1 ? '' : 's')}
+                </div>
+                <textarea
+                  value={noteVal}
+                  onChange={e => setNoteVal(e.target.value)}
+                  placeholder={t('notePlaceholder')}
+                  rows={3}
+                  maxLength={200}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '10px 12px',
+                    borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13,
+                    fontFamily: 'inherit', color: T.ink, background: T.card,
+                    resize: 'vertical', lineHeight: 1.4, marginBottom: 14,
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn variant="ghost" full onClick={() => { setShowBulkSheet(null); setNoteVal(''); }}>{t('cancel')}</Btn>
+                  <Btn full onClick={applyNote}>{noteVal.trim() ? t('saveNote') : t('clearNote')}</Btn>
+                </div>
               </>
             )}
             {showBulkSheet === 'copy' && (() => {

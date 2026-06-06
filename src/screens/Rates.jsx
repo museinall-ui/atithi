@@ -88,6 +88,13 @@ function RangeBar({ rangeStart, rangeEnd, onRangeStartChange, onRangeEndChange, 
 export default function Rates({ go, t, lang, overrides: overridesProp, setOverrides: setOverridesProp, property, plan = 'engine', bookings = [] }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const [selectedType, setSelectedType] = useState(() => ROOM_TYPES[0]?.id || 'dlx');
+  // Re-anchor if the selected room type was deleted/renamed in Settings —
+  // otherwise `rt` below is undefined and the screen white-screens on rt.base.
+  useEffect(() => {
+    if (ROOM_TYPES.length && !ROOM_TYPES.some(r => r.id === selectedType)) {
+      setSelectedType(ROOM_TYPES[0].id);
+    }
+  }, [ROOM_TYPES, selectedType]);
   const [selected, setSelected] = useState(new Set());
   const [dragStart, setDragStart] = useState(null);
   const [dragEnd, setDragEnd] = useState(null);
@@ -146,7 +153,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   const [rangeEnd, setRangeEnd] = useState('');
   const [rangeToast, setRangeToast] = useState('');
 
-  const rt = ROOM_TYPES.find(r => r.id === selectedType);
+  const rt = ROOM_TYPES.find(r => r.id === selectedType) || ROOM_TYPES[0] || { id: '', name: '—', base: 0, units: 0, tag: 'tagSaffron' };
 
   // Weekend rules come from property settings. Defaults: Sat + Sun, +20%.
   const weekendDays = (property?.weekendRules?.weekendDays) || [0, 6];

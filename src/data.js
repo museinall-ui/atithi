@@ -324,7 +324,21 @@ export function currentFinancialYear(now = new Date()) {
   const y = now.getFullYear();
   const m = now.getMonth(); // 0 = Jan
   const startYear = m >= 3 ? y : y - 1;
-  return `${startYear % 100}${(startYear + 1) % 100}`.padStart(4, '0');
+  // Pad EACH half to 2 digits (not the concatenation) so years whose %100 < 10
+  // don't lose a leading zero — e.g. 2005 → "0506", not "0056". Irrelevant
+  // before 2100 (2026 → "2627") but correct regardless.
+  const pad2 = (n) => String(n % 100).padStart(2, '0');
+  return `${pad2(startYear)}${pad2(startYear + 1)}`;
+}
+
+// Only allow safe link schemes for user-entered URLs rendered as anchors
+// (property website / Google-Maps link). Blocks javascript: / data: etc. —
+// an owner-self-XSS vector on the printed voucher + the public widget.
+// Returns '' for anything that isn't http(s) / mailto / tel.
+export function safeUrl(u) {
+  if (!u || typeof u !== 'string') return '';
+  const s = u.trim();
+  return /^(https?:|mailto:|tel:)/i.test(s) ? s : '';
 }
 
 // Format a sequential number as a GST-compliant invoice ID. The prefix is

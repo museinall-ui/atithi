@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, safeUrl, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -1287,7 +1287,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                   <div>Email <a href={`mailto:${property.profile.email}`} style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.email}</a></div>
                 )}
                 {property?.profile?.website && (
-                  <div>Web <a href={property.profile.website} target="_blank" rel="noopener" style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.website.replace(/^https?:\/\//, '')}</a></div>
+                  <div>Web {safeUrl(property.profile.website)
+                    ? <a href={safeUrl(property.profile.website)} target="_blank" rel="noopener" style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.website.replace(/^https?:\/\//, '')}</a>
+                    : <span style={{ color: T.primaryDk, fontWeight: 700 }}>{property.profile.website.replace(/^https?:\/\//, '')}</span>}</div>
                 )}
               </div>
             )}

@@ -487,22 +487,22 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
 // to open. Reachable via deep-link / refresh / browser-back rather than a
 // tap (we hide the entry-point buttons elsewhere), but the gate stays here
 // in case the route was reached anyway.
-function PermissionDenied({ go, action }) {
+function PermissionDenied({ go, t = (k) => k, action }) {
   return (
     <div style={{ height: '100%', background: T.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
       <div style={{ width: 56, height: 56, borderRadius: 14, background: T.bgSoft, color: T.ink3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="lock" size={24} />
       </div>
       <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, textAlign: 'center' }}>
-        You don't have permission to {action}
+        {t('permTitle')}
       </div>
       <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, textAlign: 'center', lineHeight: 1.5, maxWidth: 280 }}>
-        Ask your property owner to grant this permission in Settings → Property profile → Team members.
+        {t('permBody')}
       </div>
       <button
         onClick={() => go('home')}
         style={{ marginTop: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-      >Back to home</button>
+      >{t('permBack')}</button>
     </div>
   );
 }

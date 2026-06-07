@@ -4,7 +4,9 @@
 -- BookingDetail.
 --
 -- Stored inline as base64 data URLs in a jsonb array. Each note is
--- shape { id, data_url, duration_sec, created_at }. Cap is enforced
+-- shape { id, dataUrl, durationSec, createdAt } (camelCase — the app
+-- reads/writes these keys verbatim; the column is opaque jsonb, so the
+-- casing here is just documentation). Cap is enforced
 -- in the upload UI (max 60s per note, max 3 notes per booking) so
 -- the row stays under ~600 KB even in worst case. Phase 4 will move
 -- these to Supabase Storage and lift the cap entirely.

@@ -376,15 +376,31 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const dailyIncome = liveBookings
     .filter(b => b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX)
     .reduce((a, b) => a + Math.round((b.total || 0) / (b.nights || 1)), 0); // R9-8: guard /0
-  const collectedToday = bookings
-    .filter(b => b.startIdx === TODAY_IDX)
-    .reduce((a, b) => a + b.paid, 0);
-  // Yesterday's collection — used as the comparison point for the Daily
-  // Income card's % change badge. Real number, replacing the old hardcoded
-  // "+24%" placeholder.
-  const collectedYesterday = bookings
-    .filter(b => b.startIdx === TODAY_IDX - 1)
-    .reduce((a, b) => a + b.paid, 0);
+  // Collection-date attribution (matches monthRevenue + Reports' P&L): a
+  // payment counts on the day it was COLLECTED (payment.dateIso), not the
+  // booking's check-in date. Fixes the badge counting an old advance as
+  // "today's income" / a payment taken today on an old stay as ₹0.
+  const payIsoDash = (p, b) => {
+    if (p && p.dateIso) return p.dateIso;
+    if (p && p.date && p.date !== 'now') { const d = new Date(p.date); if (!isNaN(d.getTime())) return ymd(d); }
+    return (b && b.startIdx != null) ? idxToDate(b.startIdx) : '';
+  };
+  // Net cash collected on a given calendar day across all live bookings.
+  const collectedOn = (iso) => {
+    let sum = 0;
+    for (const b of liveBookings) {
+      const pays = (b.payments && b.payments.length)
+        ? b.payments
+        : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', dateIso: idxToDate(b.startIdx || 0) }] : []);
+      for (const p of pays) {
+        if (payIsoDash(p, b) !== iso) continue;
+        sum += (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+      }
+    }
+    return sum;
+  };
+  const collectedToday = collectedOn(idxToDate(TODAY_IDX));
+  const collectedYesterday = collectedOn(idxToDate(TODAY_IDX - 1));
   const dailyChangePct = collectedYesterday > 0
     ? Math.round(((collectedToday - collectedYesterday) / collectedYesterday) * 100)
     : null;
@@ -401,14 +417,6 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const monthEndIso = ymd(new Date(_now.getFullYear(), _now.getMonth() + 1, 0));
   const daysInMonth = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate();
   const monthStartIdx = dateToIdx(monthStartIso), monthEndIdx = dateToIdx(monthEndIso);
-  // Collection date of a payment (matches Reports' P&L): dateIso → parsed date
-  // → booking check-in as a last resort (so legacy paid-but-no-ledger bookings
-  // still attribute to a day instead of vanishing).
-  const payIsoDash = (p, b) => {
-    if (p && p.dateIso) return p.dateIso;
-    if (p && p.date && p.date !== 'now') { const d = new Date(p.date); if (!isNaN(d.getTime())) return ymd(d); }
-    return (b && b.startIdx != null) ? idxToDate(b.startIdx) : '';
-  };
   const roomsHeldDash = (b) => (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems.length : 1;
   let monthRevenue = 0;
   for (const b of liveBookings) {
@@ -440,10 +448,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   // 12 days of paid amounts straight from the bookings ledger — was
   // previously a hardcoded sample array [62, 70, ...] that didn't reflect
   // anything real.
-  const dailyTrail = Array.from({ length: 12 }, (_, i) => {
-    const dayIdx = TODAY_IDX - 11 + i;
-    return bookings.filter(b => b.startIdx === dayIdx).reduce((s, b) => s + (b.paid || 0), 0);
-  });
+  const dailyTrail = Array.from({ length: 12 }, (_, i) => collectedOn(idxToDate(TODAY_IDX - 11 + i)));
   const trailPeak = Math.max(1, ...dailyTrail);
 
   const onHold = bookings.filter(b => b.status === 'tentative');

@@ -566,9 +566,19 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     const availableRoomNights = totalUnits * rangeDays;
     const avgOccPct = availableRoomNights ? Math.round((occupiedRoomNights / availableRoomNights) * 100) : 0;
 
-    // ADR = revenue / occupied room nights; RevPAR = revenue / available room nights.
-    const adr = occupiedRoomNights ? Math.round(billed / occupiedRoomNights) : 0;
-    const revpar = availableRoomNights ? Math.round(billed / availableRoomNights) : 0;
+    // ADR / RevPAR use revenue CLIPPED to the range: a booking that only
+    // partially overlaps contributes only its in-range nights' share of the
+    // total (total × inRangeNights / nights), so a long stay bisected by a
+    // short range no longer inflates the average against the already
+    // range-clipped room-night denominators.
+    const clippedNights = (b) => {
+      const s = Math.max(rangeStartIdx, b.startIdx || 0);
+      const e = Math.min(rangeStartIdx + rangeDays, (b.startIdx || 0) + (b.nights || 1));
+      return Math.max(0, e - s);
+    };
+    const billedInRange = active.reduce((s, b) => s + (b.total || 0) * (clippedNights(b) / (b.nights || 1)), 0);
+    const adr = occupiedRoomNights ? Math.round(billedInRange / occupiedRoomNights) : 0;
+    const revpar = availableRoomNights ? Math.round(billedInRange / availableRoomNights) : 0;
 
     const dailyOccPct = dailyOccupied.map(n => totalUnits ? Math.round((n / totalUnits) * 100) : 0);
 

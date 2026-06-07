@@ -338,23 +338,30 @@ export async function updateBookingCloud(bookingId, patch) {
 // Append a payment row and resync the booking's paid total + status in the
 // same call. The caller computes the new values locally (matching the
 // existing UI logic) and passes them in.
-export async function addPaymentCloud({ bookingId, propertyId, userId, entry, newPaid, newStatus, clearReleaseFields }) {
-  const baseRow = {
+export async function addPaymentCloud({ bookingId, propertyId, userId, entry, seedRow, newPaid, newStatus, clearReleaseFields }) {
+  const toRow = (e) => ({
     booking_id: bookingId,
     property_id: propertyId,
-    kind: entry.kind === 'refund' || entry.kind === 'credit' || entry.kind === 'credit_note' ? entry.kind : 'payment',
-    method: entry.method || '',
-    amount: entry.amount || 0,
-    note: entry.note || '',
+    kind: e.kind === 'refund' || e.kind === 'credit' || e.kind === 'credit_note' ? e.kind : 'payment',
+    method: e.method || '',
+    amount: e.amount || 0,
+    note: e.note || '',
     created_by: userId || null,
-  };
+    collected_on: e.dateIso || null,
+  });
+  // seedRow is the synthetic "pre-existing balance" payment for a legacy
+  // booking that had paid>0 but no ledger — insert it ALONGSIDE the new
+  // entry (first time only) so the cloud payments table sums to
+  // bookings.paid. Otherwise the folio (which sums payments[]) and the
+  // booking's paid would diverge across devices.
+  const rows = (seedRow ? [seedRow, entry] : [entry]).map(toRow);
   // R8-14: try to store the real local collection date. Resilient to the
   // 20260609 migration not being pasted yet — if collected_on doesn't exist
   // on the table, retry the insert without it so payments never break on the
   // paste-order window (the live site auto-deploys; the owner pastes later).
-  let { error: pErr } = await supabase.from('payments').insert({ ...baseRow, collected_on: entry.dateIso || null });
+  let { error: pErr } = await supabase.from('payments').insert(rows);
   if (pErr && isMissingColumnError(pErr)) {
-    ({ error: pErr } = await supabase.from('payments').insert(baseRow));
+    ({ error: pErr } = await supabase.from('payments').insert(rows.map(({ collected_on, ...r }) => r)));
   }
   if (pErr) throw pErr;
 

@@ -1199,16 +1199,20 @@ export default function App() {
   const addPayment = (bookingId, entry) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
-    // Synthetic payment row for legacy bookings that have `paid > 0` but
-    // no proper payments[] ledger. Used so the balance math stays
-    // consistent when a new payment lands. The date used to be the
-    // hardcoded literal '03 May · 18:25' — which then got written to
-    // the cloud as part of payments[] and corrupted real ledgers
-    // forever. Now we use empty (rendered as "—") so it's clearly a
-    // pre-history marker, not a fabricated timestamp.
-    const existing = booking.payments || (booking.paid > 0
-      ? [{ id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Pre-existing balance · date not recorded', date: '' }]
-      : []);
+    // Synthetic "pre-existing balance" row for a legacy booking that has
+    // paid>0 but no payments ledger — undefined OR an empty [] (cloud-loaded
+    // legacy rows come back as []). Without it the new payment would reset
+    // paid to just its own amount (dropping the prior balance), AND the cloud
+    // payments table wouldn't sum to bookings.paid — so the folio (which sums
+    // payments[]) would disagree with the diary/dashboard balance after a
+    // reload. seedRow is persisted to the cloud alongside the new entry so
+    // the table reconciles. date '' renders as "—" (a pre-history marker,
+    // never a fabricated timestamp).
+    const hadLedger = Array.isArray(booking.payments) && booking.payments.length > 0;
+    const seedRow = (!hadLedger && booking.paid > 0)
+      ? { id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Pre-existing balance · date not recorded', date: '' }
+      : null;
+    const existing = hadLedger ? booking.payments : (seedRow ? [seedRow] : []);
     const nextPayments = [...existing, entry];
     const newPaid = nextPayments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
     // If a hold gets paid in full, auto-confirm.
@@ -1228,7 +1232,7 @@ export default function App() {
       syncFire('Save payment', addPaymentCloud({
         bookingId, propertyId,
         userId: session && session.user && session.user.id,
-        entry, newPaid, newStatus, clearReleaseFields,
+        entry, seedRow, newPaid, newStatus, clearReleaseFields,
       }));
     }
     logEvent(

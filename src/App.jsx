@@ -431,49 +431,42 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
   // the hotelier's in-memory overrides directly.
   const widgetOverrides = cloudCategories ? (cloudOverrides || {}) : fallbackOverrides;
 
-  const handleSubmit = (newBk) => {
+  // Async so the widget can gate its "Booking confirmed" screen on the
+  // ACTUAL insert result instead of optimistically showing success. Returns
+  // { ok:true, ref } on success or { ok:false, reason } so the guest sees a
+  // real error (and can retry) when the hold wasn't created.
+  const handleSubmit = async (newBk) => {
     if (cloudProperty && cloudProperty.id) {
-      // Anonymous insert — fire and forget. The cloud-side trigger
-      // assigns the real BK-XXXX id, but anon doesn't have SELECT
-      // permission to read it back (RLS), so the widget never sees
-      // the real id. We return a friendly reference code instead
-      // (WEB-XXXX) for the guest's confirmation screen; the hotelier
-      // sees the real BK-#### when it lands in their diary.
-      insertWidgetBooking(cloudProperty.id, newBk)
-        .catch(err => {
-          if (/no_capacity/i.test((err && err.message) || '')) {
-            // The room type filled up between the guest opening the widget
-            // and tapping Confirm (or two guests raced for the last unit).
-            // The atomic book_widget_slot capacity guard rejected this insert
-            // — working as intended; the booking simply isn't created, so the
-            // hotelier's diary stays correct (no double-booked unit).
-            console.warn('[atithi widget] booking not created — room type just sold out (capacity guard).', err);
-            return;
-          }
-          if (/rate_limited/i.test((err && err.message) || '')) {
-            // The optional per-property flood cap (20260612_widget_rate_limit)
-            // rejected this insert — too many website holds for this property
-            // in the trailing hour. Working as intended; the booking isn't
-            // created. Rare in normal use (cap is set well above real traffic).
-            console.warn('[atithi widget] booking not created — property hit the hourly website-booking cap (flood guard).', err);
-            return;
-          }
-          // Cloud insert failed — most likely the anon RLS SQL
-          // hasn't been pasted yet. We can't synchronously
-          // surface this to the widget (the confirmation screen
-          // already rendered), but we log it loudly so the
-          // hotelier can see why their widget bookings aren't
-          // appearing on their diary.
-          console.error('[atithi widget] insert failed — anon RLS may not be set up. Run supabase/migrations/20260605_widget_anon_access.sql.', err);
-        });
-      // 4-char reference. Recognizable as "this is a temporary code,
-      // not your final booking number" because of the WEB- prefix.
+      try {
+        // Anonymous insert. The cloud-side trigger assigns the real BK-XXXX,
+        // but anon has no SELECT (RLS) to read it back, so we return a
+        // friendly WEB-XXXX reference for the guest; the hotelier sees the
+        // real BK-#### when it lands in their diary.
+        await insertWidgetBooking(cloudProperty.id, newBk);
+      } catch (err) {
+        const msg = (err && err.message) || '';
+        if (/no_capacity/i.test(msg)) {
+          // Room type filled up between opening the widget and Confirm (or two
+          // guests raced for the last unit). The atomic book_widget_slot guard
+          // rejected this insert — working as intended; no booking created.
+          console.warn('[atithi widget] not created — room type just sold out (capacity guard).', err);
+          return { ok: false, reason: 'no_capacity' };
+        }
+        if (/rate_limited/i.test(msg)) {
+          console.warn('[atithi widget] not created — property hit the hourly website-booking cap.', err);
+          return { ok: false, reason: 'rate_limited' };
+        }
+        // Most likely the anon RLS SQL isn't pasted yet. Log loudly + tell the
+        // guest it didn't go through (instead of a false confirmation).
+        console.error('[atithi widget] insert failed — anon RLS may not be set up. Run supabase/migrations/20260605_widget_anon_access.sql.', err);
+        return { ok: false, reason: 'error' };
+      }
       const ref = 'WEB-' + Date.now().toString(36).slice(-4).toUpperCase();
-      return ref;
+      return { ok: true, ref };
     }
-    // Fallback for demo / preview — local state only.
+    // Fallback for demo / preview — local state only, always succeeds.
     const id = 'BK-' + (2854 + (fallbackBookings || []).length);
-    return id;
+    return { ok: true, ref: id };
   };
 
   return (

@@ -61,6 +61,8 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   });
   const [createdBookingId, setCreatedBookingId] = useState(null);
   const [createdBooking, setCreatedBooking] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
 
@@ -338,8 +340,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     return hoursAway > 48 ? 12 : 4;
   };
 
-  const handleSubmit = () => {
-    if (!guestValid || !roomValid) return;
+  const handleSubmit = async () => {
+    if (!guestValid || !roomValid || submitting) return;
+    setSubmitError('');
     const startIdx = dateToIdx(data.checkIn);
     const holdHours = computeHoldHours();
     const releaseTs = Date.now() + holdHours * 60 * 60 * 1000;
@@ -404,8 +407,29 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       releaseAt,
       holdHours,
     };
-    const id = onSubmit(newBooking);
-    const finalId = id || ('BK-' + Date.now().toString(36));
+    setSubmitting(true);
+    let res;
+    try {
+      res = await onSubmit(newBooking);
+    } catch (e) {
+      res = { ok: false, reason: 'error' };
+    }
+    setSubmitting(false);
+    // onSubmit returns { ok, ref, reason } (cloud) — tolerate a legacy plain
+    // id too. Only show the confirmation screen when the hold was ACTUALLY
+    // created; otherwise surface a real error so the guest can retry instead
+    // of believing they have a booking that never reached the diary.
+    const ok = (res && typeof res === 'object') ? res.ok : !!res;
+    if (!ok) {
+      const reason = (res && res.reason) || 'error';
+      setSubmitError(
+        reason === 'no_capacity' ? 'Sorry — those dates just sold out for this room. Please pick different dates or another room.'
+          : reason === 'rate_limited' ? "We're getting a lot of requests right now. Please try again in a few minutes."
+          : "Something went wrong and your booking wasn't saved. Please try again, or contact the property directly."
+      );
+      return;
+    }
+    const finalId = ((res && typeof res === 'object') ? res.ref : res) || ('BK-' + Date.now().toString(36));
     setCreatedBookingId(finalId);
     setCreatedBooking({ ...newBooking, id: finalId });
     setStep(4);
@@ -1101,10 +1125,15 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               );
             })()}
 
+            {submitError && (
+              <div style={{ padding: '10px 12px', background: 'oklch(96% 0.05 25)', border: `1px solid ${T.danger}`, borderRadius: 8, marginTop: 12, fontSize: 12, color: T.danger, lineHeight: 1.5, fontWeight: 600 }}>
+                {submitError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
               <SecondaryBtn onClick={() => setStep(2)}>← Back</SecondaryBtn>
-              <PrimaryBtn disabled={!guestValid} onClick={handleSubmit}>
-                Confirm booking
+              <PrimaryBtn disabled={!guestValid || submitting} onClick={handleSubmit}>
+                {submitting ? 'Confirming…' : 'Confirm booking'}
               </PrimaryBtn>
             </div>
           </>

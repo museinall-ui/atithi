@@ -39,6 +39,7 @@ supabase/migrations/20260613_rbac_consistency_fixes.sql            ← ⚠️ RB
 supabase/migrations/20260614_rate_override_notes.sql               ← per-date notes on the Rates calendar (team-only; works locally without it)
 supabase/migrations/20260615_widget_rate_overrides.sql            ← public booking widget quotes your calendar rates + honours close-outs
 supabase/migrations/20260616_widget_hardening.sql                 ← ⚠️ before sharing the public link: date floor + close-out enforcement + unit allocation + paid=0 (supersedes 20260607/20260612)
+supabase/migrations/20260617_accept_invite.sql                    ← ⚠️ SECURITY: invited staff can't self-assign 'owner' (accept_invite RPC forces role; paste AFTER 20260608)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).
@@ -74,7 +75,8 @@ select proname from pg_proc
 where proname in ('property_by_short_code', 'room_categories_by_property',
                  'bookings_by_property_public', 'redeem_coupon', 'book_widget_slot',
                  'property_has_members', 'caller_has_invite',
-                 'validate_coupon', 'has_perm', 'rate_overrides_by_property');
+                 'validate_coupon', 'has_perm', 'rate_overrides_by_property',
+                 'accept_invite');
 ```
 
 All ten should be listed (`room_categories_by_property` + `bookings_by_property_public` are what the public widget reads to show room tiles + availability). `book_widget_slot` is the atomic capacity check that prevents two simultaneous website bookings from double-booking the same unit; `property_has_members` / `caller_has_invite` back the membership-insert security guard (R9-1); `validate_coupon` is the secure server-side coupon check (R9-4); `has_perm` is the database-level permission check that powers the RBAC enforcement in 20260611 (R9-6); `rate_overrides_by_property` feeds the public widget your per-date calendar prices + close-outs (note: it deliberately does NOT expose per-date notes, which stay private).

@@ -109,6 +109,20 @@ export async function removeMember(membershipId) {
 // ids the user was just added to.
 export async function acceptPendingInvitesForUser(user) {
   if (!user || !user.email) return [];
+  // Preferred path: the accept_invite() RPC (migration 20260617) creates the
+  // membership with role + permissions FORCED from the invite row, so an
+  // invitee can't self-assign a higher role. Falls back to the legacy
+  // client-side insert when the RPC isn't pasted yet (the older policy still
+  // permits that path).
+  const rpc = await supabase.rpc('accept_invite');
+  if (!rpc.error) {
+    return Array.isArray(rpc.data) ? rpc.data : [];
+  }
+  const rpcMissing = rpc.error.code === '42883'
+    || /does not exist|undefined.*function/i.test(rpc.error.message || '');
+  if (!rpcMissing) throw rpc.error;
+
+  // ---- Legacy fallback (pre-20260617) ----
   const { data: invites, error } = await supabase
     .from('pending_invites')
     .select('id, property_id, role, permissions')

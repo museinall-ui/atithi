@@ -1660,6 +1660,16 @@ export default function App() {
       if (existing && data.roomTypeId !== existing.roomTypeId) {
         const others = bookings.filter(x => x.id !== editing);
         patch.unitIdx = findFirstFreeUnit(others, data.roomTypeId, newStartIdx, data.nights, effectiveRoomTypes(property)) ?? 0;
+        // Keep the primary roomItem in lockstep with the new type + the
+        // re-allocated unit. The edit form seeds roomItems from the original
+        // booking (carrying the OLD unitIdx), and the Diary pill is rendered
+        // from roomItems[0] — so without this the pill points at a stale unit
+        // of the old room. Mirrors the drag-move path's roomItems[0] rewrite.
+        if (Array.isArray(patch.roomItems) && patch.roomItems.length > 0) {
+          patch.roomItems = patch.roomItems.map((it, i) =>
+            i === 0 ? { ...it, roomTypeId: data.roomTypeId, unitIdx: patch.unitIdx } : it
+          );
+        }
       }
       if (isHold) {
         patch.status = 'tentative';

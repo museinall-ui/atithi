@@ -394,7 +394,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', dateIso: idxToDate(b.startIdx || 0) }] : []);
       for (const p of pays) {
         if (payIsoDash(p, b) !== iso) continue;
-        sum += (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+        sum += p.kind === 'refund' ? -(p.amount || 0) : (p.kind === 'credit' || p.kind === 'credit_note') ? 0 : (p.amount || 0);
       }
     }
     return sum;

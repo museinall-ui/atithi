@@ -1207,14 +1207,25 @@ export default function App() {
       : null;
     const existing = hadLedger ? booking.payments : (seedRow ? [seedRow] : []);
     const nextPayments = [...existing, entry];
-    const newPaid = nextPayments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
-    // If a hold gets paid in full, auto-confirm.
-    const newStatus = (booking.status === 'tentative' && newPaid >= booking.total) ? 'confirmed' : booking.status;
+    // Cash paid = payments − refunds. A credit note is NOT cash; it reduces
+    // what the guest owes (the bill), handled via newTotal below.
+    const newPaid = nextPayments.reduce((s, p) =>
+      s + (p.kind === 'refund' ? -(p.amount || 0)
+        : (p.kind === 'credit' || p.kind === 'credit_note') ? 0
+        : (p.amount || 0)), 0);
+    // A credit note lowers the bill. Reduce booking.total by this entry's
+    // amount (the folio adds it back as a "Credit note" row so the breakdown
+    // still reconciles). Payments / refunds leave the total unchanged.
+    const isCreditEntry = entry.kind === 'credit' || entry.kind === 'credit_note';
+    const newTotal = isCreditEntry ? Math.max(0, (booking.total || 0) - (entry.amount || 0)) : (booking.total || 0);
+    // If a hold gets paid in full, auto-confirm — measured against the
+    // (possibly reduced) bill.
+    const newStatus = (booking.status === 'tentative' && newPaid >= newTotal) ? 'confirmed' : booking.status;
     const clearReleaseFields = newStatus === 'confirmed' && booking.status === 'tentative';
 
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
-      const update = { ...b, payments: nextPayments, paid: newPaid, status: newStatus };
+      const update = { ...b, payments: nextPayments, paid: newPaid, total: newTotal, status: newStatus };
       if (clearReleaseFields) {
         delete update.releaseTs; delete update.releaseAt;
       }
@@ -1225,7 +1236,7 @@ export default function App() {
       syncFire('Save payment', addPaymentCloud({
         bookingId, propertyId,
         userId: session && session.user && session.user.id,
-        entry, seedRow, newPaid, newStatus, clearReleaseFields,
+        entry, seedRow, newPaid, newTotal, newStatus, clearReleaseFields,
       }));
     }
     logEvent(
@@ -1601,7 +1612,13 @@ export default function App() {
       // drop the discount. Re-apply the originally granted rupee discount
       // on top of the recomputed subtotal and carry the coupon fields.
       const keepDiscount = existing ? (existing.discountAmount || 0) : 0;
-      const adjTotal = Math.max(0, total - keepDiscount);
+      // Credit notes reduce the bill. On edit the total is recomputed fresh
+      // from rooms, so subtract the cumulative credit notes (from the ledger)
+      // to preserve the reduced bill — same idea as keepDiscount.
+      const keepCredits = (existing && Array.isArray(existing.payments))
+        ? existing.payments.reduce((s, p) => s + ((p.kind === 'credit' || p.kind === 'credit_note') ? (p.amount || 0) : 0), 0)
+        : 0;
+      const adjTotal = Math.max(0, total - keepDiscount - keepCredits);
       // C-2 fix: the check-in date input is editable in edit mode (seeded
       // from the existing booking's startIdx), but the patch never carried
       // startIdx — so a changed date was silently dropped on save. Recompute

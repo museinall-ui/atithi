@@ -338,7 +338,7 @@ export async function updateBookingCloud(bookingId, patch) {
 // Append a payment row and resync the booking's paid total + status in the
 // same call. The caller computes the new values locally (matching the
 // existing UI logic) and passes them in.
-export async function addPaymentCloud({ bookingId, propertyId, userId, entry, seedRow, newPaid, newStatus, clearReleaseFields }) {
+export async function addPaymentCloud({ bookingId, propertyId, userId, entry, seedRow, newPaid, newTotal, newStatus, clearReleaseFields }) {
   const toRow = (e) => ({
     booking_id: bookingId,
     property_id: propertyId,
@@ -366,6 +366,9 @@ export async function addPaymentCloud({ bookingId, propertyId, userId, entry, se
   if (pErr) throw pErr;
 
   const updates = { paid: newPaid };
+  // A credit note reduces the bill (total). Persist it so the cloud balance
+  // matches the local one. Only sent when it actually changed.
+  if (newTotal != null) updates.total = newTotal;
   if (newStatus) updates.status = newStatus;
   if (clearReleaseFields) {
     updates.release_ts = null;

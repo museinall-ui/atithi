@@ -662,8 +662,10 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         const payIso = payIsoFor(p, b);
         if (!payIso) continue;
         if (payIso < rangeStart || payIso > rangeEnd) continue;
-        const signed = (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note')
-          ? -(p.amount || 0)
+        // Cash flow: payment in (+), refund out (−). A credit note is a bill
+        // adjustment, not cash, so it doesn't move the P&L income line.
+        const signed = p.kind === 'refund' ? -(p.amount || 0)
+          : (p.kind === 'credit' || p.kind === 'credit_note') ? 0
           : (p.amount || 0);
         if (dayLookup[payIso]) dayLookup[payIso].income += signed;
         incomeByChannel[channel] = (incomeByChannel[channel] || 0) + signed;
@@ -884,7 +886,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                       const effectiveIso = payIso || fallbackIso;
                       if (effectiveIso && (effectiveIso < rangeStart || effectiveIso > rangeEnd)) return;
                       const method = p.method || 'unspecified';
-                      const amt = (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+                      const amt = p.kind === 'refund' ? -(p.amount || 0) : (p.kind === 'credit' || p.kind === 'credit_note') ? 0 : (p.amount || 0);
                       rows.push([
                         effectiveIso || '',
                         b.id, b.guest || '', b.phone || '',

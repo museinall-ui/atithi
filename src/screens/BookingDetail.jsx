@@ -483,7 +483,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
     note: b.channel === 'direct' ? 'Initial payment · recorded' : `${ch.label} pre-payment`,
     date: b.startIdx != null ? new Date(new Date(ANCHOR).setDate(new Date(ANCHOR).getDate() + b.startIdx)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
   }] : []);
-  const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' || p.kind === 'credit' ? -p.amount : p.amount), 0);
+  // Cash collected = payments − refunds. A credit note reduces the bill
+  // (b.total), not cash, so it's excluded here; balance = bill − cash.
+  const totalPaid = payments.reduce((s, p) => s + (p.kind === 'refund' ? -(p.amount || 0) : (p.kind === 'credit' || p.kind === 'credit_note') ? 0 : (p.amount || 0)), 0);
   const balance = (b.total || 0) - totalPaid;
   const statusInfo = STATUS[b.status] || STATUS.confirmed;
   // Invoicing is a paid add-on tier. Engine (core) and Channels do
@@ -749,7 +751,12 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // rows still sum to the exact total, but the room rate no longer
               // looks mysteriously low with no explanation.
               const discountAmount = Math.max(0, +b.discountAmount || 0);
-              const tariff = preTax - extras - mealCost - extraGuests + discountAmount;
+              // Credit notes reduce the bill (b.total is already net of them).
+              // Add them back into the displayed tariff + show a "Credit note"
+              // row so the breakdown still reconciles to the net total — same
+              // approach as the coupon discount above.
+              const credits = payments.reduce((s, p) => s + ((p.kind === 'credit' || p.kind === 'credit_note') ? (p.amount || 0) : 0), 0);
+              const tariff = preTax - extras - mealCost - extraGuests + discountAmount + credits;
               // Rate plan row — surfaced when the booking used something
               // other than the default Standard plan, so the hotelier can
               // see the cancellation terms at a glance.
@@ -791,6 +798,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                   {mealRow}
                   {discountAmount > 0 && (
                     <Row label={b.couponCode ? t('discountCoupon').replace('{code}', b.couponCode) : t('discountRow')} value={`− ₹${discountAmount.toLocaleString('en-IN')}`} />
+                  )}
+                  {credits > 0 && (
+                    <Row label={t('creditNoteWord')} value={`− ₹${credits.toLocaleString('en-IN')}`} />
                   )}
                 </>
               );

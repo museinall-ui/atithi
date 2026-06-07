@@ -39,7 +39,9 @@
       "Bash(awk '/^  en: \\\\{/{f=1} /^  hi: \\\\{/{f=2} f==1{e++} f==2{h++} END{print \"en lines\",e,\"hi lines\",h}' src/i18n.js)",
       "Bash(node -e ' *)",
       "Bash(file \"C:/atithi/public/icons/\"*)",
-      "Bash(node --input-type=module -e ' *)"
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(npx vite *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

@@ -1227,7 +1227,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 <textarea
                   value={noteVal}
                   onChange={e => setNoteVal(e.target.value)}
-                  placeholder={t('notePlaceholder')}
+                  placeholder={t('noteCalPlaceholder')}
                   rows={3}
                   maxLength={200}
                   style={{

@@ -41,7 +41,8 @@
       "Bash(file \"C:/atithi/public/icons/\"*)",
       "Bash(node --input-type=module -e ' *)",
       "Bash(npx vite *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git check-ignore *)"
     ]
   }
 }

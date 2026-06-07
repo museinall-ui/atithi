@@ -947,7 +947,11 @@ export default function App() {
 
         if (cancelled) return;
         setPropertyId(result.id);
-        setProperty(result.property);
+        // Run the cloud-loaded property through the same migrateProperty()
+        // normalization the localStorage path gets, so a legacy / hand-edited
+        // cloud row is self-healed too (ensures Standard rate plan present,
+        // weekendRules sane, new fields defaulted). No-op on well-formed data.
+        setProperty(migrateProperty(result.property));
         setBookings(cloudBookings);
         setSavedCustomExtras(cloudExtras);
         setRateOverrides(cloudOverrides);

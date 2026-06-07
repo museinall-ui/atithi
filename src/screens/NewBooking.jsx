@@ -1021,7 +1021,7 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
   );
 }
 
-function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, mealPlan, blendedRate = 5, t, plan, property, isEdit = false }) {
+function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, extrasTotal, mealCost, extraGuestCost = 0, mealPlan, blendedRate = 5, t, plan, property, isEdit = false }) {
   const isInvoicingPlan = plan === 'invoicing';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1049,6 +1049,7 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           <Row label={t('mealPlanLine').replace('{code}', mealPlan.code).replace('{label}', mealPlan.label)} value={`₹${mealCost.toLocaleString('en-IN')}`} />
         )}
         {extrasTotal > 0 && <Row label={t('extrasLine').replace('{n}', Object.values(data.extras).reduce((a,b)=>a+b,0))} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
+        {extraGuestCost > 0 && <Row label={t('extraGuestCharges')} value={`₹${extraGuestCost.toLocaleString('en-IN')}`} />}
         {withTax && <Row label={`CGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}% · ${t('incl')}`} value={`₹${Math.round(gst/2).toLocaleString('en-IN')}`} />}
         {withTax && <Row label={`SGST ${(blendedRate / 2).toFixed(blendedRate % 2 ? 1 : 0)}% · ${t('incl')}`} value={`₹${(gst - Math.round(gst/2)).toLocaleString('en-IN')}`} />}
         <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
@@ -1527,7 +1528,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
                 })}
               </div>
             )}
-            <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} isEdit={isEdit} />
+            <StepPayment data={data} set={set} subtotal={subtotal} gst={gst} total={total} withTax={withTax} t={t} roomsSubtotal={roomsSubtotal} extrasTotal={extrasTotal} mealCost={mealCost} extraGuestCost={extraGuestCost} mealPlan={selectedMealPlan} blendedRate={blendedRate} allExtras={allExtras} plan={plan} property={property} isEdit={isEdit} />
           </>
         )}
       </div>

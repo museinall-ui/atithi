@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor } from '../data.js';
+import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -294,10 +294,15 @@ function nightDateLabel(nightIdx) {
 // Compute the per-night rate options for a single room item, given its
 // chosen room type and the nights of stay. Pulls weekend uplift / overrides
 // via the shared rateForNight() helper.
-function nightRatesForItem(item, type, nights, rateForNight) {
+function nightRatesForItem(item, type, nights, rateForNight, singleRate = null) {
   const base = type ? (type.base || 0) : 0;
-  const defaults = type ? Array.from({ length: nights }, (_, n) => rateForNight(type.id, n)) : Array.from({ length: nights }, () => base);
-  const uniform = item.rate != null ? item.rate : (defaults[0] || base);
+  // Single-occupancy: a flat solo rate replaces the computed nightly rate
+  // (weekend / season are not stacked on it). A manual per-room rate the
+  // hotelier typed still wins — see `uniform` + itemSubtotal below.
+  const defaults = singleRate != null
+    ? Array.from({ length: nights }, () => singleRate)
+    : (type ? Array.from({ length: nights }, (_, n) => rateForNight(type.id, n)) : Array.from({ length: nights }, () => base));
+  const uniform = item.rate != null ? item.rate : (singleRate != null ? singleRate : (defaults[0] || base));
   const perNight = !!item.perNight && nights > 1;
   const nightRates = (item.nightRates && item.nightRates.length === nights)
     ? item.nightRates
@@ -306,8 +311,8 @@ function nightRatesForItem(item, type, nights, rateForNight) {
 }
 
 // Sum the cost of one room item across all nights of stay.
-function itemSubtotal(item, type, nights, rateForNight) {
-  const { defaults, perNight, nightRates } = nightRatesForItem(item, type, nights, rateForNight);
+function itemSubtotal(item, type, nights, rateForNight, singleRate = null) {
+  const { defaults, perNight, nightRates } = nightRatesForItem(item, type, nights, rateForNight, singleRate);
   // Per-night custom rates → sum them. An explicit uniform rate the hotelier
   // typed → that rate × nights. Otherwise sum each night's computed rate —
   // `defaults` already vary by weekend / season / per-day override, so a
@@ -320,9 +325,13 @@ function itemSubtotal(item, type, nights, rateForNight) {
 function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onChange, property, t }) {
   const selectedType = item.roomTypeId ? roomTypes.find(rt => rt.id === item.roomTypeId) : null;
   const tagColor = selectedType ? T[selectedType.tag] : null;
-  const { defaults: defaultNightRates, uniform: uniformDefault, perNight, nightRates } = nightRatesForItem(item, selectedType, nights, rateForNight);
+  const singleRate = singleOccRateFor(item, selectedType, property);
+  const { defaults: defaultNightRates, uniform: uniformDefault, perNight, nightRates } = nightRatesForItem(item, selectedType, nights, rateForNight, singleRate);
   const overridden = item.rate != null && selectedType && item.rate !== selectedType.base;
-  const sub = selectedType ? itemSubtotal(item, selectedType, nights, rateForNight) : 0;
+  const sub = selectedType ? itemSubtotal(item, selectedType, nights, rateForNight, singleRate) : 0;
+  // Show a small chip when the solo rate is auto-applied (1 adult) and the
+  // hotelier hasn't manually overridden it — explains why the rate dropped.
+  const singleApplied = singleRate != null && item.rate == null;
   const togglePerNight = () => {
     if (perNight) {
       onChange({ perNight: false, nightRates: undefined });
@@ -385,6 +394,12 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
             {perNight && <div style={{ flex: 1, fontSize: 11, color: T.ink3, fontWeight: 600 }}>{t('perNightRatesBelow')}</div>}
             <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 70, textAlign: 'right' }}>₹{sub.toLocaleString('en-IN')}</span>
           </div>
+          {singleApplied && (
+            <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: T.primaryLt, color: T.primaryDk, fontSize: 10, fontWeight: 700 }}>
+              <Icon name="info" size={10} stroke={2.4} />
+              {t('singleOccApplied')}
+            </div>
+          )}
           {nights > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
               <button
@@ -1275,7 +1290,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     // is priced night-by-night instead of (first night × nights). Same
     // function the RoomItemCard uses, so the per-room display and the
     // booking total never disagree.
-    return sum + itemSubtotal(r, type, data.nights, rateForNight);
+    return sum + itemSubtotal(r, type, data.nights, rateForNight, singleOccRateFor(r, type, property));
   }, 0);
   const roomsSubtotal = Math.round(roomsSubtotalRaw * ratePlanMult);
 

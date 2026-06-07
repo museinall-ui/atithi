@@ -578,6 +578,27 @@ export function baseCapacityAdults(property) {
   return Math.max(1, property?.baseCapacityAdults ?? 2);
 }
 
+// ─── Single-occupancy (solo-guest) pricing ──────────────────────────────
+// Opt-in via Advanced settings. Config lives on the accountant blob (no
+// schema migration): accountant.singleOccEnabled (master toggle) +
+// accountant.singleRates = { [categoryId]: flatPerNightRate }.
+export function singleOccActive(property) {
+  return !!(property && property.accountant && property.accountant.singleOccEnabled);
+}
+// Resolved single-occupancy per-night rate for a room item, or null when it
+// doesn't apply (feature off, not exactly 1 adult, or no rate set for the
+// category). Manual per-room rate overrides are honoured by the caller and
+// win over this. A flat figure — weekend / season multipliers are not
+// stacked on the single rate (the hotelier sets the final solo price).
+export function singleOccRateFor(item, category, property) {
+  if (!singleOccActive(property)) return null;
+  if ((+(item && item.adults) || 0) !== 1) return null;
+  const rates = (property.accountant && property.accountant.singleRates) || {};
+  const id = category && category.id;
+  const r = id != null ? rates[id] : null;
+  return (r != null && +r > 0) ? +r : null;
+}
+
 function resolveExtraRate(rule, baseRate) {
   if (!rule || typeof rule !== 'object') return 0;
   const v = +rule.value || 0;

@@ -1,5 +1,5 @@
 import { T } from '../tokens.js';
-import { effectiveRatePlans } from '../data.js';
+import { effectiveRatePlans, singleOccActive } from '../data.js';
 import Card from '../components/Card.jsx';
 import Toggle from '../components/Toggle.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
@@ -53,6 +53,26 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
   const setRatePlans = (v) => {
     if (!canEdit) return;
     onChangeProperty(p => ({ ...p, accountant: { ...(p.accountant || {}), ratePlansEnabled: v } }));
+  };
+
+  // Single-occupancy (per-room solo rate) — master toggle + per-category
+  // flat rate. Stored on accountant (no schema migration).
+  const soOn = singleOccActive(property);
+  const cats = Array.isArray(property.categories) ? property.categories : [];
+  const singleRates = (property.accountant && property.accountant.singleRates) || {};
+  const setSingleOcc = (v) => {
+    if (!canEdit) return;
+    onChangeProperty(p => ({ ...p, accountant: { ...(p.accountant || {}), singleOccEnabled: v } }));
+  };
+  const setSingleRate = (catId, val) => {
+    if (!canEdit) return;
+    onChangeProperty(p => {
+      const acc = p.accountant || {};
+      const rates = { ...(acc.singleRates || {}) };
+      if (val === '' || val == null) delete rates[catId];
+      else rates[catId] = Math.max(0, Math.round(+val || 0));
+      return { ...p, accountant: { ...acc, singleRates: rates } };
+    });
   };
 
   return (
@@ -131,15 +151,48 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
           )}
         </Card>
 
-        {/* ── Coming soon: single-occupancy & extra-bed ─────────── */}
-        <Card padding={14} style={{ marginBottom: 12, opacity: 0.65 }}>
+        {/* ── Single-occupancy (per-room solo rate) ─────────────── */}
+        <Card padding={14} style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('occTitle')}</div>
               <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 3, lineHeight: 1.45 }}>{t('occDesc')}</div>
             </div>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: T.ink3, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>{t('comingSoon')}</span>
+            <Toggle on={soOn} onChange={setSingleOcc} />
           </div>
+          {soOn && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, color: T.ink3, marginBottom: 10, lineHeight: 1.45 }}>{t('occHint')}</div>
+              {cats.length === 0 ? (
+                <div style={{ fontSize: 11.5, color: T.ink2, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, padding: '8px 10px' }}>{t('occNoCats')}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {cats.map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name || c.id}</div>
+                        <div style={{ fontSize: 10, color: T.ink3 }}>{t('occNormal').replace('{rate}', '₹' + (c.base || 0).toLocaleString('en-IN'))}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: '0 8px', height: 36, width: 124, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, color: T.ink3, fontWeight: 600 }}>₹</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={singleRates[c.id] != null ? singleRates[c.id] : ''}
+                          placeholder={t('occOff')}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setSingleRate(c.id, e.target.value)}
+                          disabled={!canEdit}
+                          className="tnum"
+                          style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: T.ink, minWidth: 0 }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Card>
 
         {!canEdit && (

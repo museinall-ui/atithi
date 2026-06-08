@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react';
 import { T } from '../tokens.js';
 import { dateLoc } from '../i18n.js';
-import { DAYS, ANCHOR, ymd, idxToDate, dateToIdx, bookingGstApplies, listIssuedInvoices, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
+import { DAYS, ANCHOR, ymd, idxToDate, dateToIdx, bookingGstApplies, listIssuedInvoices, listCreditNotes, effectiveRoomTypes, blendedGstRate, bookingNetAmount, CHANNELS } from '../data.js';
 import { exportInvoiceList, emailToAccountant, sendInvoiceListViaResend } from '../utils/invoiceExport.js';
 import { buildCsv, downloadCsv } from '../utils/csv.js';
 import Icon from '../components/Icon.jsx';
@@ -412,6 +412,11 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   const downloadsRef = useRef(null);
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
   const issuedInvoices = useMemo(() => listIssuedInvoices(bookings, property), [bookings, property]);
+  // Credit notes (negative-amount rows) ride alongside invoices ONLY in the
+  // CA register + email — they net the taxable totals down. Kept out of
+  // `issuedInvoices` so the KPI count + CSV + send-gating stay invoice-only.
+  const creditNotes = useMemo(() => listCreditNotes(bookings, property), [bookings, property]);
+  const caRegister = useMemo(() => [...issuedInvoices, ...creditNotes], [issuedInvoices, creditNotes]);
   const caEmail = property?.accountant?.email || '';
 
   // Date-range state — defaults to the current calendar month so the
@@ -486,7 +491,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     if (session && propertyId) {
       setSendStatus({ kind: 'sending', message: `${t('snackSending')} ${issuedInvoices.length} ${t('snackInvoicesTo')} ${caEmail}…` });
       const result = await sendInvoiceListViaResend({
-        invoices: issuedInvoices,
+        invoices: caRegister,
         property,
         propertyId,
         session,
@@ -508,7 +513,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     }
     // Fallback path (always runs when direct send is unavailable).
     exportInvoiceList(bookings, property);
-    setTimeout(() => emailToAccountant(issuedInvoices, property), 600);
+    setTimeout(() => emailToAccountant(caRegister, property), 600);
   };
   const stats = useMemo(() => {
     const active = bookings.filter(b => b.status !== 'cancelled' && overlapsRange(b));
@@ -955,11 +960,17 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 title: t('rptInvTitle'),
                 sub: `${issuedInvoices.length} ${t('rptInvSubTail')}`,
                 onClick: () => {
-                  const rows = issuedInvoices.map(inv => [
+                  // Invoices + credit notes (negative-amount rows) so the CA's
+                  // CSV nets the same way the printed register + email do.
+                  const rows = caRegister.map(inv => [
                     inv.number, inv.fy, inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : '',
                     inv.bookingId || '', inv.guest || '',
                     inv.recipient?.name || '', inv.recipient?.gstin || '',
-                    inv.amount || 0, inv.voided ? 'VOIDED' : 'active', inv.note || '',
+                    inv.amount || 0,
+                    inv.isCreditNote ? 'CREDIT NOTE' : (inv.voided ? 'VOIDED' : 'active'),
+                    inv.isCreditNote
+                      ? (inv.againstInvoice ? `vs ${inv.againstInvoice}${inv.note ? ' · ' + inv.note : ''}` : (inv.note || ''))
+                      : (inv.note || ''),
                   ]);
                   const header = ['Invoice #', 'FY', 'Issue date', 'Booking ID', 'Guest', 'Bill recipient', 'Recipient GSTIN', 'Amount (₹)', 'Status', 'Note'];
                   downloadCsv(`atithi-invoices-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));

@@ -3,7 +3,7 @@
 // their monthly GSTR-1 filing. Opens in a new tab so the hotelier can save it
 // as a PDF and email it.
 
-import { listIssuedInvoices } from '../data.js';
+import { listIssuedInvoices, listCreditNotes } from '../data.js';
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -18,6 +18,11 @@ const fmtDate = (iso) => {
 function buildHtml(invoices, property, period) {
   const p = property?.profile || {};
   const total = invoices.reduce((s, i) => s + (i.amount || 0), 0);
+  // Credit notes ride in the same list as negative-amount rows (so the totals
+  // net automatically); count them separately for the summary + note.
+  const invCount = invoices.filter(i => !i.isCreditNote).length;
+  const cnCount = invoices.filter(i => i.isCreditNote).length;
+  const cnTotal = invoices.filter(i => i.isCreditNote).reduce((s, i) => s + Math.abs(i.amount || 0), 0);
   // Split each invoice's pre-tax vs GST using ITS OWN blended rate (5% / 18%,
   // GST-inclusive) — attached by listIssuedInvoices(). Summing per invoice
   // (rather than total × one flat rate) keeps the register correct when a
@@ -33,16 +38,20 @@ function buildHtml(invoices, property, period) {
   const rows = invoices.map((inv, i) => {
     const invGst = gstFor(inv);
     const invPre = (inv.amount || 0) - invGst;
+    const cn = inv.isCreditNote;
+    const money = (x) => cn ? '−' + fmtINR(Math.abs(x)) : fmtINR(x);
     return `
-    <tr>
+    <tr${cn ? ' style="background:#FDF3F1;"' : ''}>
       <td>${i + 1}</td>
-      <td class="mono"><strong>${esc(inv.number)}</strong></td>
+      <td class="mono">${cn
+        ? `<span style="color:#C0392B; font-weight:700;">CREDIT NOTE</span><br/><span class="small">vs ${esc(inv.againstInvoice || '')}</span>`
+        : `<strong>${esc(inv.number)}</strong>`}</td>
       <td>${esc(fmtDate(inv.date))}</td>
       <td>${esc(inv.recipient?.name || '')}</td>
       <td class="mono">${esc(inv.recipient?.gstin || '—')}</td>
-      <td class="r">${fmtINR(invPre)}</td>
-      <td class="r">${fmtINR(invGst)}</td>
-      <td class="r"><strong>${fmtINR(inv.amount)}</strong></td>
+      <td class="r">${money(invPre)}</td>
+      <td class="r">${money(invGst)}</td>
+      <td class="r"><strong>${money(inv.amount)}</strong></td>
       <td class="mono small">${esc(inv.bookingId)}</td>
     </tr>`;
   }).join('');
@@ -102,8 +111,8 @@ function buildHtml(invoices, property, period) {
   <div class="summary">
     <div class="box">
       <div class="label">Invoices</div>
-      <div class="value mono">${invoices.length}</div>
-      <div class="sub">issued · non-voided</div>
+      <div class="value mono">${invCount}</div>
+      <div class="sub">${cnCount > 0 ? `+ ${cnCount} credit note${cnCount === 1 ? '' : 's'} (−${fmtINR(cnTotal)})` : 'issued · non-voided'}</div>
     </div>
     <div class="box">
       <div class="label">Pre-tax total</div>
@@ -118,7 +127,7 @@ function buildHtml(invoices, property, period) {
     <div class="box">
       <div class="label">Grand total</div>
       <div class="value mono" style="color:#C8553D;">${fmtINR(total)}</div>
-      <div class="sub">amount billed</div>
+      <div class="sub">${cnCount > 0 ? 'net of credit notes' : 'amount billed'}</div>
     </div>
   </div>
 
@@ -150,7 +159,7 @@ function buildHtml(invoices, property, period) {
   </table>
 
   <div class="note">
-    <strong>For the accountant:</strong> These are all tax invoices issued in this period. Numbering is sequential and gap-free within the financial year. Voided invoices (if any) are excluded — their numbers remain reserved as required by GST law. Filing decisions and B2B/B2C classification are at your discretion.
+    <strong>For the accountant:</strong> These are all tax invoices issued in this period. Numbering is sequential and gap-free within the financial year. Voided invoices (if any) are excluded — their numbers remain reserved as required by GST law.${cnCount > 0 ? ` Credit notes against issued invoices are shown as negative (red) rows and netted into the totals — please apply your own formal credit-note numbering and GSTR-1 treatment.` : ''} Filing decisions and B2B/B2C classification are at your discretion.
   </div>
 
   <div class="actions">
@@ -163,7 +172,8 @@ function buildHtml(invoices, property, period) {
 }
 
 export function exportInvoiceList(bookings, property) {
-  const all = listIssuedInvoices(bookings, property);
+  // Invoices + credit notes (negative rows) so the printed register nets.
+  const all = [...listIssuedInvoices(bookings, property), ...listCreditNotes(bookings, property)];
   const period = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const html = buildHtml(all, property || {}, period);
   const w = window.open('', '_blank', 'width=1100,height=900');
@@ -211,10 +221,13 @@ export async function sendInvoiceListViaResend({ invoices, property, propertyId,
     ? (acc.firm ? `Hi ${acc.name} (${acc.firm}),` : `Hi ${acc.name},`)
     : (acc.firm ? `Hi (${acc.firm} team),` : 'Hi,');
   const total = list.reduce((s, i) => s + (i.amount || 0), 0);
+  const invN = list.filter(i => !i.isCreditNote).length;
+  const cnN = list.filter(i => i.isCreditNote).length;
+  const cnLine = cnN > 0 ? ` and ${cnN} credit note${cnN === 1 ? '' : 's'}` : '';
   const intro = `<div style="font-family: Helvetica, Arial, sans-serif; padding: 20px 24px; font-size: 11pt; color: #1a1a1a; max-width: 900px; margin: 0 auto;">
     <p>${greeting}</p>
     <p>Attached is the list of invoices issued for <strong>${period}</strong> from <strong>${property?.profile?.name || 'our property'}</strong>.</p>
-    <p>${list.length} invoice${list.length === 1 ? '' : 's'} · ₹${total.toLocaleString('en-IN')} total billed.</p>
+    <p>${invN} invoice${invN === 1 ? '' : 's'}${cnLine} · ₹${total.toLocaleString('en-IN')} net.</p>
     <p>Full breakdown below. Reply with any questions.</p>
     <p>Regards,<br/>${property?.profile?.name || ''}</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
@@ -272,7 +285,11 @@ export function emailToAccountant(invoices, property) {
   const email = acc.email;
   if (!email) return false;
   const period = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const total = invoices.reduce((s, i) => s + (i.amount || 0), 0);
+  const list = Array.isArray(invoices) ? invoices : [];
+  const total = list.reduce((s, i) => s + (i.amount || 0), 0);
+  const invN = list.filter(i => !i.isCreditNote).length;
+  const cnN = list.filter(i => i.isCreditNote).length;
+  const cnLine = cnN > 0 ? ` and ${cnN} credit note${cnN === 1 ? '' : 's'}` : '';
   const subject = `Monthly invoice list · ${property?.profile?.name || 'Property'} · ${period}`;
   // Greet by CA name + firm when both available. Falls back gracefully
   // when the hotelier only filled one (or neither).
@@ -283,7 +300,7 @@ export function emailToAccountant(invoices, property) {
     greeting,
     '',
     `Attached is the list of invoices issued for ${period} from ${property?.profile?.name || 'our property'}.`,
-    `${invoices.length} invoice${invoices.length === 1 ? '' : 's'} · ₹${total.toLocaleString('en-IN')} total billed.`,
+    `${invN} invoice${invN === 1 ? '' : 's'}${cnLine} · ₹${total.toLocaleString('en-IN')} net.`,
     '',
     'The printable list just opened in a new tab — please save it as a PDF and attach it to your reply.',
     '',

@@ -779,6 +779,37 @@ export function listIssuedInvoices(bookings, property) {
   return all.sort((a, b) => a.number.localeCompare(b.number));
 }
 
+// Credit notes for the CA register. Only for bookings that have a LIVE invoice
+// (a credit note reduces invoiced / taxable value, so it relates to an issued
+// invoice). Sourced from the payment ledger's 'credit' entries and emitted as
+// NEGATIVE-amount rows so the register nets correctly. Atithi records these for
+// the CA's visibility; the CA applies formal credit-note numbering + GSTR-1
+// treatment (Atithi is a books-keeper, not a filing tool).
+export function listCreditNotes(bookings, property) {
+  const out = [];
+  for (const b of (bookings || [])) {
+    const liveInvoices = (b.invoices || []).filter(inv => !inv.voided);
+    if (!liveInvoices.length) continue;
+    const gstRate = property ? blendedGstRate(b, property) : null;
+    const ref = liveInvoices[0];
+    for (const p of (b.payments || [])) {
+      if (p.kind !== 'credit' && p.kind !== 'credit_note') continue;
+      out.push({
+        number: `CN · ${ref.number}`,
+        againstInvoice: ref.number,
+        fy: ref.fy,
+        date: p.dateIso || (p.date && p.date !== 'now' ? p.date : ref.date),
+        recipient: ref.recipient || { name: b.guest, gstin: '' },
+        amount: -(Math.abs(+p.amount || 0)),
+        note: p.note || '',
+        bookingId: b.id, guest: b.guest, gstRate,
+        isCreditNote: true,
+      });
+    }
+  }
+  return out;
+}
+
 export const COUNTRIES = [
   { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91' },
   { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1'  },

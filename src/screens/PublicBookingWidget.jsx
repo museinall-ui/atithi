@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, safeUrl, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, singleOccRateFor, safeUrl, AMENITIES } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -188,17 +188,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const perNightArray = data.roomTypeId ? computePerNightRates(data.roomTypeId) : [];
   const perNight = perNightArray.length ? Math.round(perNightArray.reduce((s, n) => s + n.rate, 0) / perNightArray.length) : null;
   const ratesVary = perNightArray.length > 1 && perNightArray.some(n => n.rate !== perNightArray[0].rate);
-  // Multi-room: rate × rooms × nights. Each room is the same category
-  // (simpler UX than mixed-type which adds a per-room picker; a guest
-  // wanting mixed types can just make two bookings).
+  // Multi-room: each room is the same category (a guest wanting mixed types
+  // makes two bookings).
   const rooms = Math.max(1, data.rooms || 1);
-  // Use the actual per-night array sum (not the average × nights) so
-  // the displayed total exactly matches the breakdown numbers.
-  const roomCost = perNightArray.length ? perNightArray.reduce((s, n) => s + n.rate, 0) * rooms : 0;
-
-  // Distribute guests evenly across N rooms. Remainder goes to the
-  // earlier rooms (so 7 adults across 3 rooms = [3, 2, 2]). Used to
-  // build the booking's roomItems[] on submit + the guests label.
+  // Distribute guests evenly across N rooms. Remainder goes to the earlier
+  // rooms (7 adults across 3 rooms = [3, 2, 2]). Used for roomItems[] + the
+  // guests label + per-room single-occupancy pricing below.
   const distributeAcross = (count, n) => {
     const base = Math.floor(count / n);
     const rem = count - base * n;
@@ -206,6 +201,17 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   };
   const adultsPerRoom = distributeAcross(data.adults || 0, rooms);
   const childrenPerRoom = distributeAcross(data.children || 0, rooms);
+  // Room cost = per-night sum, per room. A room with exactly 1 adult uses the
+  // single-occupancy rate (flat × nights) when the property has one set + the
+  // feature on; other rooms use the full computed nightly sum. Matches the
+  // hotelier-side single-occ pricing, so widget vs reception agree.
+  const fullRoomCost = perNightArray.length ? perNightArray.reduce((s, n) => s + n.rate, 0) : 0;
+  const roomCost = perNightArray.length
+    ? adultsPerRoom.reduce((sum, ad) => {
+        const sr = singleOccRateFor({ adults: ad }, selectedRT, property);
+        return sum + (sr != null ? sr * (data.nights || 1) : fullRoomCost);
+      }, 0)
+    : 0;
 
   // Meal plan delta vs the property's default plan. Default plan = the
   // one the calendar rate is treated as already including. Switching
@@ -317,8 +323,23 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const total = Math.max(0, subtotal - discountAmount);
   const guestsStr = `${data.adults}A${data.children > 0 ? ` ${data.children}C` : ''}`;
 
+  // Minimum-night stays (Advanced settings → Minimum-night stays). Block a
+  // too-short online booking; the applicable minimum is the weekend one when
+  // any night falls on a weekend, else the other-days minimum.
+  const minNightsCfg = property?.accountant?.minNights;
+  let minNightsNeeded = 0;
+  if (minNightsCfg && minNightsCfg.enabled && data.checkIn && (data.nights || 0) > 0) {
+    const inD = new Date(data.checkIn + 'T00:00:00');
+    if (!isNaN(inD.getTime())) {
+      const wd = (property?.weekendRules?.weekendDays) || [0, 6];
+      let incWknd = false;
+      for (let k = 0; k < data.nights; k++) { const d = new Date(inD); d.setDate(d.getDate() + k); if (wd.includes(d.getDay())) { incWknd = true; break; } }
+      const need = incWknd ? (minNightsCfg.weekend || 1) : (minNightsCfg.allDays || 1);
+      if ((data.nights || 0) < need) minNightsNeeded = need;
+    }
+  }
   // Step 1 → 2 gate.
-  const datesValid = !!data.checkIn && (data.nights || 0) > 0 && (data.adults || 0) > 0 && (data.rooms || 0) > 0;
+  const datesValid = !!data.checkIn && (data.nights || 0) > 0 && (data.adults || 0) > 0 && (data.rooms || 0) > 0 && !minNightsNeeded;
   // Step 2 → 3 gate — must have enough units of the picked type to
   // cover the requested room count for every night.
   const roomValid = !!data.roomTypeId && availUnitsFor(data.roomTypeId) >= rooms;
@@ -643,6 +664,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               );
             })()}
 
+            {minNightsNeeded > 0 && (
+              <div style={{ padding: '10px 12px', background: 'oklch(96% 0.05 25)', border: `1px solid ${T.danger}`, borderRadius: 8, marginBottom: 10, fontSize: 12, color: T.danger, lineHeight: 1.5, fontWeight: 600 }}>
+                This property has a minimum stay of {minNightsNeeded} nights for these dates. Please choose {minNightsNeeded} or more nights.
+              </div>
+            )}
             <PrimaryBtn disabled={!datesValid} onClick={() => setStep(2)}>
               See available rooms →
             </PrimaryBtn>

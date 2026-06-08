@@ -86,6 +86,15 @@ export async function loadPropertyBySlug(slug) {
     seasons: Array.isArray(row.seasons) ? row.seasons : [],
     channelMarkups: row.channel_markups || {},
     coupons: Array.isArray(row.coupons) ? row.coupons : [],
+    // Advanced-settings pricing (min-nights + single-occupancy) exposed via the
+    // RPC (migration 20260619), nested under `accountant` so the widget reads
+    // it the same way the hotelier app does. Absent (RPC not pasted) → the
+    // widget simply doesn't enforce these (its prior behaviour).
+    accountant: {
+      minNights: (row.advanced_pricing && row.advanced_pricing.minNights) || null,
+      singleRates: (row.advanced_pricing && row.advanced_pricing.singleRates) || {},
+      singleOccEnabled: !!(row.advanced_pricing && row.advanced_pricing.singleOccEnabled),
+    },
   };
 }
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { DAYS, CHANNELS, effectiveRoomTypes, ANCHOR, ymd, dateToIdx, computeUnitUsage } from '../data.js';
+import { DAYS, CHANNELS, effectiveRoomTypes, ANCHOR, ymd, idxToDate, dateToIdx, ratePerNight, computeUnitUsage } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Btn from '../components/Btn.jsx';
@@ -9,6 +9,11 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 const iconBtn = {
   width: 36, height: 36, borderRadius: 10, border: 'none', background: T.bgSoft,
   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: T.ink2,
+};
+const dayEdInput = {
+  width: '100%', boxSizing: 'border-box', border: `1px solid ${T.border}`,
+  borderRadius: 8, padding: '8px 10px', height: 36, fontSize: 14, fontWeight: 700,
+  color: T.ink, background: T.card, outline: 'none',
 };
 
 // Compact initials from a name. "Aanya Sharma" → "AS"; "Rohan" → "R".
@@ -470,7 +475,7 @@ function isoToDayIdx(iso) {
   return dateToIdx(iso);
 }
 
-export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property, can = () => true }) {
+export default function Diary({ go, bookings, setBookings, moveBooking, t, lang = 'en', property, rateOverrides = {}, setRateOverrides, can = () => true }) {
   // RBAC. Empty-cell tap → New Booking screen needs create_bookings.
   // Drag-and-drop a pill to another date / room needs edit_bookings.
   // We gate the *initiation* of the action here so the user gets quick
@@ -487,6 +492,64 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   const [drag, setDrag] = useState(null);
   const [confirmDrop, setConfirmDrop] = useState(null);
   const [filter, setFilter] = useState('all');
+  // Per-date inventory + rate editor, opened by tapping a date in the header.
+  // Holds the day idx + a per-category draft. Gated by manage_rates.
+  const canManageRates = can('manage_rates');
+  const [dateEditor, setDateEditor] = useState(null);
+  const fmtDayLabel = (idx) => {
+    const d = new Date(idxToDate(idx) + 'T00:00:00');
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+  };
+  // Rooms of a category occupied on a given day idx (non-cancelled bookings).
+  const bookedForDate = (catId, idx) => (bookings || []).reduce((n, b) => {
+    if (b.status === 'cancelled') return n;
+    const s = b.startIdx || 0, e = s + (b.nights || 1);
+    if (idx < s || idx >= e) return n;
+    const items = (b.roomItems && b.roomItems.length) ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
+    return n + items.filter(it => (it.roomTypeId || b.roomTypeId) === catId).length;
+  }, 0);
+  const openDateEditor = (idx) => {
+    if (!canManageRates) return;
+    const rows = effectiveRoomTypes(property).map(rt => {
+      const ov = rateOverrides[`${rt.id}:${idx}`] || {};
+      const units = rt.units || 0;
+      const closed = ov.closed ? units : (Array.isArray(ov.closedUnits) ? ov.closedUnits.length : 0);
+      return {
+        catId: rt.id, name: rt.name, units,
+        booked: bookedForDate(rt.id, idx),
+        open: Math.max(0, units - closed),
+        rate: Math.round(ratePerNight(property, rateOverrides, rt.id, idx)),
+      };
+    });
+    setDateEditor({ idx, rows });
+  };
+  const setEditorRow = (catId, patch) => setDateEditor(de => de && ({ ...de, rows: de.rows.map(r => r.catId === catId ? { ...r, ...patch } : r) }));
+  const saveDateEditor = () => {
+    if (!dateEditor || !setRateOverrides) { setDateEditor(null); return; }
+    const idx = dateEditor.idx;
+    setRateOverrides(o => {
+      const next = { ...o };
+      dateEditor.rows.forEach(r => {
+        const key = `${r.catId}:${idx}`;
+        const prev = next[key] || {};
+        const open = Math.max(0, Math.min(r.units, Math.round(+r.open || 0)));
+        // Close the highest-indexed units (same convention as the Rates screen).
+        const closedUnits = Array.from({ length: r.units - open }, (_, k) => open + k);
+        const rateNum = Math.max(0, Math.round(+r.rate || 0));
+        const baseRate = Math.round(ratePerNight(property, {}, r.catId, idx)); // rate with NO override
+        const upd = { ...prev, closed: false };
+        // Only store a rate override when it differs from the computed base —
+        // avoids littering no-op overrides when the hotelier leaves it as-is.
+        if (rateNum > 0 && rateNum !== baseRate) upd.rate = rateNum; else delete upd.rate;
+        if (closedUnits.length) upd.closedUnits = closedUnits; else delete upd.closedUnits;
+        // Nothing custom left (no rate, no close-out, no note) → drop the key.
+        if (upd.rate == null && !(upd.closedUnits && upd.closedUnits.length) && !upd.note) delete next[key];
+        else next[key] = upd;
+      });
+      return next;
+    });
+    setDateEditor(null);
+  };
   // Jump-to-date: picking a date scrolls the diary to that column and
   // auto-extends the horizon (forward) or pastDays (backward) so the
   // picked date is in view.
@@ -811,7 +874,10 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
             {viewDays.map((d) => {
               const isToday = d.iso === todayIso;
               return (
-                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}` }}>
+                <div key={d.iso}
+                  onClick={canManageRates ? () => openDateEditor(d.idx) : undefined}
+                  title={canManageRates ? t('editDayRates') : undefined}
+                  style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}`, cursor: canManageRates ? 'pointer' : 'default' }}>
                   {isToday ? (
                     <div style={{
                       display: 'inline-block',
@@ -870,6 +936,46 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
             through the day column, with a TODAY pill sitting inside the header
             cell. No floating overlay — scrolls naturally with the grid. */}
       </div>
+
+      {dateEditor && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,15,10,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }} onClick={() => setDateEditor(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: T.card, width: '100%', maxWidth: 460, borderRadius: '20px 20px 0 0', padding: '20px 18px 28px', maxHeight: '82%', overflow: 'auto', boxShadow: '0 -8px 32px rgba(0,0,0,.2)' }}>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: T.border, margin: '0 auto 16px' }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{t('editDayRates')}</div>
+            <div style={{ fontSize: 12, color: T.ink3, marginTop: 2, marginBottom: 14 }}>{fmtDayLabel(dateEditor.idx)} · {t('appliesThisDateOnly')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {dateEditor.rows.map(r => (
+                <div key={r.catId} style={{ padding: 12, background: T.bgSoft, borderRadius: 10, border: `1px solid ${T.borderSoft}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{r.name}</div>
+                    <div className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{r.booked} {t('bookedWord')} · {Math.max(0, Math.round(+r.open || 0) - r.booked)} {t('freeWord')}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <label style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 3 }}>{t('roomsOpen')} / {r.units}</div>
+                      <input type="number" inputMode="numeric" min={0} max={r.units} value={r.open}
+                        onFocus={e => e.target.select()}
+                        onChange={e => setEditorRow(r.catId, { open: e.target.value })}
+                        className="tnum" style={dayEdInput} />
+                    </label>
+                    <label style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 3 }}>{t('ratePerNightShort')} (₹)</div>
+                      <input type="number" inputMode="numeric" min={0} value={r.rate}
+                        onFocus={e => e.target.select()}
+                        onChange={e => setEditorRow(r.catId, { rate: e.target.value })}
+                        className="tnum" style={dayEdInput} />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <Btn variant="ghost" full onClick={() => setDateEditor(null)}>{t('cancel')}</Btn>
+              <Btn full onClick={saveDateEditor}>{t('save')}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDrop && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(20,15,10,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }} onClick={() => setConfirmDrop(null)}>

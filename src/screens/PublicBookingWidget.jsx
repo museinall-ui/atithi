@@ -1117,6 +1117,19 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
             )}
 
             {(() => {
+              // Cancellation policy from the chosen rate plan — shown clearly
+              // BEFORE the guest confirms.
+              const rp = ratePlans.find(p => p.id === data.ratePlanId) || ratePlans[0];
+              const txt = rp && rp.cancellation === 'non-refundable'
+                ? 'Non-refundable — no refund if you cancel or don’t show up.'
+                : `Free cancellation up to ${(rp && rp.refundHours) || 48}h before check-in. After that, a charge may apply.`;
+              return (
+                <div style={{ padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.ink2, lineHeight: 1.5, fontWeight: 600 }}>
+                  <strong style={{ color: T.ink }}>Cancellation policy:</strong> {txt}
+                </div>
+              );
+            })()}
+            {(() => {
               const h = computeHoldHours();
               return (
                 <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>

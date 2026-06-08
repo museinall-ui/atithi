@@ -85,7 +85,10 @@ const VSTR = {
     houseRulesHeader: 'House rules',
     termsLabel: 'Terms:',
     termsBody: (p, id, withTax) =>
-      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in. Cancellation: free up to 48h before arrival; 50% charge thereafter; no-show forfeits full advance.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
+      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
+    cancelLabel: 'Cancellation policy',
+    cancelFlexible: (h) => `Free cancellation up to ${h}h before check-in. Cancellations after that may be charged; no-show forfeits the advance.`,
+    cancelNonRefundable: 'Non-refundable rate — no refund applies if you cancel or no-show.',
     thanksLine: (name, city) => `Thank you for choosing ${esc(name)}.${city ? ' We look forward to hosting you in ' + esc(city) + '.' : ' We look forward to hosting you.'}`,
     printBtn: 'Save as PDF / Print',
     closeBtn: 'Close',
@@ -150,7 +153,10 @@ const VSTR = {
     houseRulesHeader: 'घर के नियम',
     termsLabel: 'शर्तें:',
     termsBody: (p, id, withTax) =>
-      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी। रद्द: आगमन से 48 घंटे पहले मुफ़्त; उसके बाद 50% शुल्क; नो-शो पर पूरा अग्रिम राशि ज़ब्त।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
+      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
+    cancelLabel: 'कैंसलेशन पॉलिसी',
+    cancelFlexible: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद कैंसल करने पर चार्ज लग सकता है; नो-शो पर एडवांस ज़ब्त।`,
+    cancelNonRefundable: 'नॉन-रिफंडेबल रेट — कैंसल या नो-शो पर रिफंड नहीं।',
     thanksLine: (name, city) => `${esc(name)} चुनने के लिए धन्यवाद।${city ? ' हम ' + esc(city) + ' में आपकी मेज़बानी का इंतज़ार कर रहे हैं।' : ' हम आपकी मेज़बानी का इंतज़ार कर रहे हैं।'}`,
     printBtn: 'PDF सहेजें / प्रिंट करें',
     closeBtn: 'बंद करें',
@@ -235,6 +241,13 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   // full and render an explicit Discount row below — the two cancel, so the
   // rows still sum to the exact total.
   const discountAmount = isInvoice ? 0 : Math.max(0, +b.discountAmount || 0);
+  // Cancellation policy from the booking's rate plan (dedicated block below).
+  // Falls back to a flexible 48h default for the Standard plan / legacy rows.
+  const _rpList = Array.isArray(prop.ratePlans) ? prop.ratePlans : [];
+  const _bookingRp = _rpList.find(x => x.id === (b.ratePlanId || 'standard'));
+  const cancelText = _bookingRp && _bookingRp.cancellation === 'non-refundable'
+    ? L.cancelNonRefundable
+    : L.cancelFlexible(_bookingRp && _bookingRp.refundHours ? _bookingRp.refundHours : 48);
   const tariffLine = preTax - extrasSum - mealCost - extraGuests + discountAmount;
   const docNumber = isInvoice ? invoice.number : b.id;
 
@@ -488,7 +501,9 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
 
   ${!isInvoice && p.paymentQrDataUrl ? `
   <div style="margin: 20px 0 22px; padding: 16px 18px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 12px; display: flex; gap: 18px; align-items: center;">
-    <img src="${esc(p.paymentQrDataUrl)}" alt="Payment QR" style="width: 130px; height: 130px; border-radius: 8px; background: #fff; padding: 6px; object-fit: contain; flex-shrink: 0;" />
+    <img src="${esc(p.paymentQrDataUrl)}" alt="Payment QR" title="Tap to enlarge"
+      onclick="(function(img){var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out';o.onclick=function(){o.remove()};var b=new Image();b.src=img.src;b.style.cssText='max-width:92vw;max-height:92vh;background:#fff;padding:18px;border-radius:14px';o.appendChild(b);document.body.appendChild(o);})(this)"
+      style="width: 200px; height: 200px; border-radius: 8px; background: #fff; padding: 8px; object-fit: contain; flex-shrink: 0; cursor: zoom-in;" />
     <div style="flex: 1; min-width: 0;">
       <div style="font-size: 9pt; font-weight: 700; color: ${BRAND}; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">${L.scanToPay}</div>
       <div style="font-size: 13pt; font-weight: 700; color: #1a1a1a; margin-bottom: 4px;">${fmtINR(balance > 0 ? balance : baseAmount)}</div>
@@ -497,6 +512,11 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
         ${p.paymentQrLabel ? `<br/><strong style="color: ${BRAND};">${esc(p.paymentQrLabel)}</strong>` : ''}
       </div>
     </div>
+  </div>` : ''}
+
+  ${!isInvoice ? `<div style="margin: 6px 0 14px; padding: 11px 14px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 10px;">
+    <div style="font-size: 8.5pt; font-weight: 700; color: ${BRAND}; letter-spacing: 0.8px; text-transform: uppercase;">${L.cancelLabel}</div>
+    <div style="font-size: 10pt; color: #333; line-height: 1.5; margin-top: 3px;">${cancelText}</div>
   </div>` : ''}
 
   <div class="terms">

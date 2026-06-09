@@ -88,6 +88,8 @@ const VSTR = {
       `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
     cancelLabel: 'Cancellation policy',
     cancelFlexible: (h) => `Free cancellation up to ${h}h before check-in. Cancellations after that may be charged; no-show forfeits the advance.`,
+    cancelModerate: (h) => `Free cancellation up to ${h}h before check-in. After that, 50% of the booking is charged; no-show forfeits the advance.`,
+    cancelStrict: (h) => `Free cancellation up to ${h}h before check-in. After that, no refund applies; no-show forfeits the advance.`,
     cancelNonRefundable: 'Non-refundable rate — no refund applies if you cancel or no-show.',
     thanksLine: (name, city) => `Thank you for choosing ${esc(name)}.${city ? ' We look forward to hosting you in ' + esc(city) + '.' : ' We look forward to hosting you.'}`,
     printBtn: 'Save as PDF / Print',
@@ -156,6 +158,8 @@ const VSTR = {
       `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
     cancelLabel: 'कैंसलेशन पॉलिसी',
     cancelFlexible: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद कैंसल करने पर चार्ज लग सकता है; नो-शो पर एडवांस ज़ब्त।`,
+    cancelModerate: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद बुकिंग का 50% चार्ज होगा; नो-शो पर एडवांस ज़ब्त।`,
+    cancelStrict: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद कोई रिफंड नहीं; नो-शो पर एडवांस ज़ब्त।`,
     cancelNonRefundable: 'नॉन-रिफंडेबल रेट — कैंसल या नो-शो पर रिफंड नहीं।',
     thanksLine: (name, city) => `${esc(name)} चुनने के लिए धन्यवाद।${city ? ' हम ' + esc(city) + ' में आपकी मेज़बानी का इंतज़ार कर रहे हैं।' : ' हम आपकी मेज़बानी का इंतज़ार कर रहे हैं।'}`,
     printBtn: 'PDF सहेजें / प्रिंट करें',
@@ -245,9 +249,12 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   // Falls back to a flexible 48h default for the Standard plan / legacy rows.
   const _rpList = Array.isArray(prop.ratePlans) ? prop.ratePlans : [];
   const _bookingRp = _rpList.find(x => x.id === (b.ratePlanId || 'standard'));
-  const cancelText = _bookingRp && _bookingRp.cancellation === 'non-refundable'
-    ? L.cancelNonRefundable
-    : L.cancelFlexible(_bookingRp && _bookingRp.refundHours ? _bookingRp.refundHours : 48);
+  const _cxn = _bookingRp && _bookingRp.cancellation;
+  const _refH = _bookingRp && _bookingRp.refundHours ? _bookingRp.refundHours : 48;
+  const cancelText = _cxn === 'non-refundable' ? L.cancelNonRefundable
+    : _cxn === 'moderate' ? L.cancelModerate(_refH)
+    : _cxn === 'strict' ? L.cancelStrict(_refH)
+    : L.cancelFlexible(_refH);
   const tariffLine = preTax - extrasSum - mealCost - extraGuests + discountAmount;
   const docNumber = isInvoice ? invoice.number : b.id;
 

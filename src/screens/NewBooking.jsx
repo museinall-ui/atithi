@@ -1282,18 +1282,31 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   // The rate-plan multiplier (Standard / Flexible / Non-refundable) is
   // applied to the room subtotal — extras / meal plans / GST land on top.
   const ratePlanMult = ratePlanMultiplier(property, data.ratePlanId);
-  const roomsSubtotalRaw = data.roomItems.reduce((sum, r) => {
+  // Two buckets: solo-rate rooms are a FINAL price the hotelier set (the
+  // rate-plan tier does NOT stack on them — same contract as singleOccRateFor's
+  // "weekend / season are not stacked" rule, and matching what the public
+  // widget quotes). Every other room takes the rate-plan multiplier. Rounding
+  // once at the very end keeps the common single-room booking identical to the
+  // widget's quote (no per-night-vs-per-stay drift).
+  let soloSubtotalRaw = 0;   // single-occupancy auto-rate rooms — final, no uplift
+  let planSubtotalRaw = 0;   // normal / manually-rated rooms — get ratePlanMult
+  data.roomItems.forEach(r => {
     const typeId = r.roomTypeId || data.roomTypeId;
     const type = typeId ? ROOM_TYPES.find(rt => rt.id === typeId) : null;
-    if (!type) return sum;
-    // itemSubtotal sums each night's real rate (startIdx + n) via
-    // rateForNight, so a stay spanning a weekend / season / per-day override
-    // is priced night-by-night instead of (first night × nights). Same
-    // function the RoomItemCard uses, so the per-room display and the
-    // booking total never disagree.
-    return sum + itemSubtotal(r, type, data.nights, rateForNight, singleOccRateFor(r, type, property));
-  }, 0);
-  const roomsSubtotal = Math.round(roomsSubtotalRaw * ratePlanMult);
+    if (!type) return;
+    const sr = singleOccRateFor(r, type, property);
+    // itemSubtotal sums each night's real rate (startIdx + n) via rateForNight,
+    // so a stay spanning a weekend / season / per-day override is priced
+    // night-by-night. Same function the RoomItemCard uses, so per-room display
+    // and the booking total never disagree.
+    const sub = itemSubtotal(r, type, data.nights, rateForNight, sr);
+    // Only the AUTO solo rate is final; a manually-typed per-room rate still
+    // takes the rate plan (the hotelier opted into that number as a base).
+    if (sr != null && r.rate == null) soloSubtotalRaw += sub;
+    else planSubtotalRaw += sub;
+  });
+  const roomsSubtotalRaw = soloSubtotalRaw + planSubtotalRaw;  // pre-multiplier (unused downstream beyond the total)
+  const roomsSubtotal = Math.round(planSubtotalRaw * ratePlanMult + soloSubtotalRaw);
 
   // All rooms must have a type chosen before Step 2 can be completed.
   const roomsValid = data.roomItems.length > 0 && data.roomItems.every(r => !!(r.roomTypeId || data.roomTypeId));

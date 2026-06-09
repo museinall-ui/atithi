@@ -94,6 +94,15 @@ export async function loadPropertyBySlug(slug) {
       minNights: (row.advanced_pricing && row.advanced_pricing.minNights) || null,
       singleRates: (row.advanced_pricing && row.advanced_pricing.singleRates) || {},
       singleOccEnabled: !!(row.advanced_pricing && row.advanced_pricing.singleOccEnabled),
+      // Master "Multiple rate plans" toggle — TRI-STATE. The RPC stores SQL
+      // NULL (→ JSON null) when the hotelier never opened Advanced settings, and
+      // a real boolean once they toggle it. We map null/missing → UNDEFINED so
+      // ratePlansActive() falls back to its legacy "show when 2+ plans enabled"
+      // default; only an explicit true/false flows through. This way a hotelier
+      // who turned plans OFF hides the picker for guests too, while the common
+      // "never touched it" case behaves exactly as before.
+      ratePlansEnabled: (row.advanced_pricing && row.advanced_pricing.ratePlansEnabled != null)
+        ? !!row.advanced_pricing.ratePlansEnabled : undefined,
     },
   };
 }

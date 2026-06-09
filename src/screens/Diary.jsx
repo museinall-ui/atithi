@@ -532,7 +532,11 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
       dateEditor.rows.forEach(r => {
         const key = `${r.catId}:${idx}`;
         const prev = next[key] || {};
-        const open = Math.max(0, Math.min(r.units, Math.round(+r.open || 0)));
+        // Floor at the already-booked count so the hotelier can never close a
+        // unit out from under an existing guest (which would make the date claim
+        // fewer sellable rooms than are physically occupied + double-count in
+        // the widget's availability math). Cap at the category's unit count.
+        const open = Math.min(r.units, Math.max(r.booked || 0, Math.round(+r.open || 0)));
         // Close the highest-indexed units (same convention as the Rates screen).
         const closedUnits = Array.from({ length: r.units - open }, (_, k) => open + k);
         const rateNum = Math.max(0, Math.round(+r.rate || 0));
@@ -953,7 +957,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={{ flex: 1 }}>
                       <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 3 }}>{t('roomsOpen')} / {r.units}</div>
-                      <input type="number" inputMode="numeric" min={0} max={r.units} value={r.open}
+                      <input type="number" inputMode="numeric" min={r.booked} max={r.units} value={r.open}
                         onFocus={e => e.target.select()}
                         onChange={e => setEditorRow(r.catId, { open: e.target.value })}
                         className="tnum" style={dayEdInput} />

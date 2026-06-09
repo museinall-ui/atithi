@@ -4,6 +4,9 @@
 -- ONLINE guests get the same rules reception does:
 --   * Minimum-night stays (accountant.minNights)
 --   * Single-occupancy rate (accountant.singleRates + singleOccEnabled)
+--   * "Multiple rate plans" master toggle (accountant.ratePlansEnabled) — so a
+--     hotelier who turned rate plans OFF doesn't have the picker shown to guests
+--     on the widget (which would let them book a disabled-plan price).
 --
 -- Re-creates property_by_short_code with ONE extra return column,
 -- advanced_pricing (jsonb), built from only those three accountant sub-keys —
@@ -36,9 +39,10 @@ set search_path = public as $$
          channel_markups, embed_button,
          short_code, check_in, check_out, phone,
          jsonb_build_object(
-           'minNights',        accountant->'minNights',
-           'singleRates',      accountant->'singleRates',
-           'singleOccEnabled', accountant->'singleOccEnabled'
+           'minNights',         accountant->'minNights',
+           'singleRates',       accountant->'singleRates',
+           'singleOccEnabled',  accountant->'singleOccEnabled',
+           'ratePlansEnabled',  accountant->'ratePlansEnabled'
          ) as advanced_pricing
   from properties
   where short_code = p_short_code

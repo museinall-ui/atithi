@@ -120,8 +120,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       // price the hotelier's NewBooking flow computes for the same date —
       // including per-day overrides set in the Rates calendar, which this
       // widget previously ignored (causing widget vs reception price drift).
-      const rate = Math.round(ratePerNight(property, rateOverrides, typeId, startIdx + i) * rpMult);
-      out.push({ iso, rate, isWknd, seasonName: matchingSeason ? matchingSeason.name : null });
+      const raw = ratePerNight(property, rateOverrides, typeId, startIdx + i);
+      const rate = Math.round(raw * rpMult);
+      out.push({ iso, rate, rawRate: raw, isWknd, seasonName: matchingSeason ? matchingSeason.name : null });
     }
     return out;
   };
@@ -205,7 +206,14 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // single-occupancy rate (flat × nights) when the property has one set + the
   // feature on; other rooms use the full computed nightly sum. Matches the
   // hotelier-side single-occ pricing, so widget vs reception agree.
-  const fullRoomCost = perNightArray.length ? perNightArray.reduce((s, n) => s + n.rate, 0) : 0;
+  // Apply the rate-plan multiplier ONCE over the stay (not per night) so a
+  // single-room widget booking matches the hotelier's NewBooking quote exactly
+  // on fractional rate plans (e.g. a +15% Flexible tier) — no per-night rounding
+  // drift. The solo (single-occupancy) rate stays a flat final price: the rate
+  // plan does NOT stack on it, same as the hotelier side.
+  const fullRoomCost = perNightArray.length
+    ? Math.round(perNightArray.reduce((s, n) => s + (n.rawRate != null ? n.rawRate : n.rate), 0) * ratePlanMultiplier(property, data.ratePlanId))
+    : 0;
   const roomCost = perNightArray.length
     ? adultsPerRoom.reduce((sum, ad) => {
         const sr = singleOccRateFor({ adults: ad }, selectedRT, property);

@@ -41,7 +41,7 @@ supabase/migrations/20260615_widget_rate_overrides.sql            ← public boo
 supabase/migrations/20260616_widget_hardening.sql                 ← ⚠️ before sharing the public link: date floor + close-out enforcement + unit allocation + paid=0 (supersedes 20260607/20260612)
 supabase/migrations/20260617_accept_invite.sql                    ← ⚠️ SECURITY: invited staff can't self-assign 'owner' (accept_invite RPC forces role; paste AFTER 20260608)
 supabase/migrations/20260618_audit_log_actor.sql                  ← OPTIONAL low-priority: a member can't forge the actor on an activity-log row
-supabase/migrations/20260619_widget_advanced_pricing.sql         ← public widget enforces min-nights + single-occupancy (before sharing the link)
+supabase/migrations/20260619_widget_advanced_pricing.sql         ← public widget enforces min-nights + single-occupancy + the "Multiple rate plans" master toggle (RE-PASTE this one — updated Jun 9 to add ratePlansEnabled; idempotent, safe to re-run)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).

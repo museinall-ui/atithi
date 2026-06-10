@@ -1,5 +1,7 @@
 // Vercel serverless function — sends a Web Push notification to a property's
-// subscribed devices when a booking arrives (today: website/widget bookings).
+// subscribed devices when a booking arrives, from EITHER the public booking
+// widget or a staff member in the app. Staff bookings pass excludeUserId so the
+// creator's own device isn't buzzed for their own action.
 //
 // Why server-side: a Web Push must be signed with the VAPID *private* key,
 // which is a secret. The hotelier sets it once in Vercel env vars and this
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { propertyId, origin } = req.body || {};
+  const { propertyId, origin, excludeUserId } = req.body || {};
   if (!propertyId) return res.status(400).json({ error: 'Missing propertyId' });
 
   const subject = process.env.VAPID_SUBJECT || 'mailto:hello@atithi.app';
@@ -64,12 +66,14 @@ export default async function handler(req, res) {
     Accept: 'application/json',
   };
 
-  // Build the message from the most recent website booking (server-verified —
-  // the caller cannot spoof the guest's name / dates into your alert).
-  let title = '📩 New website booking';
+  // Build the message from the most recent booking for this property
+  // (server-verified — the caller cannot spoof the guest's name / dates into
+  // your alert). Works for both website bookings and staff-entered ones; the
+  // wording adapts to the channel.
+  let title = '📩 New booking';
   let body = 'Tap to open your diary.';
   try {
-    const bUrl = `${SUPABASE_URL}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propertyId)}&channel=eq.website&order=created_at.desc&limit=1&select=guest_name,nights,start_date`;
+    const bUrl = `${SUPABASE_URL}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propertyId)}&order=created_at.desc&limit=1&select=guest_name,nights,start_date,channel`;
     const bResp = await fetch(bUrl, { headers: sbHeaders });
     if (bResp.ok) {
       const rows = await bResp.json();
@@ -77,6 +81,7 @@ export default async function handler(req, res) {
         const b = rows[0];
         const who = (b.guest_name || 'A guest').toString().slice(0, 40);
         const n = b.nights || 1;
+        title = b.channel === 'website' ? '📩 New website booking' : '📅 New booking';
         body = `${who} · ${n} night${n === 1 ? '' : 's'}${b.start_date ? ' from ' + b.start_date : ''}. Tap to view.`;
       }
     }
@@ -85,7 +90,7 @@ export default async function handler(req, res) {
   // Read the property's subscribers (service role bypasses RLS).
   let subs = [];
   try {
-    const sUrl = `${SUPABASE_URL}/rest/v1/push_subscriptions?property_id=eq.${encodeURIComponent(propertyId)}&select=id,endpoint,p256dh,auth`;
+    const sUrl = `${SUPABASE_URL}/rest/v1/push_subscriptions?property_id=eq.${encodeURIComponent(propertyId)}&select=id,endpoint,p256dh,auth,user_id`;
     const sResp = await fetch(sUrl, { headers: sbHeaders });
     if (!sResp.ok) {
       return res.status(502).json({ error: 'Could not read subscriptions', status: sResp.status });
@@ -93,6 +98,13 @@ export default async function handler(req, res) {
     subs = await sResp.json();
   } catch (e) {
     return res.status(500).json({ error: 'Subscription read failed', detail: String(e?.message || e) });
+  }
+
+  // Skip the device(s) of whoever just created the booking — no point buzzing
+  // the staff member's own phone for an action they just took. (Website
+  // bookings pass no excludeUserId, so every subscriber is notified.)
+  if (excludeUserId && Array.isArray(subs)) {
+    subs = subs.filter(s => s.user_id !== excludeUserId);
   }
 
   if (!Array.isArray(subs) || subs.length === 0) {

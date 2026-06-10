@@ -1776,6 +1776,19 @@ export default function App() {
             createBookingCloud(propertyId, session && session.user && session.user.id, newBk));
           setBookings(arr => [...arr, created]);
           logEvent('booking.create', 'booking', created.id, { guest: created.guest, total: created.total, nights: created.nights, channel: created.channel });
+          // Buzz the rest of the team's subscribed devices via Web Push (skips
+          // the creator's own device). Fire-and-forget; no-ops until the owner
+          // sets the push env vars + a teammate turned alerts on.
+          try {
+            const uid = session && session.user && session.user.id;
+            const origin = (typeof window !== 'undefined' && window.location) ? window.location.origin : '';
+            fetch('/api/notify-booking', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ propertyId, origin, excludeUserId: uid || null }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch (e) { /* never block booking creation on a notify failure */ }
           go('booking-confirmed', created.id);
           return;
         } catch {

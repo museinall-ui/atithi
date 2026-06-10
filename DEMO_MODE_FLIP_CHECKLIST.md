@@ -42,6 +42,7 @@ supabase/migrations/20260616_widget_hardening.sql                 ← ⚠️ bef
 supabase/migrations/20260617_accept_invite.sql                    ← ⚠️ SECURITY: invited staff can't self-assign 'owner' (accept_invite RPC forces role; paste AFTER 20260608)
 supabase/migrations/20260618_audit_log_actor.sql                  ← OPTIONAL low-priority: a member can't forge the actor on an activity-log row
 supabase/migrations/20260619_widget_advanced_pricing.sql         ← public widget enforces min-nights + single-occupancy + the "Multiple rate plans" master toggle (RE-PASTE this one — updated Jun 9 to add ratePlansEnabled; idempotent, safe to re-run)
+supabase/migrations/20260620_push_subscriptions.sql              ← phone notifications: stores which devices opted into booking alerts (needed for Web Push; see Part 2 for the 2 env vars)
 ```
 
 > ⚠️ **`20260608_membership_insert_guard.sql` is security-critical.** Until it's run, any signed-in user can add themselves as owner of any property (the old membership-insert policy only checked `user_id = auth.uid()`, not invite/bootstrap). Because the live site already requires real sign-in, this hole is exploitable right now — paste this migration before anything else. After running, the round-9 R9-1 test in the file header should fail (good).
@@ -108,6 +109,7 @@ If these aren't set, the magic-link email's link won't land you signed in — si
 **Optional auth + email setup (each degrades gracefully if skipped):**
 - **Google sign-in:** create a Google Cloud OAuth client + enable Google in Supabase → Authentication → Providers. Until then the "Continue with Google" button shows a friendly "not set up yet" hint; magic-link works regardless.
 - **"Send to CA" email (Resend):** add `RESEND_API_KEY` (+ optional `RESEND_FROM`) in Vercel → Settings → Environment Variables, then redeploy. Until then "Send to CA" falls back to opening your mail app + a printable register.
+- **Phone notifications on new bookings (Web Push):** (1) run `20260620_push_subscriptions.sql` (in the Part 1 list); (2) in Vercel → Settings → Environment Variables add `VAPID_PRIVATE_KEY` = the private key from Claude, and `SUPABASE_SERVICE_ROLE_KEY` = the `service_role` secret from Supabase → Project Settings → API (optional: `VAPID_SUBJECT` = `mailto:you@yourhotel.com`); (3) redeploy. Then in the app: **Settings → Notifications → Turn on alerts** on each device that should buzz. Until the env vars are set, the toggle shows a "setup not finished" hint and no alerts fire — nothing else changes. (The matching VAPID *public* key is already baked into the app + the serverless function.)
 
 ---
 

@@ -31,6 +31,44 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// ── Web Push ────────────────────────────────────────────────────────────
+// A push arrives from api/notify-booking (VAPID-signed). Payload is JSON:
+// { title, body, url, tag }. We show a notification; tapping it focuses an
+// open Atithi tab or opens one at the given URL (the diary by default).
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || 'Atithi';
+  const options = {
+    body: data.body || 'New booking activity',
+    icon: data.icon || './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    tag: data.tag || 'atithi-booking',   // collapse duplicates
+    renotify: true,
+    data: { url: data.url || './' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // Focus an already-open Atithi tab if there is one.
+    for (const client of all) {
+      if ('focus' in client) {
+        try { await client.focus(); } catch (e) { /* ignore */ }
+        // Best-effort: nudge it to navigate (the app reads ?go= on focus if present).
+        if ('navigate' in client && target) { try { await client.navigate(target); } catch (e) { /* ignore */ } }
+        return;
+      }
+    }
+    // Otherwise open a fresh window.
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
+});
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   // Only same-origin GETs go through the cache. Cross-origin

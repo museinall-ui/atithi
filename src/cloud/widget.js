@@ -247,6 +247,23 @@ export async function insertWidgetBooking(propertyId, booking) {
       console.warn('[atithi widget] redeem_coupon skipped', e);
     }
   }
+  // Best-effort: ping the hotelier's subscribed devices via Web Push so their
+  // phone buzzes on this booking. Fire-and-forget (no await) so a slow/missing
+  // endpoint never delays the guest's confirmation. The /api function lives on
+  // the same Vercel origin; it returns 503 (ignored) until the owner sets the
+  // VAPID + service-role env vars, and simply 404s on the GitHub Pages mirror.
+  // `keepalive` lets the request finish even as the widget navigates to its
+  // confirmation screen.
+  try {
+    const origin = (typeof window !== 'undefined' && window.location) ? window.location.origin : '';
+    fetch('/api/notify-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId, origin }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) { /* never block the booking on a notify failure */ }
+
   // Return null — caller (App.jsx PublicWidgetEntry) generates a
   // friendly "your booking is being created" placeholder for the
   // guest's confirmation screen.

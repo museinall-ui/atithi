@@ -128,6 +128,87 @@ function InstallAppCard({ t }) {
   );
 }
 
+// Booking-alerts card — opt THIS device into Web Push so the hotelier's phone
+// buzzes on a new website booking. Only meaningful signed in (subscriptions are
+// tied to a user + property). Mirrors InstallAppCard's look. Degrades to a
+// friendly line on unsupported browsers / blocked permission / unfinished
+// server setup, so it never looks broken.
+function PushAlertsCard({ t, propertyId, userId }) {
+  const [state, setState] = useState('loading'); // loading | unsupported | denied | on | off
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  const isStandalone = typeof window !== 'undefined'
+    && ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true);
+  const iosNeedsInstall = isIos && !isStandalone; // iOS only pushes for installed PWAs
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!isPushSupported()) { if (alive) setState('unsupported'); return; }
+      const s = await pushState();
+      if (alive) setState(s === 'on' ? 'on' : (s === 'denied' ? 'denied' : (s === 'unsupported' ? 'unsupported' : 'off')));
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const turnOn = async () => {
+    setBusy(true); setErr('');
+    const res = await enablePush(propertyId, userId);
+    setBusy(false);
+    if (res.ok) { setState('on'); return; }
+    if (res.reason === 'denied') setState('denied');
+    else if (res.reason === 'unsupported') setState('unsupported');
+    else setErr(t('pushSetupHint'));
+  };
+  const turnOff = async () => {
+    setBusy(true); setErr('');
+    await disablePush();
+    setBusy(false);
+    setState('off');
+  };
+
+  return (
+    <Card padding={14}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: state === 'loading' ? 0 : 12 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 10, background: T.primaryLt, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="bell" size={18} stroke={2.2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('pushTitle')}</div>
+          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 2, lineHeight: 1.4 }}>{t('pushSub')}</div>
+        </div>
+        {state === 'on' && <Icon name="check" size={18} color={T.ok} stroke={2.4} />}
+      </div>
+
+      {state === 'unsupported' && (
+        <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, lineHeight: 1.4 }}>{t('pushUnsupported')}</div>
+      )}
+      {state === 'denied' && (
+        <div style={{ fontSize: 11, color: T.danger, fontWeight: 600, lineHeight: 1.4 }}>{t('pushDenied')}</div>
+      )}
+      {state === 'off' && (
+        <>
+          {iosNeedsInstall && (
+            <div style={{ fontSize: 11, color: 'oklch(48% 0.14 75)', fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>{t('pushIosHint')}</div>
+          )}
+          <button onClick={turnOn} disabled={busy}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
+            {busy ? t('pushEnabling') : t('pushTurnOn')}
+          </button>
+        </>
+      )}
+      {state === 'on' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontSize: 11, color: T.ok, fontWeight: 700 }}>{t('pushOnNote')}</div>
+          <Btn variant="ghost" size="sm" onClick={turnOff} disabled={busy}>{busy ? '…' : t('pushTurnOff')}</Btn>
+        </div>
+      )}
+      {err && <div style={{ fontSize: 11, color: T.danger, fontWeight: 600, marginTop: 8, lineHeight: 1.4 }}>{err}</div>}
+    </Card>
+  );
+}
+
 // Click-anywhere date cell for the Seasons editor. Wraps a hidden
 // (opacity:0) date input under a labelled overlay so tapping anywhere
 // in the cell opens the native picker. Picked date renders in the
@@ -187,6 +268,7 @@ import Field from '../components/Field.jsx';
 import SectionHead from '../components/SectionHead.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 import Toggle from '../components/Toggle.jsx';
+import { isPushSupported, pushState, enablePush, disablePush } from '../push.js';
 
 // Reusable amenity picker: works for property-wide and per-category lists.
 // `selected` is an array of amenity ids; calls `onChange` with the new array.
@@ -3071,6 +3153,13 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
             screen. Hides itself when already running standalone. */}
         <SectionHead title={t('appSection')} style={{ marginTop: 16 }} />
         <InstallAppCard t={t} />
+
+        {session && propertyId && (
+          <>
+            <SectionHead title={t('pushSection')} style={{ marginTop: 16 }} />
+            <PushAlertsCard t={t} propertyId={propertyId} userId={session.user?.id} />
+          </>
+        )}
 
         {session && (
           <>

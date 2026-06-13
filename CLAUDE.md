@@ -165,8 +165,24 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
 - `20260602_multi_account_close.sql` — multi-account day close-out. `properties.cash_accounts` (jsonb array of `{id, label, kind}` — defaults to Cash + Digital) lets the hotelier define N payment instruments (owner UPI / manager UPI / cash drawer / bank / card terminal). `cash_closes.accounts` (jsonb array of `{accountId, label, kind, amount}`) captures per-account amounts on each close. The legacy `cash` + `digital` columns stay populated as a back-compat view so older sparkline math keeps working. Idempotent.
 - `20260603_team_invites.sql` — team invite flow. New `pending_invites` table (email text + functional unique index on `lower(email)` for case-insensitive uniqueness; property_id, role, invited_by, token, expires_at default 14d) with RLS for property-scoped management + self-read-by-email so the App.jsx accept-on-sign-in flow can find a user's own invites. Memberships table itself doesn't need changes — invites convert to membership rows on first sign-in via `acceptPendingInvitesForUser()`. Uses plain text + `lower()` everywhere instead of the citext extension (which Supabase blocks from regular SQL-Editor sessions). Idempotent.
 - `20260604_membership_permissions.sql` — per-member permission picker. Adds `memberships.permissions` jsonb default `'[]'` AND `pending_invites.permissions` jsonb default `'[]'`. Empty array = "use the role's default permissions" (resolved client-side via `effectivePermissions(role, stored)`); non-empty array is the hand-picked override the hotelier set in Settings → Property profile → Team members. 8 permission strings recognised today: `manage_bookings`, `manage_payments`, `manage_expenses`, `manage_rates`, `manage_invoices`, `view_reports`, `manage_settings`, `manage_team`. Role still exists (RLS hooks attach to it later); permissions are the source of truth the app UI reads. Idempotent.
+- `20260605_widget_anon_access.sql` — public booking widget: anon RLS + security-definer RPCs (`property_by_short_code`, `room_categories_by_property`, `bookings_by_property_public`) so a logged-out guest can read a property by slug, see availability, and insert a tentative `website` booking. Idempotent.
+- `20260606_redeem_coupon.sql` — atomic `redeem_coupon()` RPC so a coupon's `maxUses` counts down (replaces the local-only increment). Best-effort from the widget; missing RPC never blocks a booking. Idempotent.
+- `20260607_widget_capacity_check.sql` — `book_widget_slot()` RPC: locks per property+type, re-checks availability, inserts in one transaction (closes the double-book race). Superseded by 20260616. Idempotent.
+- `20260608_membership_insert_guard.sql` — ⚠️ SECURITY: membership INSERT now requires a matching invite or first-property bootstrap (was: any signed-in user could add themselves as owner of any property). Idempotent.
+- `20260609_payment_collected_on.sql` — adds `payments.collected_on` (date) so P&L attributes income by collection date across IST-midnight / reloads. Idempotent.
+- `20260610_coupon_privacy.sql` — stops the public property lookup shipping the coupon book to the browser; adds the secure server-side `validate_coupon()` RPC. Idempotent.
+- `20260611_enforce_permissions.sql` — ⚠️ RBAC: DB-level `has_perm()` + per-table policies enforce staff permissions (owner always full access, can't be locked out). In-file kill-switch documented. Idempotent.
+- `20260612_widget_rate_limit.sql` — OPTIONAL per-property flood cap on the public link (interim until the CAPTCHA lands). Idempotent.
+- `20260613_rbac_consistency_fixes.sql` — ⚠️ RBAC follow-up: fixes payment / day-close / invoice permission mismatches (paste AFTER 20260611). Idempotent.
+- `20260614_rate_override_notes.sql` — adds `rate_overrides.note` (per-date private hotelier notes on the Rates calendar; never exposed to the widget). Idempotent.
+- `20260615_widget_rate_overrides.sql` — `rate_overrides_by_property()` RPC so the public widget quotes your per-date calendar rates + honours close-outs (the `note` column is deliberately NOT exposed). Idempotent.
+- `20260616_widget_hardening.sql` — ⚠️ hardened `book_widget_slot()`: date floor + close-out enforcement + unit allocation + forces `paid=0` + total clamp (supersedes 20260607/20260612). Paste before sharing the public link. Idempotent.
+- `20260617_accept_invite.sql` — ⚠️ SECURITY: `accept_invite()` RPC forces role + permissions from the invite (invited staff can't self-assign `owner`); tightens self-insert to first-property bootstrap only (paste AFTER 20260608). Idempotent.
+- `20260618_audit_log_actor.sql` — activity-log INSERT `WITH CHECK (actor_id = auth.uid())` so a member can't forge who did what. Idempotent.
+- `20260619_widget_advanced_pricing.sql` — `property_by_short_code` returns an `advanced_pricing` jsonb (`minNights` + `singleRates` + `singleOccEnabled` + `ratePlansEnabled`) so the public widget enforces Advanced-settings rules. **Re-paste if you set it up before Jun 2026 — `ratePlansEnabled` was added later.** Idempotent.
+- `20260620_push_subscriptions.sql` — Web Push: `push_subscriptions` table (per-device endpoint + keys) with owner-scoped RLS; the serverless sender reads it via the service-role key. Idempotent.
 
-  **Paste into Supabase SQL Editor before flipping DEMO_MODE off.**
+  **Paste into Supabase SQL Editor before flipping DEMO_MODE off.** Full ordered list + RPC smoke-tests live in [DEMO_MODE_FLIP_CHECKLIST.md](./DEMO_MODE_FLIP_CHECKLIST.md).
 
 Tables: `properties`, `memberships`, `room_categories`, `bookings`, `payments`, `invoices`, `rate_overrides`, `saved_custom_extras`, `cash_closes`, `audit_log`. RLS on every table scoped via `has_property_access(property_id)`. Booking IDs auto-generated by `bookings_global_seq` trigger (BK-XXXX format starting at 2854).
 
@@ -538,21 +554,47 @@ A multi-session round of polish + new features shipped together:
 
 **Back buttons everywhere.** `ScreenHeader` already supported `onBack`; added it on Diary, Guests, MoreMenu (all → home), plus a compact top-left back arrow on the BookingConfirmed celebration screen (→ diary). BookingDetail, NewBooking, Settings, Reports, Rates, Channels, Activity, Expenses, PermissionDenied already had one.
 
-### Known issues — round-7 audit findings (queued, NOT yet fixed)
+### Round-7 audit findings — ALL FIXED ✓
 
-Verified against the code; ready to fix in the next session. Highest first:
+The cluster below was found in a round-7 audit and has since been fully resolved (verified in code + build). Kept for history — **do NOT re-fix**.
 
-- **C-1 (Critical · money)**: NewBooking `rateForNight()` uses `dayIdx = nightIdx` so day-0 rates are pulled regardless of the booking's actual `startIdx`. Weekend uplift is hardcoded Fri/Sat (`d.getDay() === 5 || 6 * 1.2`) instead of reading `property.weekendRules.{weekendDays,upliftPct}`. Plus seasons aren't applied at all. `src/screens/NewBooking.jsx:1192-1203, 1218`.
-- **C-2 (Critical · data loss)**: NewBooking edit silently drops check-in date changes. Date input is editable in edit mode, but `patch` at `src/App.jsx:1444-1457` has no `startIdx`. Hotelier changes the date, sees "Saved", booking stays on its old date.
-- **H-3 (High · price divergence)**: Widget vs NewBooking use different rate formulas for the same dates. Widget applies seasons + `property.weekendRules` but NOT rateOverrides; NewBooking applies rateOverrides (broken per C-1) + hardcoded Fri/Sat 1.2× but NOT seasons. Same dates → two different totals between widget guest and hotelier reception. Fix: extract one shared helper in `data.js` and call from both.
-- **H-4 (High · extras undercounted)**: NewBooking ignores extras' `unit` field. Widget (`PublicBookingWidget.jsx:229-234`) switches on `per night` / `per guest` / `per guest per night`; NewBooking (`src/screens/NewBooking.jsx:1238-1241`) just multiplies `price × qty`. A "₹500 per night" saved extra shows ₹500 on NewBooking and ₹1,500 on the widget for a 3-night booking.
-- **H-5 (High · cloud data loss)**: `short_code` slug fallback in `src/cloud/property.js:51` reads `p?.profile?.name` but `p` is *already* `local.profile`. So the fallback never fires; the cloud column saves `''` for any property without a custom slug; the widget URL Settings copies (locally computed from name) doesn't resolve. Fix: `p.name` (one word).
-- **H-6 (High · "install button sometimes not shown")**: `public/manifest.webmanifest` has only `.svg` icons. Chrome's PWA install heuristic historically required at least one PNG ≥192px (some versions still do). Likely the root cause of the user's reported issue. Fix: generate `icon-192.png` + `icon-512.png` (any + maskable) and add them to the icons array.
-- **H-7 (High · widget overbooking race)**: `insertWidgetBooking()` does a plain INSERT — no atomic capacity check. Two guests tapping Confirm in the same 200 ms both succeed → stacked Diary pill on unit 0. Once the widget goes live publicly this is a guaranteed footgun. Fix: SECURITY DEFINER RPC that does `SELECT ... FOR UPDATE` on overlapping bookings before insert.
-- **H-8 (High · sync gap)**: `cashCloses` diff sync at `src/App.jsx:919` only compares `cash` / `digital` / `note`. The multi-account `accounts[]` jsonb is ignored, so moving ₹2,000 from "Owner UPI" to "Manager UPI" leaves the legacy `digital` sum unchanged → diff sees no change → never syncs → cross-device account breakdown is stale. Fix: add `JSON.stringify(pv.accounts) !== JSON.stringify(nv.accounts)` to the predicate.
-- **M-9 (Medium · sync gap)**: `rateOverrides` diff sync at `src/App.jsx:893-895` ignores `closedUnits`. Per-unit Rates F3 close-outs never reach the cloud. Same fix pattern as H-8.
-- **M-10 (Medium · i18n)**: Settings / Reports / Activity / Expenses screens are English-only; the Hindi toggle only reaches Dashboard / Diary / NewBooking / BookingDetail / voucher. Lower priority.
-- **M-11 (Medium · activity feed gap)**: Auto-released bookings (`src/App.jsx:944-963`) flip status without pushing a `kind:'status'` entry to `booking.events[]`, so BookingDetail's activity feed shows the cancellation as a state change with no timestamp.
+- **C-1 (money)** ✓ NewBooking prices each night via the shared `ratePerNight(property, rateOverrides, typeId, startIdx + nightIdx)` helper — real calendar day, `property.weekendRules`, seasons, and per-day overrides all applied (no more day-0 / hardcoded Fri-Sat 1.2×).
+- **C-2 (data loss)** ✓ Editing a booking persists check-in date changes (`startIdx` carried in the edit patch).
+- **H-3 (price divergence)** ✓ Widget + NewBooking share the one `ratePerNight` helper, so the same dates quote the same base. (Rate-plan + single-occupancy parity later tightened — see the price-parity pass below.)
+- **H-4 (extras)** ✓ NewBooking honours each extra's `unit` (per night / per guest / per guest per night), matching the widget + folio.
+- **H-5 (cloud slug)** ✓ `short_code` fallback fixed to `p.name`; the widget URL resolves.
+- **H-6 (PWA install)** ✓ `icon-192.png` + `icon-512.png` (any + maskable) added to the manifest.
+- **H-7 (overbooking race)** ✓ `book_widget_slot()` atomic capacity RPC (migration 20260607, hardened in 20260616).
+- **H-8 / M-9 (sync gaps)** ✓ Diff-sync predicates now compare `accounts[]` (cashCloses) + `closedUnits` (rateOverrides) via `JSON.stringify`.
+- **M-10 (i18n)** ✓ Settings / Reports / Activity / Expenses + the full booking flow translated to Hinglish (the per-field config sheet was deferred by the owner).
+- **M-11 (activity feed)** ✓ Auto-release pushes a `kind:'status'` event with a timestamp.
+
+### Latest — rounds 8–11 hardening, Advanced settings, single-occupancy, credit notes, Diary editor, Web Push, price-parity
+
+A multi-session sweep after round-7. All shipped to `main`; builds pass.
+
+**Rounds 8–11 audit fixes** (security + correctness, all done): membership-insert security guard + server-bound invite role/permissions (`accept_invite` RPC); DB-level RBAC (`has_perm`) + a client `can(permission)` helper gating every action surface, with a `PermissionDenied` route backstop; stored-XSS escaping in the voucher / Dashboard arrivals print / iCal (RFC 5545) + a CSV formula-injection guard; auth token stripped from the URL after sign-in; ANCHOR refresh across IST midnight (PWA left open); deterministic property load for multi-membership users; folio + voucher extras itemisation; room-category / expense / voice-note delete confirms; crash guards for missing room type / booking. (Per-item commits in git log.)
+
+**Advanced Settings page** (`src/screens/AdvancedSettings.jsx`) — opt-in "power features" reached from a button in Settings; each is a toggle that only applies when ON, so the default UI stays simple (owner's explicit "no learning curve" direction). Houses **MinLOS** (minimum-night stays — weekend + other-days), the **Multiple rate plans** master toggle (`accountant.ratePlansEnabled`), and **single-occupancy** pricing. All config piggybacks on the `accountant` jsonb (no migration) and round-trips via `cloud/property.js`. Gating helpers in `data.js`: `ratePlansActive(property)`, `singleOccActive(property)`, `singleOccRateFor(item, category, property)`.
+
+**Single-occupancy pricing** — per-category optional solo rate (`accountant.singleRates[categoryId]`, master `accountant.singleOccEnabled`). When a room has exactly 1 adult, that flat rate is the **final** per-night price — weekend / season / **rate-plan multipliers do NOT stack on it** (enforced identically on NewBooking + the widget).
+
+**Credit notes (reduce-the-bill model)** — a credit entry (`payment.kind === 'credit'`) lowers what the guest OWES: `addPayment` excludes it from `paid` and sets `total = max(0, total − amount)`. Folio shows a "Credit note −₹X" row (tariff backs it out so rows still sum). For the Invoicing tier, `listCreditNotes(bookings, property)` (data.js) emits negative-amount rows for invoiced bookings into the CA register / Resend email / CSV so the taxable total nets down. Atithi does NOT mint formal CN numbers — the CA applies their own numbering + GSTR-1 treatment (books-keeper boundary).
+
+**Rates calendar** — per-date private notes (`rate_overrides.note`, migration 20260614; never exposed to the widget); the public widget now quotes per-date calendar rates + honours close-outs (`rate_overrides_by_property` RPC, 20260615).
+
+**Diary per-date editor** — tap a date header → edit inventory (rooms open) + rate per category for that one date. Writes a `rate_override` (`closedUnits` for the closed units, `rate` only when ≠ base). "Rooms open" floors at the already-booked count so you can't close occupied units. Gated by `can('manage_rates')`.
+
+**Voucher / booking link** — QR enlarged to 200px with tap-to-zoom lightbox; cancellation policy printed from the booking's rate plan (Flexible / Moderate / Strict / Non-refundable, EN+HI) on both the voucher and shown to the guest on the booking link before they confirm. WhatsApp share attaches the voucher HTML file via the Web Share API (wa.me fallback).
+
+**Price-parity pass** — single-occupancy excluded from the rate-plan multiplier on both surfaces; the rate-plan multiplier is rounded once per stay on both (no per-night drift); the widget reads the rate-plans master toggle (20260619 adds `ratePlansEnabled` to `advanced_pricing`, tri-stated so the legacy default still shows the picker).
+
+**Web Push booking alerts** — the hotelier's phone buzzes on a new booking (website + staff-entered). `public/sw.js` `push` + `notificationclick` handlers; `src/push.js` subscribe/unsubscribe (VAPID public key hardcoded); Settings → Notifications toggle (EN+HI); `api/notify-booking.js` (Vercel) VAPID-signs the push, reads subscribers via the service role, builds the message from the latest DB booking (caller can't spoof the text), skips the creator's own device (`excludeUserId`), prunes dead subs. Migration `20260620_push_subscriptions.sql`. `web-push` is a **server-only** dependency (verified out of the client bundle). **Owner setup (done + verified live):** paste 20260620 + set `VAPID_PRIVATE_KEY` + `SUPABASE_SERVICE_ROLE_KEY` in Vercel + redeploy; then Settings → Notifications → Turn on alerts per device. VAPID public key lives in both `src/push.js` and `api/notify-booking.js` (must match the private key). On iOS, Web Push needs the app installed to the Home Screen first.
+
+**Open / queued:**
+- **CAPTCHA (Cloudflare Turnstile)** on the public booking link — deferred until the owner creates a free Turnstile account; the link shouldn't be shared widely until then. `book_widget_slot` + the optional 20260612 rate-limit are the interim guards.
+- **One-owner-multiple-hotels switcher** — the data model + RLS support a user belonging to many properties, but `loadCurrentProperty` deliberately loads only the oldest membership and there's no property-switcher UI yet. Not built; a known future task.
+- **"Payments missing from Activity"** — investigated, NOT a bug (the property-wide Activity log is cloud-only, so it's empty only in demo mode; payments do appear on the per-booking timeline + when signed in).
 
 ### Phase 1 audit-fix pass
 A late audit found a cluster of "today = May 5, 2026" hardcodes that survived the anchor migration:
@@ -584,7 +626,7 @@ Owner picked the simplest possible model: each hotelier uploads their own UPI / 
 **Do NOT pursue Razorpay Route / Marketplace** — turns Atithi into a Money Service Business under RBI rules.
 
 ### Phase 1 remaining (small)
-- **DEMO_MODE flip** — `src/App.jsx` line ~33. Set to `false` to re-enable magic-link sign-in. No other code changes required.
+- **DEMO_MODE flip** — ✓ DONE. `HARDCODED_DEMO_MODE = false` is live; the site requires a real Supabase sign-in. Per-browser `?demo=1` / "Try the demo" still let a visitor preview without an account.
 
 ### Deferred features (queued, none of this is "lost")
 - **Per-night different room type** within a single booking. Data-model rework: `roomItems` needs a `nightTypes` array, Diary needs to render a pill spanning multiple unit rows.

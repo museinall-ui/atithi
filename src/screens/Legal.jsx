@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Icon from '../components/Icon.jsx';
 import { T } from '../tokens.js';
 
@@ -121,6 +121,14 @@ function RichText({ src }) {
 
 export default function Legal({ tab = 'terms', go }) {
   const [active, setActive] = useState(tab);
+  useEffect(() => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    const prev = { overflow: root.style.overflow, height: root.style.height };
+    root.style.overflow = 'auto';
+    root.style.height = 'auto';
+    return () => { root.style.overflow = prev.overflow; root.style.height = prev.height; };
+  }, []);
 
   const TAB_STYLE = (name) => ({
     flex: 1, padding: '10px 0', fontSize: 14, fontWeight: 600,

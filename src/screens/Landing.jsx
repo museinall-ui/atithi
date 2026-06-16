@@ -1,5 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabase.js';
+
+function useScrollUnlock() {
+  useEffect(() => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    const prev = { overflow: root.style.overflow, height: root.style.height };
+    root.style.overflow = 'auto';
+    root.style.height = 'auto';
+    return () => {
+      root.style.overflow = prev.overflow;
+      root.style.height = prev.height;
+    };
+  }, []);
+}
 
 const DEMO_CODE = (import.meta.env.VITE_DEMO_CODE || 'pahuna9').toLowerCase();
 const WA_NUMBER = import.meta.env.VITE_CONTACT_WA || '';
@@ -298,6 +312,7 @@ function DemoSheet({ onClose }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Landing({ go }) {
+  useScrollUnlock();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   return (

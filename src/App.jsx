@@ -41,6 +41,8 @@ import Settings from './screens/Settings.jsx';
 import AdvancedSettings from './screens/AdvancedSettings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
 import SignIn from './screens/SignIn.jsx';
+import Landing from './screens/Landing.jsx';
+import Legal from './screens/Legal.jsx';
 import Onboarding from './screens/Onboarding.jsx';
 import Expenses from './screens/Expenses.jsx';
 import Activity from './screens/Activity.jsx';
@@ -1840,6 +1842,8 @@ export default function App() {
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
+    case 'terms':             screen = <Legal tab="terms"   go={go} />; break;
+    case 'privacy':           screen = <Legal tab="privacy" go={go} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />;
   }
 
@@ -1859,11 +1863,12 @@ export default function App() {
     );
   }
 
-  // No session → sign-in screen. localStorage data is preserved underneath
-  // and will be picked up on the same browser after sign-in. Bypassed in
-  // DEMO_MODE — the app trusts localStorage and never asks for credentials.
+  // No session → landing page (or sign-in / legal if the user navigated there).
+  // Bypassed in DEMO_MODE — the app trusts localStorage and never asks for credentials.
   if (!DEMO_MODE && !session) {
-    return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
+    if (route.name === 'signin')  return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
+    if (route.name === 'terms' || route.name === 'privacy') return <Legal tab={route.name} go={go} />;
+    return <Landing go={go} />;
   }
 
   // Public booking widget — customer-facing UI. URL has ?book=1 or /book.

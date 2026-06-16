@@ -1,6 +1,8 @@
-# Atithi — Hotel Booking Engine
+# AtithiBook — Hotel Management Platform
 
-Mobile-first hotel PMS / booking engine for small Indian hoteliers. Demo property: **Yatra Desert Camp, Jaisalmer, Rajasthan**.
+Mobile-first hotel PMS / booking engine. Demo property: **Yatra Desert Camp, Jaisalmer, Rajasthan**.
+
+**Brand name:** AtithiBook (domain: atithibook.com). The codebase still uses "atithi" as a prefix in localStorage keys, file names, and CSS classes — no rename needed until the owner decides to migrate the repo.
 
 **Live (primary):** https://atithi-seven.vercel.app/ — auto-deploys from `main` on every push (~60s)
 **Live (mirror):** https://museinall-ui.github.io/atithi/ — manual deploys only
@@ -73,7 +75,11 @@ go('reports')                   → Reports
 go('guests')                    → Guests
 go('settings')                  → Settings
 go('more')                      → MoreMenu
+go('terms')                     → Legal (Terms of Service tab)
+go('privacy')                   → Legal (Privacy Policy tab)
 ```
+
+All three of `signin`, `terms`, `privacy` are also handled in the **pre-auth gate** (when no session and not in demo mode) — the default pre-auth route is now the Landing page, not SignIn.
 
 The `'new'` route's `arg` is either a string (booking id → edit) or an object (prefill payload). App.jsx discriminates by `typeof`.
 
@@ -181,6 +187,7 @@ To wipe state for a fresh start: clear the bookings + payments + invoices tables
 - `20260618_audit_log_actor.sql` — activity-log INSERT `WITH CHECK (actor_id = auth.uid())` so a member can't forge who did what. Idempotent.
 - `20260619_widget_advanced_pricing.sql` — `property_by_short_code` returns an `advanced_pricing` jsonb (`minNights` + `singleRates` + `singleOccEnabled` + `ratePlansEnabled`) so the public widget enforces Advanced-settings rules. **Re-paste if you set it up before Jun 2026 — `ratePlansEnabled` was added later.** Idempotent.
 - `20260620_push_subscriptions.sql` — Web Push: `push_subscriptions` table (per-device endpoint + keys) with owner-scoped RLS; the serverless sender reads it via the service-role key. Idempotent.
+- `20260621_leads.sql` — Demo lead capture: `leads` table (id, email, source, created_at). Anon INSERT (unauthenticated visitors can submit email via the Landing demo gate) + auth-only SELECT (owner can read the list). Idempotent. (per-device endpoint + keys) with owner-scoped RLS; the serverless sender reads it via the service-role key. Idempotent.
 
   **Paste into Supabase SQL Editor before flipping DEMO_MODE off.** Full ordered list + RPC smoke-tests live in [DEMO_MODE_FLIP_CHECKLIST.md](./DEMO_MODE_FLIP_CHECKLIST.md).
 
@@ -404,6 +411,8 @@ checkedin / checkout are optional ("Log check-in / Log check-out" buttons in Boo
 
     The internal sub-section `SectionHead`s are preserved inside each accordion so groups with multiple sub-sections (Basics, Pricing, etc.) still have a clear visual hierarchy. Plan-gated bodies (GST slabs on Invoicing, Channel pricing on Channels/Invoicing) still gate inside their accordion — the accordion header is always visible.
 - **MoreMenu.jsx** — 2×2 grid linking to Rates/Channels/Reports/Settings. Tab labelled "Manage" / "प्रबंधन".
+- **Landing.jsx** — Public marketing landing page. Shown to unauthenticated visitors instead of SignIn. Sections: dark gradient hero with phone mockup SVG, How it works (3 steps), Features grid (6 cards), Pricing tiers (Engine / Channels / Invoicing), footer with Terms + Privacy links. Demo gate: "Try Demo" → email capture (saved to Supabase `leads` table) → WhatsApp CTA with pre-filled message → access code entry. Access code stored as `VITE_DEMO_CODE` env var (default `pahuna9`). WhatsApp number stored as `VITE_CONTACT_WA` env var (not yet set — placeholder). Uses `useScrollUnlock()` hook to lift `#root`'s `overflow:hidden` / `height:100dvh` constraint while mounted, then restores on unmount.
+- **Legal.jsx** — Terms of Service + Privacy Policy in a tabbed screen. DPDP Act 2023 compliant. Accessible both pre-auth (from landing page footer) and post-auth (from `go('terms')` / `go('privacy')`). Same `useScrollUnlock` pattern as Landing.
 
 ### Components (`src/components/`)
 Icon (~40 SVGs), Btn, ExtendOptions, Chip, Field, Card, Avatar, Row, SectionHead, ScreenHeader, TabBar, Toggle, **SearchOverlay** (global search by booking ID / name / phone / email, top-right floating button next to the notifications bell on every tab-bar screen).
@@ -595,6 +604,8 @@ A multi-session sweep after round-7. All shipped to `main`; builds pass.
 - **CAPTCHA (Cloudflare Turnstile)** on the public booking link — deferred until the owner creates a free Turnstile account; the link shouldn't be shared widely until then. `book_widget_slot` + the optional 20260612 rate-limit are the interim guards.
 - **One-owner-multiple-hotels switcher** — the data model + RLS support a user belonging to many properties, but `loadCurrentProperty` deliberately loads only the oldest membership and there's no property-switcher UI yet. Not built; a known future task.
 - **"Payments missing from Activity"** — investigated, NOT a bug (the property-wide Activity log is cloud-only, so it's empty only in demo mode; payments do appear on the per-booking timeline + when signed in).
+- **WhatsApp contact number** — `VITE_CONTACT_WA` env var not yet set in Vercel. Once the owner has a WhatsApp number for sales/demo enquiries, add it to Vercel env vars and redeploy — the Landing demo gate WhatsApp button will auto-populate.
+- **Channel manager integration (SU / Access group)** — demo call with SU being scheduled. SU is part of the same group as STAAH. Their 4 required APIs (property setup, room types, rate plans, availability/rate/restrictions) are all confirmed compatible with AtithiBook's data model. Post-call: NDA → API docs → 3–5 weeks of build. See architecture notes above for what exists vs what needs building.
 
 ### Phase 1 audit-fix pass
 A late audit found a cluster of "today = May 5, 2026" hardcodes that survived the anchor migration:

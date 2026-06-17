@@ -47,6 +47,23 @@ const C = {
   card:   '#ffffff',
 };
 
+// ─── Gradients (kept very subtle — warmth & depth, never loud) ────────────────
+// Each section gets a faint warm wash + a soft amber "glow" so the page reads
+// as crafted rather than flat, while staying light and calm.
+const G = {
+  page:   'linear-gradient(180deg, #fdfbf8 0%, #fbf6ef 100%)',
+  hero:   'radial-gradient(100% 72% at 50% -8%, #fff1db 0%, rgba(255,241,219,0) 56%), radial-gradient(78% 60% at 88% 6%, #fdeadd 0%, rgba(253,234,221,0) 52%), #fdfbf8',
+  white:  'radial-gradient(72% 52% at 50% 0%, #fdf3e6 0%, rgba(253,243,230,0) 60%), linear-gradient(180deg, #ffffff 0%, #fdf9f2 100%)',
+  cream:  'radial-gradient(64% 46% at 50% 4%, #fdf0df 0%, rgba(253,240,223,0) 58%), linear-gradient(180deg, #faf6f0 0%, #f6eee4 100%)',
+  priceW: 'radial-gradient(78% 62% at 50% 108%, #fdf2e4 0%, rgba(253,242,228,0) 60%), linear-gradient(180deg, #fffdfb 0%, #fbf6ee 100%)',
+  footer: 'linear-gradient(180deg, #f7f1ea 0%, #f3ece2 100%)',
+  tile:   'linear-gradient(135deg, #fff3e2 0%, #ffe6cb 100%)',
+  cardSurf: 'linear-gradient(180deg, #ffffff 0%, #fdfaf4 100%)',
+  planHi: 'linear-gradient(180deg, #fffaf2 0%, #fff3e3 100%)',
+  btn:    'linear-gradient(135deg, #ea8a0c 0%, #d27406 100%)',
+  cta:    'radial-gradient(90% 130% at 18% -10%, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0) 52%), linear-gradient(135deg, #d97706 0%, #ea8a0c 55%, #f59e0b 100%)',
+};
+
 // ─── Inline icons (stroke, inherit colour) ────────────────────────────────────
 const Svg = (props) => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
@@ -351,8 +368,9 @@ export default function Landing({ go }) {
   const openDemo = () => setSheetOpen(true);
 
   const primaryBtn = {
-    background: C.amber, color: '#fff', border: 'none', borderRadius: 12,
+    background: G.btn, color: '#fff', border: 'none', borderRadius: 12,
     padding: '14px 30px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 6px 18px rgba(217,119,6,.22)',
   };
   const ghostBtn = {
     background: '#fff', color: C.ink, border: `1px solid ${C.line}`, borderRadius: 12,
@@ -360,17 +378,17 @@ export default function Landing({ go }) {
   };
 
   return (
-    <div className="lp" style={{ color: C.ink, background: '#fdfbf8' }}>
+    <div className="lp" style={{ color: C.ink, background: G.page }}>
       <style>{LP_CSS}</style>
 
       {/* ══ HERO ══ */}
-      <div style={{ background: 'radial-gradient(120% 90% at 50% -10%, #fff3e0 0%, #fdfbf8 52%, #fdfbf8 100%)' }}>
+      <div style={{ background: G.hero }}>
         {/* Nav */}
         <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', height: 64, maxWidth: 1060, margin: '0 auto' }}>
           <Logo />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={() => go('signin')} className="lp-btn lp-btn-ghost" style={{ background: 'transparent', border: 'none', color: C.body, fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: '8px 12px', borderRadius: 9 }}>Sign in</button>
-            <button onClick={openDemo} className="lp-btn lp-btn-primary" style={{ background: C.amber, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Try it free</button>
+            <button onClick={openDemo} className="lp-btn lp-btn-primary" style={{ background: G.btn, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,119,6,.20)' }}>Try it free</button>
           </div>
         </nav>
 
@@ -407,7 +425,7 @@ export default function Landing({ go }) {
       </div>
 
       {/* ══ HOW IT WORKS ══ */}
-      <div style={{ background: C.card, borderTop: `1px solid ${C.line}` }}>
+      <div style={{ background: G.white, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 52px' }}>
             <Eyebrow>How it works</Eyebrow>
@@ -423,8 +441,9 @@ export default function Landing({ go }) {
             {STEPS.map(s => (
               <div key={s.n} className="lp-step" style={{ textAlign: 'left' }}>
                 <div style={{
-                  width: 46, height: 46, borderRadius: 14, background: C.amberT, color: C.amber,
+                  width: 46, height: 46, borderRadius: 14, background: G.tile, color: C.amberD,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 19, marginBottom: 16,
+                  boxShadow: '0 2px 8px rgba(217,119,6,.12)',
                 }}>{s.n}</div>
                 <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 7, color: C.ink }}>{s.title}</div>
                 <div style={{ color: C.body, fontSize: 14.5, lineHeight: 1.62 }}>{s.desc}</div>
@@ -435,7 +454,7 @@ export default function Landing({ go }) {
       </div>
 
       {/* ══ FEATURES ══ */}
-      <div style={{ background: C.cream, borderTop: `1px solid ${C.line}` }}>
+      <div style={{ background: G.cream, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 48px' }}>
             <Eyebrow>What you get</Eyebrow>
@@ -446,8 +465,8 @@ export default function Landing({ go }) {
 
           <div className="lp-features">
             {FEATURES.map(({ Icon, title, desc }) => (
-              <div key={title} className="lp-card" style={{ background: C.card, borderRadius: 18, padding: '26px 24px', border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(90,55,20,.03)' }}>
-                <div style={{ width: 46, height: 46, borderRadius: 13, background: C.amberT, color: C.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <div key={title} className="lp-card" style={{ background: G.cardSurf, borderRadius: 18, padding: '26px 24px', border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(90,55,20,.04), 0 6px 18px rgba(90,55,20,.03)' }}>
+                <div style={{ width: 46, height: 46, borderRadius: 13, background: G.tile, color: C.amberD, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 2px 8px rgba(217,119,6,.12)' }}>
                   <Icon />
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: C.ink }}>{title}</div>
@@ -459,7 +478,7 @@ export default function Landing({ go }) {
       </div>
 
       {/* ══ PRICING ══ */}
-      <div style={{ background: C.card, borderTop: `1px solid ${C.line}` }}>
+      <div style={{ background: G.priceW, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 46px' }}>
             <Eyebrow>Simple plans</Eyebrow>
@@ -474,7 +493,7 @@ export default function Landing({ go }) {
           <div className="lp-plans">
             {PLANS.map(p => (
               <div key={p.name} className={`lp-plan lp-card`} style={{
-                borderRadius: 18, padding: '28px 24px', position: 'relative', background: C.card,
+                borderRadius: 18, padding: '28px 24px', position: 'relative', background: p.highlight ? G.planHi : G.cardSurf,
                 border: p.highlight ? `2px solid ${C.amber}` : `1px solid ${C.line}`,
                 boxShadow: p.highlight ? '0 18px 40px rgba(217,119,6,.14)' : '0 1px 2px rgba(90,55,20,.03)',
               }}>
@@ -495,8 +514,9 @@ export default function Landing({ go }) {
                 </ul>
                 <button onClick={openDemo} className="lp-btn lp-btn-primary lp-btn-ghost" style={{
                   width: '100%', padding: '13px', borderRadius: 11, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
-                  background: p.highlight ? C.amber : '#fff',
+                  background: p.highlight ? G.btn : '#fff',
                   color: p.highlight ? '#fff' : C.ink,
+                  boxShadow: p.highlight ? '0 6px 16px rgba(217,119,6,.22)' : 'none',
                   border: p.highlight ? 'none' : `1px solid ${C.line}`,
                 }}>
                   Get started →
@@ -508,7 +528,7 @@ export default function Landing({ go }) {
       </div>
 
       {/* ══ FINAL CTA ══ */}
-      <div style={{ background: `linear-gradient(135deg, ${C.amber} 0%, #ea8a0c 55%, #f59e0b 100%)` }}>
+      <div style={{ background: G.cta }}>
         <div className="lp-section lp-wrap" style={{ textAlign: 'center', maxWidth: 640 }}>
           <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.15, color: '#fff', marginBottom: 14 }}>
             Ready to get organised?
@@ -524,7 +544,7 @@ export default function Landing({ go }) {
       </div>
 
       {/* ══ FOOTER ══ */}
-      <footer style={{ background: C.cream, padding: '40px 24px 32px', borderTop: `1px solid ${C.line}` }}>
+      <footer style={{ background: G.footer, padding: '40px 24px 32px', borderTop: `1px solid ${C.line}` }}>
         <div style={{ maxWidth: 1060, margin: '0 auto', textAlign: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}><Logo /></div>
           <div style={{ marginBottom: 16 }}>

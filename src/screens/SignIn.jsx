@@ -9,7 +9,7 @@ import { signInWithEmail, signInWithGoogle } from '../supabase.js';
 // migration: the app is gated behind this screen, but data still flows
 // to/from localStorage underneath. Cloud reads/writes arrive in later
 // chunks.
-export default function SignIn({ t, lang, onChangeLang }) {
+export default function SignIn({ t, lang, onChangeLang, go }) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -63,9 +63,28 @@ export default function SignIn({ t, lang, onChangeLang }) {
       style={{
         height: '100%', background: T.bg, color: T.ink,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20,
+        padding: 20, position: 'relative',
       }}
     >
+      {/* Back to the landing page — without this a visitor who taps
+          "Sign in" from the landing has no way back. go('home') resolves
+          to the Landing page while signed out (App.jsx pre-auth gate). */}
+      {go && (
+        <button
+          type="button"
+          onClick={() => go('home')}
+          className="atithi-tap"
+          style={{
+            position: 'absolute', top: 14, left: 14,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            background: 'none', border: 'none', color: T.ink3,
+            fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 8px',
+          }}
+        >
+          <Icon name="chevL" size={18} color={T.ink3} />
+          {lang === 'hi' ? 'वापस' : 'Back'}
+        </button>
+      )}
       <div style={{ width: '100%', maxWidth: 360 }}>
         {/* Brand */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>

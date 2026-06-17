@@ -1866,7 +1866,7 @@ export default function App() {
   // No session → landing page (or sign-in / legal if the user navigated there).
   // Bypassed in DEMO_MODE — the app trusts localStorage and never asks for credentials.
   if (!DEMO_MODE && !session) {
-    if (route.name === 'signin')  return <SignIn t={t} lang={lang} onChangeLang={setLang} />;
+    if (route.name === 'signin')  return <SignIn t={t} lang={lang} onChangeLang={setLang} go={go} />;
     if (route.name === 'terms' || route.name === 'privacy') return <Legal tab={route.name} go={go} />;
     return <Landing go={go} />;
   }

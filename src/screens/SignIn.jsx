@@ -72,7 +72,12 @@ export default function SignIn({ t, lang, onChangeLang, go }) {
       {go && (
         <button
           type="button"
-          onClick={() => go('home')}
+          onClick={() => {
+            // Prefer real browser history so this matches the browser/phone
+            // Back button; fall back to the landing if there's no prior entry.
+            if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
+            else go('home');
+          }}
           className="atithi-tap"
           style={{
             position: 'absolute', top: 14, left: 14,

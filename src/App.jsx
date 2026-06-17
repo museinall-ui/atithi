@@ -769,7 +769,9 @@ export default function App() {
         params.delete('code'); params.delete('error'); params.delete('error_description');
         const qs = params.toString();
         const newUrl = window.location.pathname + (qs ? '?' + qs : '') + (hasHashToken ? '' : hash);
-        window.history.replaceState({}, document.title, newUrl);
+        // Preserve the current history state (carries our route) — only the
+        // URL is being cleaned, not the navigation entry.
+        window.history.replaceState(window.history.state, document.title, newUrl);
       } catch { /* history API unavailable — leave URL as-is */ }
     };
     supabase.auth.getSession().then(({ data }) => {
@@ -1190,6 +1192,45 @@ export default function App() {
     setEditing(bookingId);
     setRoute({ name: 'new', arg: bookingId });
   };
+
+  // ─── Browser history ↔ route sync ─────────────────────────────────────────
+  // Routing is plain `go()` state; on its own it never touched browser history,
+  // so the browser Back/Forward buttons and a phone's back gesture did nothing —
+  // a visitor who opened Sign in / Terms had no way back. We mirror every route
+  // change into history: the first change replaces the initial entry, later ones
+  // push a new entry, and Back/Forward (popstate) restores the route without
+  // pushing again. The URL is left unchanged (no SPA-rewrite / base-path risk);
+  // only history entries are added.
+  const histPopRef = useRef(false);
+  const histInitRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.history) return;
+    if (histPopRef.current) { histPopRef.current = false; return; }
+    const cur = window.history.state;
+    const sameAsCurrent = cur && cur.atithiRoute
+      && cur.atithiRoute.name === route.name && cur.atithiRoute.arg === route.arg;
+    if (sameAsCurrent) return; // already the current entry (StrictMode re-run / just-popped)
+    const st = { atithiRoute: { name: route.name, arg: route.arg } };
+    if (!histInitRef.current) {
+      histInitRef.current = true;
+      window.history.replaceState(st, '');
+    } else {
+      window.history.pushState(st, '');
+    }
+  }, [route]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.history) return;
+    const onPop = (e) => {
+      histPopRef.current = true;
+      const r = (e.state && e.state.atithiRoute) ? e.state.atithiRoute : { name: 'home', arg: null };
+      // Restore edit-mode flag in step with the route (string arg = booking id
+      // to edit; object/null = create or a non-booking screen).
+      setEditing(r.name === 'new' && typeof r.arg === 'string' ? r.arg : null);
+      setRoute({ name: r.name, arg: r.arg });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const addPayment = (bookingId, entry) => {
     const booking = bookings.find(b => b.id === bookingId);

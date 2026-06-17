@@ -151,7 +151,12 @@ export default function Legal({ tab = 'terms', go }) {
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <button
-          onClick={() => go('home')}
+          onClick={() => {
+            // Real browser history first (matches the browser/phone Back
+            // button); fall back to home/landing if there's no prior entry.
+            if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
+            else go('home');
+          }}
           style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
         >
           <Icon name="chevL" size={20} color={T.ink2 || '#555'} />

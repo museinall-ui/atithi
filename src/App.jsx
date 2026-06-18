@@ -1909,7 +1909,7 @@ export default function App() {
   if (!DEMO_MODE && !session) {
     if (route.name === 'signin')  return <SignIn t={t} lang={lang} onChangeLang={setLang} go={go} />;
     if (route.name === 'terms' || route.name === 'privacy') return <Legal tab={route.name} go={go} />;
-    return <Landing go={go} />;
+    return <Landing go={go} lang={lang} onChangeLang={setLang} />;
   }
 
   // Public booking widget — customer-facing UI. URL has ?book=1 or /book.

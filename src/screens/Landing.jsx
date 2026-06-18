@@ -76,47 +76,133 @@ const IcMoney    = () => <Svg><rect x="2.5" y="6" width="19" height="12" rx="2.6
 const IcTag      = () => <Svg><path d="M20.6 13.4 13.4 20.6a1.7 1.7 0 0 1-2.4 0l-7-7A1.7 1.7 0 0 1 3.5 12.4V5.2A1.7 1.7 0 0 1 5.2 3.5h7.2c.45 0 .88.18 1.2.5l7 7a1.7 1.7 0 0 1 0 2.4Z" /><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" /></Svg>;
 const IcDoc      = () => <Svg><path d="M6.5 3h7l4.5 4.5v12A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 6.5 3Z" /><path d="M13 3v5h5" /><path d="M9 13h6M9 16.4h4" /></Svg>;
 
-// ─── How it works ─────────────────────────────────────────────────────────────
-const STEPS = [
-  { n: '1', title: 'Add your property', desc: 'Enter your rooms, rates and a payment QR. It takes a few minutes — no tech skills, no training.' },
-  { n: '2', title: 'Share your link',   desc: 'Put your booking link on WhatsApp, Instagram or your website. Guests start booking you directly.' },
-  { n: '3', title: 'Run it from anywhere', desc: 'Track bookings, collect payments and send invoices — all from your phone, wherever you are.' },
+// Icons + plan identity are language-independent; the words live in TXT below,
+// matched up by position.
+const FEATURE_ICONS = [IcCalendar, IcSync, IcLink, IcMoney, IcTag, IcDoc];
+const PLAN_META = [
+  { name: 'Engine',    highlight: false },
+  { name: 'Channels',  highlight: true  },
+  { name: 'Invoicing', highlight: false },
 ];
 
-// ─── Features (benefit-led, no jargon) ────────────────────────────────────────
-const FEATURES = [
-  { Icon: IcCalendar, title: 'One calendar for every room',
-    desc: 'See who’s arriving, who’s staying, and which rooms are free — all on one screen. Tap any open day to add a booking.' },
-  { Icon: IcSync, title: 'Bookings from every site',
-    desc: 'Reservations from MakeMyTrip, Booking.com, Agoda and more land in your calendar on their own. No more double-bookings.' },
-  { Icon: IcLink, title: 'Your own booking page',
-    desc: 'Share one link and let guests book you directly — with zero commission to anyone in between.' },
-  { Icon: IcMoney, title: 'Get paid on time',
-    desc: 'Track every balance, send a friendly WhatsApp reminder, and let guests pay in seconds with your own UPI QR.' },
-  { Icon: IcTag, title: 'Pricing on autopilot',
-    desc: 'Set your weekend rates, festival seasons and offers once. AtithiBook applies them for you, every single day.' },
-  { Icon: IcDoc, title: 'GST invoices, sorted',
-    desc: 'Create proper tax invoices and hand a clean, ready-to-file summary to your accountant in a single tap.' },
-];
-
-// ─── Pricing ──────────────────────────────────────────────────────────────────
-const PLANS = [
-  {
-    name: 'Engine', tag: 'The essentials',
-    desc: 'Everything you need to run your property day to day.',
-    features: ['Booking calendar for every room', 'Rooms, rates & guest history', 'Your own direct booking page', 'Payments & balance tracking', 'Reports you can actually read', 'Add your team, set what they see'],
+// ─── Copy (EN + Hinglish) ─────────────────────────────────────────────────────
+// Hindi follows the app's house style: common English loanwords written in
+// Devanagari (बुकिंग, पेमेंट, कैलेंडर), not formal/pure Hindi. Plan names
+// (Engine / Channels / Invoicing) stay in English to match the app UI.
+const TXT = {
+  en: {
+    navSignIn: 'Sign in',
+    navTry: 'Try free',
+    badge: 'Made for Indian hotels, homestays & camps',
+    h1a: 'Run your hotel', h1b: 'from your ', h1c: 'phone.',
+    heroSub: 'Every booking, payment and guest in one simple place — so you can spend less time on paperwork and more time looking after your guests.',
+    ctaDemo: 'Try the demo',
+    ctaSignIn: 'Sign in →',
+    reassure: ['Free to try', 'No setup fees', 'Works on any phone'],
+    howEyebrow: 'How it works',
+    howTitle: 'Up and running in an afternoon.',
+    howSub: 'No installation, no manuals, no waiting on anyone. Three simple steps and you’re live.',
+    steps: [
+      { title: 'Add your property', desc: 'Enter your rooms, rates and a payment QR. It takes a few minutes — no tech skills, no training.' },
+      { title: 'Share your link',   desc: 'Put your booking link on WhatsApp, Instagram or your website. Guests start booking you directly.' },
+      { title: 'Run it from anywhere', desc: 'Track bookings, collect payments and send invoices — all from your phone, wherever you are.' },
+    ],
+    featEyebrow: 'What you get',
+    featTitle: 'Everything your front desk does — only easier.',
+    features: [
+      { title: 'One calendar for every room', desc: 'See who’s arriving, who’s staying, and which rooms are free — all on one screen. Tap any open day to add a booking.' },
+      { title: 'Bookings from every site', desc: 'Reservations from MakeMyTrip, Booking.com, Agoda and more land in your calendar on their own. No more double-bookings.' },
+      { title: 'Your own booking page', desc: 'Share one link and let guests book you directly — with zero commission to anyone in between.' },
+      { title: 'Get paid on time', desc: 'Track every balance, send a friendly WhatsApp reminder, and let guests pay in seconds with your own UPI QR.' },
+      { title: 'Pricing on autopilot', desc: 'Set your weekend rates, festival seasons and offers once. AtithiBook applies them for you, every single day.' },
+      { title: 'GST invoices, sorted', desc: 'Create proper tax invoices and hand a clean, ready-to-file summary to your accountant in a single tap.' },
+    ],
+    planEyebrow: 'Simple plans',
+    planTitle: 'Start simple. Grow when you’re ready.',
+    planSub: 'Every plan keeps your data safe in the cloud and works on any phone. Pick what fits today — upgrade anytime.',
+    plans: [
+      { tag: 'The essentials', desc: 'Everything you need to run your property day to day.', features: ['Booking calendar for every room', 'Rooms, rates & guest history', 'Your own direct booking page', 'Payments & balance tracking', 'Reports you can actually read', 'Add your team, set what they see'] },
+      { tag: 'Most popular', desc: 'Everything in Engine, plus automatic sync with the big travel sites.', features: ['Everything in Engine', 'Connect MakeMyTrip, Booking.com, Agoda, Goibibo & Airbnb', 'Your rooms & rates update everywhere at once', 'OTA bookings arrive on their own', 'No more manual copy-pasting'] },
+      { tag: 'For the books', desc: 'Everything in Channels, plus GST invoicing and accountant handoff.', features: ['Everything in Channels', 'GST-ready tax invoices', 'A tidy invoice register', 'One-tap send to your accountant', 'Daily expenses & cash close'] },
+    ],
+    getStarted: 'Get started →',
+    ctaTitle: 'Ready to get organised?',
+    ctaSub: 'Try AtithiBook with a sample property and see how easy running your hotel can be.',
+    terms: 'Terms of Service',
+    privacy: 'Privacy Policy',
+    footerTagline: '© 2026 AtithiBook · Booking software for independent hotels.',
+    footerDisclaimer: 'AtithiBook provides the software. Properties remain independently responsible for their services and guests.',
+    demo: {
+      emailTitle: 'See it with your own eyes',
+      emailDesc: 'Pop in your email and we’ll send you a demo access code so you can explore the whole app — no commitment.',
+      emailPh: 'your@email.com',
+      cont: 'Continue →', saving: 'Saving…',
+      waTitle: 'One quick step',
+      waDesc: 'Message us on WhatsApp and we’ll send your access code straight back.',
+      waBtn: 'Message us on WhatsApp →',
+      haveCode: 'Already have your code? Enter it below.',
+      yourEmail: 'Your email', codePh: 'Access code',
+      startDemo: 'Start the demo →',
+      badCode: 'Incorrect code. WhatsApp us to get the right one.',
+    },
   },
-  {
-    name: 'Channels', tag: 'Most popular', highlight: true,
-    desc: 'Everything in Engine, plus automatic sync with the big travel sites.',
-    features: ['Everything in Engine', 'Connect MakeMyTrip, Booking.com, Agoda, Goibibo & Airbnb', 'Your rooms & rates update everywhere at once', 'OTA bookings arrive on their own', 'No more manual copy-pasting'],
+  hi: {
+    navSignIn: 'साइन इन',
+    navTry: 'फ्री आज़माएं',
+    badge: 'भारतीय होटल, होमस्टे और कैंप के लिए',
+    h1a: 'अपना होटल', h1b: 'फ़ोन से ', h1c: 'चलाएं।',
+    heroSub: 'हर बुकिंग, पेमेंट और गेस्ट एक ही आसान जगह पर — ताकि आप पेपरवर्क में कम और मेहमानों की सेवा में ज़्यादा समय दें।',
+    ctaDemo: 'डेमो आज़माएं',
+    ctaSignIn: 'साइन इन →',
+    reassure: ['फ्री में आज़माएं', 'कोई सेटअप फीस नहीं', 'किसी भी फ़ोन पर'],
+    howEyebrow: 'कैसे काम करता है',
+    howTitle: 'कुछ ही घंटों में शुरू।',
+    howSub: 'न कोई इंस्टॉलेशन, न मैनुअल, न किसी का इंतज़ार। तीन आसान स्टेप और आप लाइव।',
+    steps: [
+      { title: 'अपनी प्रॉपर्टी जोड़ें', desc: 'अपने रूम, रेट और एक पेमेंट QR डालें। बस कुछ मिनट — न टेक्निकल स्किल, न ट्रेनिंग।' },
+      { title: 'अपना लिंक शेयर करें',   desc: 'अपना बुकिंग लिंक WhatsApp, Instagram या वेबसाइट पर डालें। गेस्ट सीधे आपसे बुकिंग करें।' },
+      { title: 'कहीं से भी चलाएं', desc: 'बुकिंग ट्रैक करें, पेमेंट लें और इनवॉइस भेजें — सब अपने फ़ोन से, चाहे आप कहीं भी हों।' },
+    ],
+    featEyebrow: 'आपको क्या मिलता है',
+    featTitle: 'जो आपका फ्रंट डेस्क करता है — बस और आसान।',
+    features: [
+      { title: 'हर रूम के लिए एक कैलेंडर', desc: 'देखें कौन आ रहा है, कौन रुका है और कौन से रूम खाली हैं — सब एक स्क्रीन पर। खाली दिन पर टैप करके बुकिंग जोड़ें।' },
+      { title: 'हर साइट से बुकिंग', desc: 'MakeMyTrip, Booking.com, Agoda और बाकी साइट्स की बुकिंग खुद-ब-खुद आपके कैलेंडर में आएं। अब कोई डबल-बुकिंग नहीं।' },
+      { title: 'अपना खुद का बुकिंग पेज', desc: 'एक लिंक शेयर करें और गेस्ट सीधे आपसे बुकिंग करें — बीच में किसी को कोई कमीशन नहीं।' },
+      { title: 'समय पर पेमेंट पाएं', desc: 'हर बैलेंस ट्रैक करें, WhatsApp पर रिमाइंडर भेजें, और गेस्ट आपके UPI QR से सेकंडों में पेमेंट करें।' },
+      { title: 'प्राइसिंग ऑटोपायलट पर', desc: 'वीकेंड रेट, फेस्टिवल सीज़न और ऑफर एक बार सेट करें। AtithiBook उन्हें रोज़ अपने आप लगा देगा।' },
+      { title: 'GST इनवॉइस, सब सेट', desc: 'सही टैक्स इनवॉइस बनाएं और अपने अकाउंटेंट को एक टैप में फाइल-रेडी समरी भेजें।' },
+    ],
+    planEyebrow: 'आसान प्लान',
+    planTitle: 'आसान शुरुआत करें। तैयार हों तो बढ़ें।',
+    planSub: 'हर प्लान आपका डेटा क्लाउड में सुरक्षित रखे और किसी भी फ़ोन पर चले। आज जो ठीक लगे चुनें — कभी भी अपग्रेड करें।',
+    plans: [
+      { tag: 'ज़रूरी चीज़ें', desc: 'रोज़मर्रा प्रॉपर्टी चलाने के लिए ज़रूरी सब कुछ।', features: ['हर रूम के लिए बुकिंग कैलेंडर', 'रूम, रेट और गेस्ट हिस्ट्री', 'अपना डायरेक्ट बुकिंग पेज', 'पेमेंट और बैलेंस ट्रैकिंग', 'ऐसी रिपोर्ट जो आसानी से समझ आएं', 'अपनी टीम जोड़ें, तय करें वो क्या देखें'] },
+      { tag: 'सबसे लोकप्रिय', desc: 'Engine का सब कुछ, साथ में बड़ी ट्रैवल साइट्स से ऑटोमैटिक सिंक।', features: ['Engine का सब कुछ', 'MakeMyTrip, Booking.com, Agoda, Goibibo और Airbnb जोड़ें', 'आपके रूम और रेट एक साथ हर जगह अपडेट हों', 'OTA बुकिंग खुद-ब-खुद आ जाएं', 'अब मैनुअल कॉपी-पेस्ट नहीं'] },
+      { tag: 'हिसाब-किताब के लिए', desc: 'Channels का सब कुछ, साथ में GST इनवॉइसिंग और अकाउंटेंट हैंडऑफ।', features: ['Channels का सब कुछ', 'GST-रेडी टैक्स इनवॉइस', 'साफ-सुथरा इनवॉइस रजिस्टर', 'एक टैप में अकाउंटेंट को भेजें', 'रोज़ का खर्च और कैश क्लोज़'] },
+    ],
+    getStarted: 'शुरू करें →',
+    ctaTitle: 'अपना काम आसान बनाने के लिए तैयार?',
+    ctaSub: 'AtithiBook को एक सैंपल प्रॉपर्टी के साथ आज़माएं और देखें होटल चलाना कितना आसान हो सकता है।',
+    terms: 'टर्म्स ऑफ सर्विस',
+    privacy: 'प्राइवेसी पॉलिसी',
+    footerTagline: '© 2026 AtithiBook · स्वतंत्र होटलों के लिए बुकिंग सॉफ्टवेयर।',
+    footerDisclaimer: 'AtithiBook सिर्फ सॉफ्टवेयर देता है। हर प्रॉपर्टी अपनी सेवाओं और मेहमानों के लिए खुद ज़िम्मेदार है।',
+    demo: {
+      emailTitle: 'अपनी आंखों से देखें',
+      emailDesc: 'अपना ईमेल डालें और हम आपको डेमो एक्सेस कोड भेजेंगे ताकि आप पूरा ऐप देख सकें — कोई बंधन नहीं।',
+      emailPh: 'your@email.com',
+      cont: 'आगे बढ़ें →', saving: 'सेव हो रहा है…',
+      waTitle: 'एक छोटा सा स्टेप',
+      waDesc: 'हमें WhatsApp पर मैसेज करें और हम आपका एक्सेस कोड तुरंत भेज देंगे।',
+      waBtn: 'WhatsApp पर मैसेज करें →',
+      haveCode: 'कोड पहले से है? नीचे डालें।',
+      yourEmail: 'आपका ईमेल', codePh: 'एक्सेस कोड',
+      startDemo: 'डेमो शुरू करें →',
+      badCode: 'गलत कोड। सही कोड के लिए हमें WhatsApp करें।',
+    },
   },
-  {
-    name: 'Invoicing', tag: 'For the books',
-    desc: 'Everything in Channels, plus GST invoicing and accountant handoff.',
-    features: ['Everything in Channels', 'GST-ready tax invoices', 'A tidy invoice register', 'One-tap send to your accountant', 'Daily expenses & cash close'],
-  },
-];
+};
 
 // ─── Phone mockup ─────────────────────────────────────────────────────────────
 function PhoneMockup() {
@@ -209,13 +295,30 @@ function Logo({ dark }) {
             Sign In screen and the app. */}
         <span style={{ fontFamily: "'Noto Sans Devanagari', sans-serif", color: '#fff', fontWeight: 700, fontSize: 18, lineHeight: 1, marginTop: 1 }}>अ</span>
       </span>
-      <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.4, color: dark ? '#fff' : C.ink }}>AtithiBook</span>
+      <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.4, color: dark ? '#fff' : C.ink }}>AtithiBook</span>
     </span>
   );
 }
 
-// ─── Demo gate sheet (logic unchanged) ────────────────────────────────────────
-function DemoSheet({ onClose }) {
+// ─── Language toggle (EN / हिं) ────────────────────────────────────────────────
+function LangToggle({ lang, onChangeLang }) {
+  if (!onChangeLang) return null;
+  return (
+    <div style={{ display: 'inline-flex', border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', background: '#fff', flexShrink: 0 }}>
+      {[['en', 'EN'], ['hi', 'हिं']].map(([code, label]) => (
+        <button key={code} onClick={() => onChangeLang(code)} className="atithi-tap" style={{
+          border: 'none', cursor: 'pointer', padding: '6px 8px', fontSize: 11.5, fontWeight: 700, lineHeight: 1,
+          background: lang === code ? C.amberT : 'transparent',
+          color: lang === code ? C.amberD : C.muted,
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Demo gate sheet (logic unchanged; copy is localised) ─────────────────────
+function DemoSheet({ onClose, lang }) {
+  const d = (TXT[lang] || TXT.en).demo;
   const [step, setStep]           = useState('email');
   const [email, setEmail]         = useState('');
   const [codeEmail, setCodeEmail] = useState('');
@@ -239,7 +342,7 @@ function DemoSheet({ onClose }) {
     if (code.trim().toLowerCase() === DEMO_CODE) {
       activateDemo();
     } else {
-      setError('Incorrect code. WhatsApp us to get the right one.');
+      setError(d.badCode);
     }
   }
 
@@ -269,16 +372,14 @@ function DemoSheet({ onClose }) {
         {step === 'email' && (
           <form onSubmit={handleEmailSubmit}>
             <div style={{ fontSize: 30, marginBottom: 10 }}>👋</div>
-            <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 6, color: C.ink }}>See it with your own eyes</h2>
-            <p style={{ color: C.body, fontSize: 14, marginBottom: 22, lineHeight: 1.6 }}>
-              Pop in your email and we’ll send you a demo access code so you can explore the whole app — no commitment.
-            </p>
-            <input type="email" required autoFocus placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
+            <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 6, color: C.ink }}>{d.emailTitle}</h2>
+            <p style={{ color: C.body, fontSize: 14, marginBottom: 22, lineHeight: 1.6 }}>{d.emailDesc}</p>
+            <input type="email" required autoFocus placeholder={d.emailPh} value={email} onChange={e => setEmail(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }} />
             <button type="submit" disabled={saving} style={{
               background: C.amber, color: '#fff', border: 'none', borderRadius: 11, padding: '13px',
               fontSize: 15, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', width: '100%', opacity: saving ? 0.7 : 1,
             }}>
-              {saving ? 'Saving…' : 'Continue →'}
+              {saving ? d.saving : d.cont}
             </button>
           </form>
         )}
@@ -286,23 +387,21 @@ function DemoSheet({ onClose }) {
         {step === 'whatsapp' && (
           <form onSubmit={handleCodeSubmit}>
             <div style={{ fontSize: 30, marginBottom: 10 }}>✅</div>
-            <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 6, color: C.ink }}>One quick step</h2>
-            <p style={{ color: C.body, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              Message us on WhatsApp and we’ll send your access code straight back.
-            </p>
+            <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 6, color: C.ink }}>{d.waTitle}</h2>
+            <p style={{ color: C.body, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{d.waDesc}</p>
             <a href={waHref} target="_blank" rel="noopener noreferrer" style={{
               display: 'block', background: '#25D366', color: '#fff', borderRadius: 11, padding: '13px',
               fontSize: 15, fontWeight: 700, textAlign: 'center', textDecoration: 'none', marginBottom: 28,
-            }}>Message us on WhatsApp →</a>
+            }}>{d.waBtn}</a>
 
             <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 22 }}>
-              <p style={{ color: C.muted, fontSize: 13, marginBottom: 12 }}>Already have your code? Enter it below.</p>
-              <input type="email" required placeholder="Your email" value={codeEmail} onChange={e => setCodeEmail(e.target.value)} style={{ ...inputStyle, fontSize: 14, marginBottom: 10 }} />
-              <input type="text" required placeholder="Access code" value={code} onChange={e => { setCode(e.target.value); setError(''); }} autoCapitalize="none"
+              <p style={{ color: C.muted, fontSize: 13, marginBottom: 12 }}>{d.haveCode}</p>
+              <input type="email" required placeholder={d.yourEmail} value={codeEmail} onChange={e => setCodeEmail(e.target.value)} style={{ ...inputStyle, fontSize: 14, marginBottom: 10 }} />
+              <input type="text" required placeholder={d.codePh} value={code} onChange={e => { setCode(e.target.value); setError(''); }} autoCapitalize="none"
                 style={{ ...inputStyle, fontSize: 14, border: `1px solid ${error ? '#ef4444' : C.line}`, marginBottom: error ? 6 : 12 }} />
               {error && <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>{error}</p>}
               <button type="submit" style={{ background: C.ink, color: '#fff', border: 'none', borderRadius: 11, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-                Start the demo →
+                {d.startDemo}
               </button>
             </div>
           </form>
@@ -313,9 +412,9 @@ function DemoSheet({ onClose }) {
 }
 
 // ─── Reusable bits ────────────────────────────────────────────────────────────
-function Eyebrow({ children }) {
+function Eyebrow({ children, hi }) {
   return (
-    <p style={{ fontSize: 12, fontWeight: 700, color: C.amber, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 12 }}>{children}</p>
+    <p style={{ fontSize: 12, fontWeight: 700, color: C.amber, letterSpacing: hi ? 0.4 : 1.6, textTransform: hi ? 'none' : 'uppercase', marginBottom: 12 }}>{children}</p>
   );
 }
 
@@ -325,7 +424,8 @@ const LP_CSS = `
    while Landing is mounted, and reverts cleanly for the rest of the app. */
 body.atithi-landing { display: block !important; align-items: initial !important; justify-content: initial !important; padding: 0 !important; background: #fdfbf8 !important; }
 body.atithi-landing #root { max-width: none !important; width: 100% !important; height: auto !important; min-height: 100dvh; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: auto !important; margin: 0 !important; }
-.lp { font-family: 'Geist', sans-serif; }
+/* Geist for Latin; Noto Sans Devanagari picks up Hindi glyphs Geist lacks. */
+.lp { font-family: 'Geist', 'Noto Sans Devanagari', sans-serif; }
 .lp-wrap { max-width: 1060px; margin: 0 auto; }
 .lp-section { padding: 68px 22px; }
 .lp-hero-inner { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 44px; }
@@ -343,6 +443,11 @@ body.atithi-landing #root { max-width: none !important; width: 100% !important; 
 .lp-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(217,119,6,.34); }
 .lp-btn-ghost:hover { background: #f4eee5; }
 .lp-link:hover { color: #b45309; }
+/* Narrow phones: drop the redundant nav "Sign in" link (sign-in is still in
+   the hero + final CTA) so the nav never overflows, especially in Hindi. */
+@media (max-width: 479px) {
+  .lp-nav-signin { display: none; }
+}
 @media (min-width: 600px) {
   .lp-features { grid-template-columns: 1fr 1fr; }
 }
@@ -362,10 +467,16 @@ body.atithi-landing #root { max-width: none !important; width: 100% !important; 
 `;
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function Landing({ go }) {
+export default function Landing({ go, lang = 'en', onChangeLang }) {
   useFullBleed();
   const [sheetOpen, setSheetOpen] = useState(false);
   const openDemo = () => setSheetOpen(true);
+
+  const s = TXT[lang] || TXT.en;
+  const hi = lang === 'hi';
+  // Devanagari doesn't take the tight Latin tracking well — relax it for Hindi.
+  const h1Track = hi ? '-0.3px' : '-1.4px';
+  const h2Track = hi ? '-0.2px' : '-0.8px';
 
   const primaryBtn = {
     background: G.btn, color: '#fff', border: 'none', borderRadius: 12,
@@ -384,11 +495,12 @@ export default function Landing({ go }) {
       {/* ══ HERO ══ */}
       <div style={{ background: G.hero }}>
         {/* Nav */}
-        <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', height: 64, maxWidth: 1060, margin: '0 auto' }}>
+        <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: 64, maxWidth: 1060, margin: '0 auto', gap: 8 }}>
           <Logo />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => go('signin')} className="lp-btn lp-btn-ghost" style={{ background: 'transparent', border: 'none', color: C.body, fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: '8px 12px', borderRadius: 9 }}>Sign in</button>
-            <button onClick={openDemo} className="lp-btn lp-btn-primary" style={{ background: G.btn, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,119,6,.20)' }}>Try it free</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <LangToggle lang={lang} onChangeLang={onChangeLang} />
+            <button onClick={() => go('signin')} className="lp-btn lp-btn-ghost lp-nav-signin" style={{ background: 'transparent', border: 'none', color: C.body, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', padding: '8px 10px', borderRadius: 9, whiteSpace: 'nowrap' }}>{s.navSignIn}</button>
+            <button onClick={openDemo} className="lp-btn lp-btn-primary" style={{ background: G.btn, color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,119,6,.20)', whiteSpace: 'nowrap' }}>{s.navTry}</button>
           </div>
         </nav>
 
@@ -397,20 +509,20 @@ export default function Landing({ go }) {
           <div className="lp-hero-inner">
             <div className="lp-hero-text">
               <div style={{ display: 'inline-block', background: C.amberT, color: C.amberD, border: `1px solid ${C.line}`, borderRadius: 100, padding: '5px 14px', fontSize: 12.5, fontWeight: 600, marginBottom: 22 }}>
-                Made for Indian hotels, homestays & camps
+                {s.badge}
               </div>
-              <h1 className="lp-h1" style={{ fontWeight: 800, lineHeight: 1.08, letterSpacing: -1.4, marginBottom: 18, color: C.ink }}>
-                Run your hotel<br />from your <span style={{ color: C.amber }}>phone.</span>
+              <h1 className="lp-h1" style={{ fontWeight: 800, lineHeight: 1.08, letterSpacing: h1Track, marginBottom: 18, color: C.ink }}>
+                {s.h1a}<br />{s.h1b}<span style={{ color: C.amber }}>{s.h1c}</span>
               </h1>
               <p style={{ fontSize: 16.5, color: C.body, lineHeight: 1.65, marginBottom: 30, maxWidth: 480 }}>
-                Every booking, payment and guest in one simple place — so you can spend less time on paperwork and more time looking after your guests.
+                {s.heroSub}
               </p>
               <div className="lp-cta-row">
-                <button onClick={openDemo} className="lp-btn lp-btn-primary" style={primaryBtn}>Try the demo</button>
-                <button onClick={() => go('signin')} className="lp-btn lp-btn-ghost" style={ghostBtn}>Sign in →</button>
+                <button onClick={openDemo} className="lp-btn lp-btn-primary" style={primaryBtn}>{s.ctaDemo}</button>
+                <button onClick={() => go('signin')} className="lp-btn lp-btn-ghost" style={ghostBtn}>{s.ctaSignIn}</button>
               </div>
               <div className="lp-reassure">
-                {['Free to try', 'No setup fees', 'Works on any phone'].map(t => (
+                {s.reassure.map(t => (
                   <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.muted, fontWeight: 500 }}>
                     <span style={{ color: C.amber, fontWeight: 800 }}>✓</span>{t}
                   </span>
@@ -428,25 +540,25 @@ export default function Landing({ go }) {
       <div style={{ background: G.white, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 52px' }}>
-            <Eyebrow>How it works</Eyebrow>
-            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.15, color: C.ink }}>
-              Up and running in an afternoon.
+            <Eyebrow hi={hi}>{s.howEyebrow}</Eyebrow>
+            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: h2Track, lineHeight: 1.15, color: C.ink }}>
+              {s.howTitle}
             </h2>
             <p style={{ fontSize: 15.5, color: C.body, lineHeight: 1.6, marginTop: 14 }}>
-              No installation, no manuals, no waiting on anyone. Three simple steps and you’re live.
+              {s.howSub}
             </p>
           </div>
 
           <div className="lp-steps">
-            {STEPS.map(s => (
-              <div key={s.n} className="lp-step" style={{ textAlign: 'left' }}>
+            {s.steps.map((st, i) => (
+              <div key={i} className="lp-step" style={{ textAlign: 'left' }}>
                 <div style={{
                   width: 46, height: 46, borderRadius: 14, background: G.tile, color: C.amberD,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 19, marginBottom: 16,
                   boxShadow: '0 2px 8px rgba(217,119,6,.12)',
-                }}>{s.n}</div>
-                <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 7, color: C.ink }}>{s.title}</div>
-                <div style={{ color: C.body, fontSize: 14.5, lineHeight: 1.62 }}>{s.desc}</div>
+                }}>{i + 1}</div>
+                <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 7, color: C.ink }}>{st.title}</div>
+                <div style={{ color: C.body, fontSize: 14.5, lineHeight: 1.62 }}>{st.desc}</div>
               </div>
             ))}
           </div>
@@ -457,22 +569,25 @@ export default function Landing({ go }) {
       <div style={{ background: G.cream, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 48px' }}>
-            <Eyebrow>What you get</Eyebrow>
-            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.15, color: C.ink }}>
-              Everything your front desk does — only easier.
+            <Eyebrow hi={hi}>{s.featEyebrow}</Eyebrow>
+            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: h2Track, lineHeight: 1.15, color: C.ink }}>
+              {s.featTitle}
             </h2>
           </div>
 
           <div className="lp-features">
-            {FEATURES.map(({ Icon, title, desc }) => (
-              <div key={title} className="lp-card" style={{ background: G.cardSurf, borderRadius: 18, padding: '26px 24px', border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(90,55,20,.04), 0 6px 18px rgba(90,55,20,.03)' }}>
-                <div style={{ width: 46, height: 46, borderRadius: 13, background: G.tile, color: C.amberD, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 2px 8px rgba(217,119,6,.12)' }}>
-                  <Icon />
+            {FEATURE_ICONS.map((Icon, i) => {
+              const f = s.features[i];
+              return (
+                <div key={i} className="lp-card" style={{ background: G.cardSurf, borderRadius: 18, padding: '26px 24px', border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(90,55,20,.04), 0 6px 18px rgba(90,55,20,.03)' }}>
+                  <div style={{ width: 46, height: 46, borderRadius: 13, background: G.tile, color: C.amberD, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 2px 8px rgba(217,119,6,.12)' }}>
+                    <Icon />
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: C.ink }}>{f.title}</div>
+                  <div style={{ color: C.body, fontSize: 14, lineHeight: 1.6 }}>{f.desc}</div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: C.ink }}>{title}</div>
-                <div style={{ color: C.body, fontSize: 14, lineHeight: 1.6 }}>{desc}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -481,48 +596,51 @@ export default function Landing({ go }) {
       <div style={{ background: G.priceW, borderTop: `1px solid ${C.line}` }}>
         <div className="lp-section lp-wrap">
           <div style={{ textAlign: 'center', maxWidth: 620, margin: '0 auto 46px' }}>
-            <Eyebrow>Simple plans</Eyebrow>
-            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.15, color: C.ink }}>
-              Start simple. Grow when you’re ready.
+            <Eyebrow hi={hi}>{s.planEyebrow}</Eyebrow>
+            <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: h2Track, lineHeight: 1.15, color: C.ink }}>
+              {s.planTitle}
             </h2>
             <p style={{ fontSize: 15.5, color: C.body, lineHeight: 1.6, marginTop: 14 }}>
-              Every plan keeps your data safe in the cloud and works on any phone. Pick what fits today — upgrade anytime.
+              {s.planSub}
             </p>
           </div>
 
           <div className="lp-plans">
-            {PLANS.map(p => (
-              <div key={p.name} className={`lp-plan lp-card`} style={{
-                borderRadius: 18, padding: '28px 24px', position: 'relative', background: p.highlight ? G.planHi : G.cardSurf,
-                border: p.highlight ? `2px solid ${C.amber}` : `1px solid ${C.line}`,
-                boxShadow: p.highlight ? '0 18px 40px rgba(217,119,6,.14)' : '0 1px 2px rgba(90,55,20,.03)',
-              }}>
-                {p.highlight && (
-                  <div style={{ position: 'absolute', top: -12, left: 24, background: C.amber, color: '#fff', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, padding: '4px 12px', borderRadius: 100, textTransform: 'uppercase' }}>{p.tag}</div>
-                )}
-                <div style={{ fontWeight: 800, fontSize: 20, color: C.ink, marginBottom: 4 }}>{p.name}</div>
-                {!p.highlight && (
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: C.amber, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 10 }}>{p.tag}</div>
-                )}
-                <p style={{ fontSize: 14, color: C.body, marginBottom: 20, lineHeight: 1.55, marginTop: p.highlight ? 8 : 0 }}>{p.desc}</p>
-                <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
-                  {p.features.map(f => (
-                    <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: C.ink }}>
-                      <span style={{ color: C.amber, fontWeight: 800, flexShrink: 0, marginTop: 1 }}>✓</span>{f}
-                    </li>
-                  ))}
-                </ul>
-                <button onClick={openDemo} className="lp-btn lp-btn-primary lp-btn-ghost" style={{
-                  width: '100%', padding: '13px', borderRadius: 11, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
-                  background: p.highlight ? G.btn : '#fff',
-                  color: p.highlight ? '#fff' : C.ink,
-                  boxShadow: p.highlight ? '0 6px 16px rgba(217,119,6,.22)' : 'none',
-                  border: p.highlight ? 'none' : `1px solid ${C.line}`,
+            {PLAN_META.map((p, i) => {
+              const pc = s.plans[i];
+              return (
+                <div key={p.name} className={`lp-plan lp-card`} style={{
+                  borderRadius: 18, padding: '28px 24px', position: 'relative', background: p.highlight ? G.planHi : G.cardSurf,
+                  border: p.highlight ? `2px solid ${C.amber}` : `1px solid ${C.line}`,
+                  boxShadow: p.highlight ? '0 18px 40px rgba(217,119,6,.14)' : '0 1px 2px rgba(90,55,20,.03)',
                 }}>
-                  Get started →
-                </button>
-              </div>
-            ))}
+                  {p.highlight && (
+                    <div style={{ position: 'absolute', top: -12, left: 24, background: C.amber, color: '#fff', fontSize: 10.5, fontWeight: 700, letterSpacing: hi ? 0.3 : 0.8, padding: '4px 12px', borderRadius: 100, textTransform: hi ? 'none' : 'uppercase' }}>{pc.tag}</div>
+                  )}
+                  <div style={{ fontWeight: 800, fontSize: 20, color: C.ink, marginBottom: 4 }}>{p.name}</div>
+                  {!p.highlight && (
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: C.amber, letterSpacing: hi ? 0.2 : 0.4, textTransform: hi ? 'none' : 'uppercase', marginBottom: 10 }}>{pc.tag}</div>
+                  )}
+                  <p style={{ fontSize: 14, color: C.body, marginBottom: 20, lineHeight: 1.55, marginTop: p.highlight ? 8 : 0 }}>{pc.desc}</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
+                    {pc.features.map(f => (
+                      <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: C.ink }}>
+                        <span style={{ color: C.amber, fontWeight: 800, flexShrink: 0, marginTop: 1 }}>✓</span>{f}
+                      </li>
+                    ))}
+                  </ul>
+                  <button onClick={openDemo} className="lp-btn lp-btn-primary lp-btn-ghost" style={{
+                    width: '100%', padding: '13px', borderRadius: 11, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
+                    background: p.highlight ? G.btn : '#fff',
+                    color: p.highlight ? '#fff' : C.ink,
+                    boxShadow: p.highlight ? '0 6px 16px rgba(217,119,6,.22)' : 'none',
+                    border: p.highlight ? 'none' : `1px solid ${C.line}`,
+                  }}>
+                    {s.getStarted}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -530,15 +648,15 @@ export default function Landing({ go }) {
       {/* ══ FINAL CTA ══ */}
       <div style={{ background: G.cta }}>
         <div className="lp-section lp-wrap" style={{ textAlign: 'center', maxWidth: 640 }}>
-          <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.15, color: '#fff', marginBottom: 14 }}>
-            Ready to get organised?
+          <h2 className="lp-h2" style={{ fontWeight: 800, letterSpacing: h2Track, lineHeight: 1.15, color: '#fff', marginBottom: 14 }}>
+            {s.ctaTitle}
           </h2>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.92)', lineHeight: 1.6, marginBottom: 28 }}>
-            Try AtithiBook with a sample property and see how easy running your hotel can be.
+            {s.ctaSub}
           </p>
           <div className="lp-cta-row" style={{ justifyContent: 'center' }}>
-            <button onClick={openDemo} className="lp-btn" style={{ background: '#fff', color: C.amberD, border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' }}>Try the demo</button>
-            <button onClick={() => go('signin')} className="lp-btn" style={{ background: 'rgba(255,255,255,0.16)', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 12, padding: '14px 28px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>Sign in →</button>
+            <button onClick={openDemo} className="lp-btn" style={{ background: '#fff', color: C.amberD, border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.16)' }}>{s.ctaDemo}</button>
+            <button onClick={() => go('signin')} className="lp-btn" style={{ background: 'rgba(255,255,255,0.16)', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 12, padding: '14px 28px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>{s.ctaSignIn}</button>
           </div>
         </div>
       </div>
@@ -548,18 +666,18 @@ export default function Landing({ go }) {
         <div style={{ maxWidth: 1060, margin: '0 auto', textAlign: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}><Logo /></div>
           <div style={{ marginBottom: 16 }}>
-            <button onClick={() => go('terms')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', marginRight: 24, fontWeight: 500 }}>Terms of Service</button>
-            <button onClick={() => go('privacy')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Privacy Policy</button>
+            <button onClick={() => go('terms')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', marginRight: 24, fontWeight: 500 }}>{s.terms}</button>
+            <button onClick={() => go('privacy')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>{s.privacy}</button>
           </div>
           <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.7, maxWidth: 520, margin: '0 auto' }}>
-            © 2026 AtithiBook · Booking software for independent hotels.<br />
-            AtithiBook provides the software. Properties remain independently responsible for their services and guests.
+            {s.footerTagline}<br />
+            {s.footerDisclaimer}
           </div>
         </div>
       </footer>
 
       {/* ══ DEMO GATE ══ */}
-      {sheetOpen && <DemoSheet onClose={() => setSheetOpen(false)} />}
+      {sheetOpen && <DemoSheet onClose={() => setSheetOpen(false)} lang={lang} />}
     </div>
   );
 }

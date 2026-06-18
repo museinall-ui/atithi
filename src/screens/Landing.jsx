@@ -201,13 +201,13 @@ function Logo({ dark }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
       <span style={{
-        width: 28, height: 28, borderRadius: 9, background: C.amber,
+        width: 30, height: 30, borderRadius: 9, background: G.btn,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 2px 6px rgba(217,119,6,0.35)',
+        boxShadow: '0 2px 8px rgba(217,119,6,0.32)',
       }}>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 11.5 12 5l8 6.5" /><path d="M6 10.6V19h12v-8.4" />
-        </svg>
+        {/* अ (Atithi = guest) — the brand mark, consistent with the
+            Sign In screen and the app. */}
+        <span style={{ fontFamily: "'Noto Sans Devanagari', sans-serif", color: '#fff', fontWeight: 700, fontSize: 18, lineHeight: 1, marginTop: 1 }}>अ</span>
       </span>
       <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.4, color: dark ? '#fff' : C.ink }}>AtithiBook</span>
     </span>

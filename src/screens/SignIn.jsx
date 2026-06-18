@@ -61,9 +61,13 @@ export default function SignIn({ t, lang, onChangeLang, go }) {
     <div
       className={'atithi' + (lang === 'hi' ? ' hi-mode' : '')}
       style={{
-        height: '100%', background: T.bg, color: T.ink,
+        height: '100%',
+        // Warm gradient matching the landing hero, so signing in feels like
+        // a continuation of the marketing page rather than a different app.
+        background: 'radial-gradient(110% 55% at 50% -5%, #fff1db 0%, #fdfbf8 58%, #fdfbf8 100%)',
+        color: T.ink,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20, position: 'relative',
+        padding: 20, position: 'relative', overflow: 'auto',
       }}
     >
       {/* Back to the landing page — without this a visitor who taps
@@ -99,7 +103,7 @@ export default function SignIn({ t, lang, onChangeLang, go }) {
             background: `linear-gradient(135deg, ${T.primary}, ${T.primaryDk})`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 30, fontWeight: 700, color: '#fff',
-            boxShadow: '0 6px 18px rgba(20,15,10,.10)',
+            boxShadow: '0 10px 28px rgba(217,119,6,0.28)',
             fontFamily: T.fontHi,
           }}>अ</div>
           <div style={{ fontSize: 26, fontWeight: 700, color: T.ink, marginTop: 14, letterSpacing: -0.5 }}>

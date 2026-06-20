@@ -1,37 +1,49 @@
 // Vercel serverless function — turns a spoken booking command into
-// structured booking fields using Claude Haiku 4.5.
+// structured booking fields using an LLM.
 //
-// Why server-side: the Anthropic API key is a secret. The hotelier
-// configures it once in Vercel's env vars and the function holds it;
-// the browser never sees it. The function authenticates the caller via
-// their Supabase access token (Bearer header) and verifies they're an
-// active member of the property they're booking for — same pattern as
-// api/send-to-ca.js.
+// Provider-flexible: uses OpenAI if OPENAI_API_KEY is set, otherwise
+// Anthropic (Claude) if ANTHROPIC_API_KEY is set. Same input, same output
+// shape either way — so you can test on whichever account has credit and
+// switch later by just changing the env var (no code change).
 //
-// We use forced tool use (tool_choice) to get a guaranteed-shape JSON
-// object back ("structured output via tool use") — no fragile parsing
-// of free-form model text.
+// Why server-side: the API key is a secret. The hotelier configures it
+// once in Vercel's env vars and the function holds it; the browser never
+// sees it. The function authenticates the caller via their Supabase
+// access token (Bearer header) and verifies they're an active member of
+// the property — same pattern as api/send-to-ca.js.
 //
-// Owner-side setup (one-time, ~2 min):
-//   1. Create an API key at console.anthropic.com → API Keys
-//   2. In Vercel → Settings → Environment Variables, add:
-//        ANTHROPIC_API_KEY = sk-ant-xxxxxxxx
-//   3. Redeploy (push any commit) so the env var is picked up
+// We use forced tool / function calling to get a guaranteed-shape JSON
+// object back ("structured output via tool use") — no fragile parsing of
+// free-form model text.
 //
-// Until that's set, this function returns 503 {code:'no_anthropic'} and
-// the client falls back to its built-in rule-based parser. Note: like
-// all /api/* functions, this only runs on the deployed Vercel site — a
-// local `npm run dev` (Vite) returns 404, which the client also treats
-// as "fall back to rules".
+// Owner-side setup (one-time, ~2 min) — pick ONE:
+//   OpenAI:    create a key at platform.openai.com → API keys, then in
+//              Vercel → Settings → Environment Variables add
+//                OPENAI_API_KEY = sk-...
+//   Anthropic: create a key at console.anthropic.com → API Keys, then add
+//                ANTHROPIC_API_KEY = sk-ant-...
+//   Then redeploy so the env var is picked up.
+//
+// Until a key is set, this returns 503 {code:'no_ai'} and the client
+// falls back to its built-in rule-based parser. Note: like all /api/*
+// functions, this only runs on the deployed Vercel site — a local
+// `npm run dev` (Vite) returns 404, which the client also treats as
+// "fall back to rules".
 
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 const SUPABASE_URL = 'https://vaerzwmglfwslvqqcyhx.supabase.co';
 const SUPABASE_ANON = 'sb_publishable_q-vI9SlNncTWlCr3rhuS8A_umNHfj1V';
 
-// Fast + cheap; this is a constrained extraction task. One-line swap to
-// 'claude-opus-4-8' if the messiest real-world commands need it.
-const MODEL = 'claude-haiku-4-5';
+// Fast + cheap models — this is a constrained extraction task. Both are
+// easily swapped for a stronger model if the messiest real-world commands
+// need it (e.g. 'gpt-4o' / 'claude-opus-4-8').
+const OPENAI_MODEL = 'gpt-4o-mini';
+const ANTHROPIC_MODEL = 'claude-haiku-4-5';
+
+const TOOL_NAME = 'create_booking';
+const TOOL_DESC = 'Record the structured booking extracted from the spoken command.';
 
 const SYSTEM = `You extract a single hotel-room booking from a manager's spoken command and call the create_booking tool with the structured fields.
 
@@ -42,30 +54,27 @@ Rules:
 - All money is in Indian rupees (plain integers, no symbols).
 - Only fill a field if the command actually states or clearly implies it. Otherwise leave it null (or an empty array for childrenAges). Never invent a guest name, phone number, date, or price.`;
 
-// Tool schema. All fields optional / nullable — the manager rarely says
-// everything, and the client fills the gaps via the New Booking form.
-const TOOL = {
-  name: 'create_booking',
-  description: 'Record the structured booking extracted from the spoken command.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      checkInDate:   { type: ['string', 'null'], description: 'Check-in date as YYYY-MM-DD, resolved against today. null if not stated.' },
-      nights:        { type: ['integer', 'null'], description: 'Number of nights. null if not stated.' },
-      roomTypeId:    { type: ['string', 'null'], description: 'One of the provided room-type ids that best matches the spoken room, else null.' },
-      roomTypeHeard: { type: ['string', 'null'], description: 'The room words as heard, e.g. "deluxe".' },
-      adults:        { type: ['integer', 'null'], description: 'Number of adults. null if not stated.' },
-      childrenAges:  { type: 'array', items: { type: 'integer' }, description: 'Ages of children in years. For "under N" use N-1. Empty array if no children.' },
-      total:         { type: ['number', 'null'], description: 'Total tariff in rupees if stated, else null.' },
-      advanceAmount: { type: ['number', 'null'], description: 'Advance / deposit / token received in rupees if stated, else null.' },
-      paymentMethod: { type: ['string', 'null'], description: 'One of cash, upi, card, bank if a payment method is stated, else null.' },
-      guestName:     { type: ['string', 'null'], description: 'Guest name if stated, else null.' },
-      phone:         { type: ['string', 'null'], description: 'Guest phone digits if stated, else null.' },
-      mealPlanId:    { type: ['string', 'null'], description: 'One of the provided meal-plan ids if a meal plan is stated, else null.' },
-      notes:         { type: ['string', 'null'], description: 'Any special request mentioned, else null.' },
-    },
-    required: ['childrenAges'],
+// JSON Schema for the booking. All fields optional / nullable — the
+// manager rarely says everything; the client fills the gaps via the New
+// Booking form.
+const PARAMS = {
+  type: 'object',
+  properties: {
+    checkInDate:   { type: ['string', 'null'], description: 'Check-in date as YYYY-MM-DD, resolved against today. null if not stated.' },
+    nights:        { type: ['integer', 'null'], description: 'Number of nights. null if not stated.' },
+    roomTypeId:    { type: ['string', 'null'], description: 'One of the provided room-type ids that best matches the spoken room, else null.' },
+    roomTypeHeard: { type: ['string', 'null'], description: 'The room words as heard, e.g. "deluxe".' },
+    adults:        { type: ['integer', 'null'], description: 'Number of adults. null if not stated.' },
+    childrenAges:  { type: 'array', items: { type: 'integer' }, description: 'Ages of children in years. For "under N" use N-1. Empty array if no children.' },
+    total:         { type: ['number', 'null'], description: 'Total tariff in rupees if stated, else null.' },
+    advanceAmount: { type: ['number', 'null'], description: 'Advance / deposit / token received in rupees if stated, else null.' },
+    paymentMethod: { type: ['string', 'null'], description: 'One of cash, upi, card, bank if a payment method is stated, else null.' },
+    guestName:     { type: ['string', 'null'], description: 'Guest name if stated, else null.' },
+    phone:         { type: ['string', 'null'], description: 'Guest phone digits if stated, else null.' },
+    mealPlanId:    { type: ['string', 'null'], description: 'One of the provided meal-plan ids if a meal plan is stated, else null.' },
+    notes:         { type: ['string', 'null'], description: 'Any special request mentioned, else null.' },
   },
+  required: ['childrenAges'],
 };
 
 function buildUserText(transcript, ctx) {
@@ -89,17 +98,51 @@ function buildUserText(transcript, ctx) {
   ].join('\n');
 }
 
+async function parseWithOpenAI(apiKey, transcript, ctx) {
+  const client = new OpenAI({ apiKey });
+  const completion = await client.chat.completions.create({
+    model: OPENAI_MODEL,
+    messages: [
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: buildUserText(transcript, ctx) },
+    ],
+    tools: [{ type: 'function', function: { name: TOOL_NAME, description: TOOL_DESC, parameters: PARAMS } }],
+    tool_choice: { type: 'function', function: { name: TOOL_NAME } },
+  });
+  const call = completion.choices && completion.choices[0]
+    && completion.choices[0].message
+    && completion.choices[0].message.tool_calls
+    && completion.choices[0].message.tool_calls[0];
+  if (!call || !call.function || !call.function.arguments) return null;
+  try { return JSON.parse(call.function.arguments); } catch { return null; }
+}
+
+async function parseWithClaude(apiKey, transcript, ctx) {
+  const client = new Anthropic({ apiKey });
+  const msg = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 1024,
+    system: SYSTEM,
+    tools: [{ name: TOOL_NAME, description: TOOL_DESC, input_schema: PARAMS }],
+    tool_choice: { type: 'tool', name: TOOL_NAME },
+    messages: [{ role: 'user', content: buildUserText(transcript, ctx) }],
+  });
+  const tu = (msg.content || []).find(b => b.type === 'tool_use' && b.name === TOOL_NAME);
+  return tu ? tu.input : null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'POST only' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!openaiKey && !anthropicKey) {
     return res.status(503).json({
-      error: 'Voice AI is not configured on this deployment yet. Add an ANTHROPIC_API_KEY env var in Vercel → Settings → Environment Variables, then redeploy.',
-      code: 'no_anthropic',
+      error: 'Voice AI is not configured on this deployment yet. Add an OPENAI_API_KEY (or ANTHROPIC_API_KEY) env var in Vercel → Settings → Environment Variables, then redeploy.',
+      code: 'no_ai',
     });
   }
 
@@ -144,22 +187,16 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'You are not a member of this property' });
     }
 
-    // 3) Ask Claude to extract the booking via a forced tool call.
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system: SYSTEM,
-      tools: [TOOL],
-      tool_choice: { type: 'tool', name: 'create_booking' },
-      messages: [{ role: 'user', content: buildUserText(transcript, ctx) }],
-    });
+    // 3) Extract the booking via the configured provider (OpenAI preferred).
+    const provider = openaiKey ? 'openai' : 'anthropic';
+    const draft = openaiKey
+      ? await parseWithOpenAI(openaiKey, transcript, ctx)
+      : await parseWithClaude(anthropicKey, transcript, ctx);
 
-    const toolUse = (msg.content || []).find(b => b.type === 'tool_use' && b.name === 'create_booking');
-    if (!toolUse || !toolUse.input) {
-      return res.status(502).json({ error: 'Model did not return a booking', stopReason: msg.stop_reason });
+    if (!draft) {
+      return res.status(502).json({ error: 'Model did not return a booking', provider });
     }
-    return res.status(200).json({ ok: true, draft: toolUse.input });
+    return res.status(200).json({ ok: true, draft, provider });
   } catch (e) {
     return res.status(502).json({ error: 'AI parse failed', detail: String(e?.message || e) });
   }

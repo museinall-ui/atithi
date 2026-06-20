@@ -1165,7 +1165,7 @@ function parseGuestsLabel(label) {
   };
 }
 
-export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [] }) {
+export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [], onVoiceBooking }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const isEdit = !!editing;
   const [step, setStep] = useState(1);
@@ -1521,7 +1521,27 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px 100px' }}>
-        {step === 1 && <StepDates data={data} set={set} t={t} property={property} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />}
+        {step === 1 && (
+          <>
+            {!isEdit && onVoiceBooking && (
+              <button onClick={onVoiceBooking} className="atithi-tap" style={{
+                width: '100%', border: `1px solid ${T.border}`, cursor: 'pointer', borderRadius: 12,
+                padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 11, marginBottom: 16,
+                background: T.card, color: T.ink,
+              }}>
+                <span style={{ width: 32, height: 32, borderRadius: '50%', background: `color-mix(in oklch, ${T.primary} 12%, white)`, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                </span>
+                <span style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700 }}>{t('voiceFillTitle')}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: T.ink3, fontWeight: 500 }}>{t('voiceFillSub')}</span>
+                </span>
+                <Icon name="chev" size={14} color={T.ink3} />
+              </button>
+            )}
+            <StepDates data={data} set={set} t={t} property={property} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />
+          </>
+        )}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}
         {step === 3 && <StepGuest data={data} set={set} t={t} allExtras={allExtras} onRemoveSavedExtra={onRemoveSavedExtra} bookings={bookings} editingId={editing?.id} />}
         {step === 4 && (

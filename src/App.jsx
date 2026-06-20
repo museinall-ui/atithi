@@ -1188,14 +1188,22 @@ export default function App() {
   // Dashboard) so it has the session/property/go it needs to parse + route.
   const [voiceOpen, setVoiceOpen] = useState(false);
 
+  // Bumped on every navigation. Used as a remount key on the New Booking
+  // screen so a screen that re-targets its OWN route — e.g. the voice flow
+  // firing go('new', { prefill }) while already on New Booking — still gets
+  // a fresh form seeded from the new prefill (React won't remount on a
+  // same-route navigation otherwise, so the prefill would be ignored).
+  const navSeqRef = useRef(0);
   const go = (name, arg = null) => {
     if (name !== 'new') setEditing(null);
-    setRoute({ name, arg });
+    navSeqRef.current += 1;
+    setRoute({ name, arg, seq: navSeqRef.current });
   };
 
   const startEdit = (bookingId) => {
     setEditing(bookingId);
-    setRoute({ name: 'new', arg: bookingId });
+    navSeqRef.current += 1;
+    setRoute({ name: 'new', arg: bookingId, seq: navSeqRef.current });
   };
 
   // ─── Browser history ↔ route sync ─────────────────────────────────────────
@@ -1873,7 +1881,7 @@ export default function App() {
       if (!allowed) {
         screen = <PermissionDenied go={go} t={t} action={isEditPath ? 'edit bookings' : 'create new bookings'} />;
       } else {
-        screen = <NewBooking go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} />;
+        screen = <NewBooking key={'nb-' + (route.seq || 0)} go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} onVoiceBooking={() => setVoiceOpen(true)} />;
       }
       break;
     }

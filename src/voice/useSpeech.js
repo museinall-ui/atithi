@@ -6,47 +6,48 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 // `supported` flag lets the UI fall back to a "type the command" box and
 // the flow always works.
 //
-// Returns:
-//   supported   — is SpeechRecognition available in this browser
-//   listening   — currently capturing
-//   transcript  — accumulated FINAL text
-//   interim     — the in-progress (not yet final) words
-//   error       — last error code ('not-allowed', 'no-speech', ...)
-//   start/stop  — control capture
-//   reset       — clear transcript + interim + error
-//   setTranscript — let the UI seed/edit the text (e.g. the typed fallback)
+// KEY BEHAVIOUR — continuous, breath-friendly listening:
+//   The browser's recognizer ends a segment the moment you pause (and on
+//   mobile it also times out after a while). On its own that means it
+//   "cuts you off" mid-thought. We set continuous mode AND auto-restart
+//   the recognizer whenever it ends while the user still intends to be
+//   listening — so a pause, a breath, or a few seconds of "let me think"
+//   never stops the session. Only an explicit stop() (tap) ends it.
+//
+//   Finalized phrases are delivered via the onFinal(text) callback, so the
+//   caller owns the accumulated text. That means re-tapping the mic
+//   APPENDS to what's already there instead of wiping it, and manual edits
+//   to the text box stick.
 
 export function getSpeechRecognition() {
   if (typeof window === 'undefined') return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-export function useSpeech({ lang = 'en-IN' } = {}) {
+export function useSpeech({ lang = 'en-IN', onFinal } = {}) {
   const SR = getSpeechRecognition();
   const supported = !!SR;
   const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [interim, setInterim] = useState('');
   const [error, setError] = useState('');
+
   const recRef = useRef(null);
+  const wantRef = useRef(false);     // does the user still want to be listening?
+  const onFinalRef = useRef(onFinal); // read through a ref so restarts don't need fresh closures
+  onFinalRef.current = onFinal;
 
-  const stop = useCallback(() => {
-    const rec = recRef.current;
-    if (rec) { try { rec.stop(); } catch { /* already stopped */ } }
-    setListening(false);
-  }, []);
-
-  const start = useCallback(() => {
-    if (!SR) { setError('unsupported'); return; }
-    setError('');
-    setInterim('');
+  // (Re)create a recognizer and start it. Held in a ref so the recognizer's
+  // own onend handler can relaunch it without a stale closure.
+  const beginRef = useRef(null);
+  beginRef.current = () => {
+    if (!SR) return;
     let rec;
     try { rec = new SR(); } catch { setError('init'); return; }
     rec.lang = lang;
     rec.interimResults = true;
-    // Single utterance — the manager speaks the booking, then it ends.
-    rec.continuous = false;
+    rec.continuous = true;     // keep a single segment open through short pauses
     rec.maxAlternatives = 1;
+
     rec.onresult = (e) => {
       let finalT = '';
       let interimT = '';
@@ -55,40 +56,66 @@ export function useSpeech({ lang = 'en-IN' } = {}) {
         if (r.isFinal) finalT += r[0].transcript;
         else interimT += r[0].transcript;
       }
-      if (finalT) {
-        setTranscript(prev => (prev ? prev + ' ' : '') + finalT.trim());
-      }
+      if (finalT && onFinalRef.current) onFinalRef.current(finalT.trim());
       setInterim(interimT);
     };
-    rec.onerror = (e) => {
-      setError((e && e.error) || 'error');
-      setListening(false);
-    };
-    rec.onend = () => {
-      setListening(false);
-      setInterim('');
-    };
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      // start() throws if called while already running — treat as a no-op.
-      setError('start');
-    }
-  }, [SR, lang]);
 
-  const reset = useCallback(() => {
-    setTranscript('');
-    setInterim('');
+    rec.onerror = (e) => {
+      const err = (e && e.error) || 'error';
+      // Permission denials are fatal — stop trying.
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
+        wantRef.current = false;
+        setError(err);
+        setListening(false);
+        return;
+      }
+      // 'no-speech' / 'aborted' are normal during a pause in continuous mode;
+      // onend will relaunch. Surface anything else so the UI can hint.
+      if (err !== 'no-speech' && err !== 'aborted') setError(err);
+    };
+
+    rec.onend = () => {
+      if (wantRef.current) {
+        // The browser ended the segment (pause / timeout) but the user hasn't
+        // tapped stop. Relaunch after a short gap so the previous instance has
+        // fully released — keeps it feeling like one continuous session.
+        setTimeout(() => { if (wantRef.current && beginRef.current) beginRef.current(); }, 150);
+      } else {
+        setListening(false);
+        setInterim('');
+      }
+    };
+
+    recRef.current = rec;
+    try { rec.start(); }
+    catch { /* a prior instance may still be ending; its onend will retry */ }
+  };
+
+  const start = useCallback(() => {
+    if (!SR) { setError('unsupported'); return; }
     setError('');
+    setInterim('');
+    wantRef.current = true;
+    setListening(true);
+    beginRef.current();
+  }, [SR]);
+
+  const stop = useCallback(() => {
+    wantRef.current = false;
+    const rec = recRef.current;
+    if (rec) { try { rec.stop(); } catch { /* already stopped */ } }
+    setListening(false);
+    setInterim('');
   }, []);
+
+  const reset = useCallback(() => { setInterim(''); setError(''); }, []);
 
   // Stop the recognizer if the component unmounts mid-capture.
   useEffect(() => () => {
+    wantRef.current = false;
     const rec = recRef.current;
     if (rec) { try { rec.stop(); } catch { /* noop */ } }
   }, []);
 
-  return { supported, listening, transcript, interim, error, start, stop, reset, setTranscript };
+  return { supported, listening, interim, error, start, stop, reset };
 }

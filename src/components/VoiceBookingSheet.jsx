@@ -6,15 +6,20 @@ import { useSheetDismiss } from './useSheetDismiss.js';
 import { useSpeech } from '../voice/useSpeech.js';
 import { parseBookingCommand, draftToPrefill } from '../voice/parseBookingCommand.js';
 
-// "Speak a booking" sheet. The hotelier taps the mic, says the booking
-// in plain language, and we turn it into a pre-filled New Booking form
-// they confirm. Voice (Web Speech API) is free + browser-native; a
-// "type instead" box guarantees the flow works even where voice isn't
-// supported (Firefox / locked-down iOS).
+// "Speak a booking" sheet. The hotelier taps the mic, says the booking in
+// plain language, and we turn it into a pre-filled New Booking form they
+// confirm. Voice (Web Speech API) is free + browser-native; a "type
+// instead" box guarantees the flow works even where voice isn't supported
+// (Firefox / locked-down iOS).
 //
-// The understanding step runs through /api/parse-booking (Claude Haiku
-// 4.5) on the live site, with a built-in rule-based fallback for local
-// preview — both handled inside parseBookingCommand().
+// Listening is CONTINUOUS — pauses, breaths, and "let me think" gaps don't
+// stop it; only tapping stop does. Finalized phrases are appended to the
+// command box, so re-tapping the mic continues where you left off instead
+// of wiping what you already said.
+//
+// The understanding step runs through /api/parse-booking (OpenAI or Claude)
+// on the live site, with a built-in rule-based fallback for local preview —
+// both handled inside parseBookingCommand().
 
 function MicGlyph({ size = 30, color = '#fff' }) {
   return (
@@ -30,16 +35,17 @@ function MicGlyph({ size = 30, color = '#fff' }) {
 export default function VoiceBookingSheet({ open, onClose, property, propertyId, session, go, lang = 'en' }) {
   const isHi = lang === 'hi';
   const tx = (en, hi) => (isHi ? hi : en);
-  const sp = useSpeech({ lang: 'en-IN' });
   const [command, setCommand] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useSheetDismiss(open, onClose);
+  // Each finalized phrase is appended to the command box (the single source
+  // of truth), so pauses/restarts accumulate and manual edits stick.
+  const sp = useSpeech({
+    lang: 'en-IN',
+    onFinal: (chunk) => setCommand(prev => (prev ? prev.trimEnd() + ' ' : '') + chunk),
+  });
 
-  // Mirror finalized speech into the editable command box.
-  useEffect(() => {
-    if (sp.transcript) setCommand(sp.transcript);
-  }, [sp.transcript]);
+  useSheetDismiss(open, onClose);
 
   // Reset everything when the sheet (re)opens.
   useEffect(() => {
@@ -55,13 +61,21 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
 
   const toggleMic = () => {
     if (sp.listening) { sp.stop(); return; }
-    setCommand('');
+    // Do NOT clear — re-tapping continues appending to what's already there.
     sp.reset();
     sp.start();
   };
 
+  const clearAll = () => {
+    sp.stop();
+    sp.reset();
+    setCommand('');
+  };
+
   const proceed = async () => {
-    const text = (command || sp.transcript || '').trim();
+    // Include any not-yet-finalized tail so the last word isn't lost if the
+    // user hits Review while still mid-sentence.
+    const text = (command + (sp.interim ? ' ' + sp.interim : '')).trim();
     if (!text || busy) return;
     setBusy(true);
     sp.stop();
@@ -71,8 +85,8 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
       onClose();
       go('new', { prefill });
     } catch {
-      // parseBookingCommand never throws (it falls back to rules), but
-      // guard anyway so the button re-enables on any unexpected error.
+      // parseBookingCommand never throws (it falls back to rules), but guard
+      // anyway so the button re-enables on any unexpected error.
       setBusy(false);
     }
   };
@@ -81,11 +95,10 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
   const errMsg = sp.error === 'not-allowed' || sp.error === 'service-not-allowed'
     ? tx('Microphone blocked — allow mic access, or type the command below.',
          'माइक ब्लॉक है — माइक की अनुमति दें, या नीचे कमांड टाइप करें।')
-    : sp.error === 'no-speech'
-      ? tx("Didn't catch that — tap the mic and try again, or type below.",
-           'सुनाई नहीं दिया — फिर से माइक दबाएँ, या नीचे टाइप करें।')
-      : tx('Voice had a hiccup — type the command below instead.',
-           'वॉइस में दिक्कत — नीचे कमांड टाइप करें।');
+    : tx('Voice had a hiccup — keep going, or type the command below.',
+         'वॉइस में दिक्कत — जारी रखें, या नीचे टाइप करें।');
+
+  const hasText = !!command.trim();
 
   return (
     <div
@@ -118,12 +131,12 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
           }}><Icon name="x" size={14} color={T.ink2} /></button>
         </div>
         <div style={{ fontSize: 12.5, color: T.ink3, marginBottom: 16, lineHeight: 1.45 }}>
-          {tx('Tap the mic and say the booking. We’ll fill in the form for you to check.',
-              'माइक दबाएँ और बुकिंग बोलें। हम फ़ॉर्म भर देंगे, आप जाँच लें।')}
+          {tx('Tap the mic and say the booking — take your time, pauses are fine. Tap again when you’re done.',
+              'माइक दबाएँ और बुकिंग बोलें — आराम से, रुकना ठीक है। पूरा होने पर फिर दबाएँ।')}
         </div>
 
         {/* Mic */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <button
             onClick={toggleMic}
             disabled={busy || !sp.supported}
@@ -147,8 +160,10 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
             {!sp.supported
               ? tx('Voice not supported here', 'इस ब्राउज़र में वॉइस नहीं')
               : sp.listening
-                ? tx('Listening… tap to stop', 'सुन रहे हैं… रोकने के लिए दबाएँ')
-                : tx('Tap to speak', 'बोलने के लिए दबाएँ')}
+                ? tx('Listening… tap when you’re done', 'सुन रहे हैं… पूरा होने पर दबाएँ')
+                : hasText
+                  ? tx('Tap to add more', 'और जोड़ने के लिए दबाएँ')
+                  : tx('Tap to speak', 'बोलने के लिए दबाएँ')}
           </div>
           {sp.listening && sp.interim ? (
             <div style={{ fontSize: 12.5, color: T.ink2, fontStyle: 'italic', textAlign: 'center' }}>{sp.interim}</div>
@@ -163,9 +178,17 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
           }}>{errMsg}</div>
         )}
 
-        {/* Type-instead box (always available) */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, marginBottom: 6, textTransform: 'uppercase' }}>
-          {sp.supported ? tx('Or type the command', 'या कमांड टाइप करें') : tx('Type the command', 'कमांड टाइप करें')}
+        {/* Type-instead / transcript box (always available + editable) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>
+            {sp.supported ? tx('Heard / type the command', 'सुना / कमांड टाइप करें') : tx('Type the command', 'कमांड टाइप करें')}
+          </span>
+          {hasText && (
+            <button onClick={clearAll} className="atithi-tap" style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+              fontSize: 11.5, fontWeight: 700, color: T.ink3,
+            }}>{tx('Clear', 'साफ़ करें')}</button>
+          )}
         </div>
         <textarea
           value={command}
@@ -190,7 +213,7 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
             variant="primary"
             icon={busy ? undefined : 'arrow'}
             onClick={proceed}
-            disabled={busy || !command.trim()}
+            disabled={busy || !hasText}
             style={{ flex: 2 }}
           >
             {busy ? tx('Reading…', 'पढ़ रहे हैं…') : tx('Review booking', 'बुकिंग देखें')}

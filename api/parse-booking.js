@@ -45,13 +45,20 @@ const ANTHROPIC_MODEL = 'claude-haiku-4-5';
 const TOOL_NAME = 'create_booking';
 const TOOL_DESC = 'Record the structured booking extracted from the spoken command.';
 
-const SYSTEM = `You extract a single hotel-room booking from a manager's spoken command and call the create_booking tool with the structured fields.
+const SYSTEM = `You extract a single hotel-room booking from a hotel manager's spoken command and call the create_booking tool with the structured fields.
+
+The text comes from speech-to-text and MAY contain recognition errors, run-on words, or mixed Hindi/English (Hinglish). Infer the manager's intent rather than reading literally, and correct obvious mishearings.
+
+Language & numbers:
+- Understand common Hindi/Hinglish terms: aaj = today, kal = tomorrow, parso = day after tomorrow, raat/din = nights, aadmi/log/vyakti = adults, bachche/bachcha = children, kamra = room, advance/bayana/peshgi = advance/deposit, kul/total = total.
+- Understand spoken numbers in Hindi or English (ek/one=1, do/two=2, teen/three=3, char/four=4, paanch/five=5, chhe/six=6). "do hazaar" = 2000, "paanch hazaar" = 5000, "ek lakh" = 100000.
+- Money is Indian rupees — output plain integers (5000, never "5,000" or "₹5000"). "rupees", "rs", "/-" all mean rupees.
 
 Rules:
-- Resolve relative dates ("tomorrow", "next Friday", "15th January") against the given today's date, and always output checkInDate as YYYY-MM-DD.
-- Match the spoken room to exactly ONE of the provided room-type ids (closest match). If nothing matches, set roomTypeId to null but still fill roomTypeHeard with what was said.
+- Resolve relative dates ("tomorrow", "next Friday", "15th January", "kal", "agle hafte") against the given today's date; always output checkInDate as YYYY-MM-DD. If a stated date would be in the past, assume the next future occurrence.
+- Match the spoken room to exactly ONE of the provided room-type ids (closest match, tolerant of mishearings like "deluxe"/"dilux"/"delux"). If nothing matches, set roomTypeId to null but still fill roomTypeHeard with what was said.
 - For "child under N", put age N-1 into childrenAges. Each child gets one entry.
-- All money is in Indian rupees (plain integers, no symbols).
+- Distinguish the TOTAL tariff from the ADVANCE/deposit ("total 5000, 2000 advance" → total 5000, advanceAmount 2000).
 - Only fill a field if the command actually states or clearly implies it. Otherwise leave it null (or an empty array for childrenAges). Never invent a guest name, phone number, date, or price.`;
 
 // JSON Schema for the booking. All fields optional / nullable — the

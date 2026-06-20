@@ -24,6 +24,7 @@ import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
 import InstallPrompt from './components/InstallPrompt.jsx';
+import VoiceBookingSheet from './components/VoiceBookingSheet.jsx';
 import Icon from './components/Icon.jsx';
 import PublicBookingWidget from './screens/PublicBookingWidget.jsx';
 import { loadPropertyBySlug, loadWidgetInventory, insertWidgetBooking, validateCouponCloud } from './cloud/widget.js';
@@ -1183,6 +1184,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Voice-to-booking sheet open state. The sheet lives here (not in
+  // Dashboard) so it has the session/property/go it needs to parse + route.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+
   const go = (name, arg = null) => {
     if (name !== 'new') setEditing(null);
     setRoute({ name, arg });
@@ -1853,7 +1858,7 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} rateOverrides={rateOverrides} setRateOverrides={setRateOverrides} can={can} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
@@ -1885,7 +1890,7 @@ export default function App() {
     case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
     case 'terms':             screen = <Legal tab="terms"   go={go} />; break;
     case 'privacy':           screen = <Legal tab="privacy" go={go} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />;
   }
 
   // Splash while Supabase tells us whether the user is signed in, and again
@@ -2073,6 +2078,15 @@ export default function App() {
       })()}
       <SyncOverlay t={t} />
       <InstallPrompt />
+      <VoiceBookingSheet
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        property={property}
+        propertyId={propertyId}
+        session={session}
+        go={go}
+        lang={lang}
+      />
     </div>
   );
 }

@@ -1193,26 +1193,37 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         ratePlanId: editing.ratePlanId || defaultRatePlanId(),
       };
     }
-    // New booking. If a Diary cell prefilled the date + room type, seed
-    // those onto the booking. Otherwise everything stays blank and the
-    // owner picks via the wizard.
-    const seedDate = prefill && prefill.date ? prefill.date : '';
-    const seedRoomType = prefill && prefill.roomTypeId ? prefill.roomTypeId : null;
+    // New booking. A prefill payload may seed the date + room type (Diary
+    // cell-click sends just those two) — or, when it comes from the voice
+    // flow, also nights, occupancy, per-night rate, payment, and guest.
+    // Anything the payload doesn't carry falls back to the blank-wizard
+    // defaults, so the existing Diary path is unchanged.
+    const pf = prefill || {};
+    const numOr = (v, d) => (Number.isFinite(v) ? v : d);
+    const seedRoomType = pf.roomTypeId || null;
     return {
-      checkIn: seedDate, nights: 1,
+      checkIn: pf.date || '', nights: numOr(pf.nights, 1) > 0 ? numOr(pf.nights, 1) : 1,
       roomTypeId: seedRoomType,
-      roomItems: [{ roomTypeId: seedRoomType, adults: 2, children: 0, rate: null }],
-      name: '', phone: '', email: '', country: 'IN', state: '', gstin: '',
-      notes: '', source: 'walk-in', hold: false, holdHours: 4,
-      payMethod: null, payAmount: 'none', payCustom: 0,
+      roomItems: [{
+        roomTypeId: seedRoomType,
+        adults: numOr(pf.adults, 2),
+        children: numOr(pf.children, 0),
+        childrenFree: numOr(pf.childrenFree, 0),
+        childrenFull: numOr(pf.childrenFull, 0),
+        rate: Number.isFinite(pf.rate) ? pf.rate : null,
+      }],
+      name: pf.name || '', phone: pf.phone || '', email: pf.email || '', country: pf.country || 'IN', state: '', gstin: '',
+      notes: pf.notes || '', source: 'walk-in', hold: false, holdHours: 4,
+      payMethod: pf.payMethod || null, payAmount: pf.payAmount || 'none', payCustom: numOr(pf.payCustom, 0),
       extras: {}, customExtras: [], extraPrices: {},
       // New bookings created here are channel='direct', so GST defaults to off.
       // Hotelier toggles it on via the GST switch on Step 4 if needed.
       gstApplies: false,
       // Default to the first enabled plan. Used to always be 'ep' but the
       // hotelier can now disable EP (e.g. an all-MAP camp), so we look up
-      // the active default at booking-create time.
-      mealPlanId: startingMealPlanId(property),
+      // the active default at booking-create time. A voice prefill may
+      // override it with a spoken plan.
+      mealPlanId: pf.mealPlanId || startingMealPlanId(property),
       // Rate plan defaults to "Standard". Hotelier picks a different one
       // on Step 2 if multiple plans are enabled.
       ratePlanId: defaultRatePlanId(),

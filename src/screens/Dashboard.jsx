@@ -309,7 +309,7 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose, can = () => true }) {
+export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose, can = () => true, onVoiceBooking }) {
   // RBAC. Pending payment quick-settle buttons need manage_payments;
   // the day-close card needs manage_expenses (because the close-out
   // captures money in/out of the property and rolls into the daily
@@ -318,6 +318,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   const canPay     = can('manage_payments');
   const canDayClose = can('manage_expenses');
   const canExtend  = can('edit_bookings');
+  const canCreate  = can('create_bookings');
   const isHi = lang === 'hi';
   // Carousel pagination state — tracks which of the 3 occupancy /
   // income / earned-this-month cards is currently centered. Dots
@@ -795,6 +796,28 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         <StatTile label={t('inhouse')} value={inhouse} icon="bed" color={T.indigo} onClick={() => setStatSheet('inhouse')} disabled={inhouse === 0} />
         <StatTile label={t('departing')} value={departing} icon="door" color={T.teal} onClick={() => setStatSheet('departing')} disabled={departing === 0} />
       </div>
+
+      {/* Speak a booking — voice-to-reservation entry. Gated to members who
+          can create bookings (new-staff with read-only access don't see it). */}
+      {onVoiceBooking && canCreate && (
+        <div style={{ padding: '0 16px 4px' }}>
+          <button onClick={onVoiceBooking} className="atithi-tap" style={{
+            width: '100%', border: 'none', cursor: 'pointer', borderRadius: 14,
+            padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12,
+            background: `linear-gradient(100deg, ${T.primary}, color-mix(in oklch, ${T.primary} 60%, ${T.indigo}))`,
+            color: '#fff', boxShadow: `0 6px 16px color-mix(in oklch, ${T.primary} 28%, transparent)`,
+          }}>
+            <span style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+            </span>
+            <span style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 700 }} className={isHi ? 'hi' : ''}>{isHi ? 'बोलकर बुकिंग करें' : 'Speak a booking'}</span>
+              <span style={{ display: 'block', fontSize: 11, opacity: 0.85, fontWeight: 500 }}>{isHi ? 'बोलें, हम फ़ॉर्म भर देंगे' : 'Say it — we fill the form'}</span>
+            </span>
+            <Icon name="chev" size={14} color="#fff" />
+          </button>
+        </div>
+      )}
 
       <SetupNudge property={property} plan={plan} go={go} isHi={isHi} />
 

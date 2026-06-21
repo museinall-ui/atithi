@@ -548,7 +548,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={b.id} subtitle={rt.name} onBack={() => go('diary')}
+      <ScreenHeader title={b.id} subtitle={rt.name} onBack={() => go('__back')}
         right={
           <div style={{ display: 'inline-flex', gap: 6 }}>
             <button onClick={() => openVoucherSheet()} className="atithi-tap" title="Download voucher PDF" style={{

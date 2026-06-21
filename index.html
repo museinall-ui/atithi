@@ -21,7 +21,12 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { height: 100%; }
     body {
-      height: 100%;
+      /* Match #root's 100dvh exactly. Previously this was 100%, which on
+         mobile resolves to a different (often larger) height than the
+         dynamic-viewport 100dvh used by #root — the mismatch let the body
+         scroll, pushing the absolutely-positioned bottom tab bar below the
+         fold so it looked half-cut until you scrolled to the bottom. */
+      height: 100dvh;
       background: #1a1512;
       display: flex;
       align-items: flex-start;

@@ -708,7 +708,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} ${t('repUnits')} · ${stats.rangeDays} ${t('repDays')}`} onBack={() => go('home')}
+      <ScreenHeader title={t('reportsTitle')} subtitle={`${rangeLabel} · ${stats.totalUnits} ${t('repUnits')} · ${stats.rangeDays} ${t('repDays')}`} onBack={() => go('__back')}
         right={<Btn size="sm" variant="ghost" icon="download" onClick={() => {
           // Scroll to the Downloadable-reports card via ref (robust
           // to heading translation, unlike the old DOM-text match).

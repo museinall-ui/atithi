@@ -171,7 +171,7 @@ export default function Activity({ go, t, propertyId, session }) {
   if (!signedIn) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-        <ScreenHeader title={t('activityLog')} subtitle={t('activitySub')} onBack={() => go('more')} />
+        <ScreenHeader title={t('activityLog')} subtitle={t('activitySub')} onBack={() => go('__back')} />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ textAlign: 'center', maxWidth: 320 }}>
             <div style={{ width: 56, height: 56, borderRadius: 14, background: T.bgSoft, color: T.ink3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -189,7 +189,7 @@ export default function Activity({ go, t, propertyId, session }) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('activityLog')} subtitle={`${entries.length} ${t('expEntries')} · ${rangeStart} → ${rangeEnd}`} onBack={() => go('more')} />
+      <ScreenHeader title={t('activityLog')} subtitle={`${entries.length} ${t('expEntries')} · ${rangeStart} → ${rangeEnd}`} onBack={() => go('__back')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         {/* Date range */}
         <Card padding={12} style={{ marginBottom: 12 }}>

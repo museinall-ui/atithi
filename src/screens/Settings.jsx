@@ -2968,7 +2968,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('settings')} subtitle={property.profile.name} onBack={() => go('home')} />
+      <ScreenHeader title={t('settings')} subtitle={property.profile.name} onBack={() => go('__back')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 100 }}>
 
         <Card padding={0} style={{ overflow: 'hidden', marginBottom: 14, cursor: canEditSettings ? 'pointer' : 'default' }} onClick={canEditSettings ? () => setShowProfile(true) : undefined}>

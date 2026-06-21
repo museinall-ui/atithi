@@ -632,7 +632,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }} onMouseUp={onCellUp} onTouchEnd={onCellUp}>
-      <ScreenHeader title={t('ratesTitle')} subtitle={t('ratesSub')} onBack={() => go('home')} />
+      <ScreenHeader title={t('ratesTitle')} subtitle={t('ratesSub')} onBack={() => go('__back')} />
 
       <div style={{ display: 'flex', gap: 6, padding: '10px 14px', background: T.card, borderBottom: `1px solid ${T.borderSoft}`, overflowX: 'auto' }}>
         {ROOM_TYPES.map(r => (

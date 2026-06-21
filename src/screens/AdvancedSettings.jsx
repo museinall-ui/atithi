@@ -77,7 +77,7 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('advancedTitle')} subtitle={t('advancedSub')} onBack={() => go('settings')} />
+      <ScreenHeader title={t('advancedTitle')} subtitle={t('advancedSub')} onBack={() => go('__back')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 14, paddingBottom: 40 }}>
 
         <div style={{ fontSize: 12, color: T.ink2, lineHeight: 1.5, marginBottom: 14 }}>

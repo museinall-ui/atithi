@@ -522,7 +522,17 @@ export default function App() {
     return saved;
   });
   const [lang, setLang] = useState(() => loadLS(LS_KEYS.lang, 'en'));
-  const [route, setRoute] = useState({ name: 'home', arg: null });
+  // Seed the route from browser history if present. We mirror every route
+  // into history.state (see the history-sync effects below), and the browser
+  // preserves that state across a reload — so on refresh we land back where
+  // the user was instead of bouncing to home.
+  const [route, setRoute] = useState(() => {
+    try {
+      const r = (typeof window !== 'undefined' && window.history && window.history.state && window.history.state.atithiRoute) || null;
+      if (r && r.name) return { name: r.name, arg: r.arg != null ? r.arg : null };
+    } catch { /* fall through to home */ }
+    return { name: 'home', arg: null };
+  });
   // Initial state defaults — branch on DEMO mode so a fresh real-user
   // sign-up never sees Yatra Desert Camp's seed data flashed at them
   // before cloud-load completes. Only the demo path (HARDCODED_DEMO_MODE
@@ -551,7 +561,9 @@ export default function App() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => !!loadLS(LS_KEYS.onboarded, false));
   const needsOnboarding = !onboardingDismissed
     && (!property?.profile?.name?.trim() || !(Array.isArray(property?.categories) && property.categories.length > 0));
-  const [editing, setEditing] = useState(null);
+  // Restore edit-mode in step with a refresh-restored route (string arg on
+  // the 'new' route = a booking id being edited).
+  const [editing, setEditing] = useState(() => (route.name === 'new' && typeof route.arg === 'string') ? route.arg : null);
 
   // Undo snackbar — set when a destructive action just fired
   // (cancellation, auto-release). Shape: { kind, bookingId, guest,
@@ -1194,10 +1206,25 @@ export default function App() {
   // a fresh form seeded from the new prefill (React won't remount on a
   // same-route navigation otherwise, so the prefill would be ignored).
   const navSeqRef = useRef(0);
+  // How many in-app history entries we've pushed. goBack() only calls
+  // window.history.back() when there's an in-app entry to return to;
+  // otherwise it falls back to home (so we never reverse out of the app).
+  const histDepthRef = useRef(0);
   const go = (name, arg = null) => {
+    // Screens' back arrows call go('__back') so "back" returns to the actual
+    // previous screen (via browser history) instead of a hardcoded home.
+    if (name === '__back') { goBack(); return; }
     if (name !== 'new') setEditing(null);
     navSeqRef.current += 1;
     setRoute({ name, arg, seq: navSeqRef.current });
+  };
+
+  const goBack = () => {
+    if (histDepthRef.current > 0 && typeof window !== 'undefined' && window.history) {
+      window.history.back();
+    } else {
+      go('home');
+    }
   };
 
   const startEdit = (bookingId) => {
@@ -1222,19 +1249,24 @@ export default function App() {
     const cur = window.history.state;
     const sameAsCurrent = cur && cur.atithiRoute
       && cur.atithiRoute.name === route.name && cur.atithiRoute.arg === route.arg;
-    if (sameAsCurrent) return; // already the current entry (StrictMode re-run / just-popped)
+    // Already the current entry (StrictMode re-run / just-popped / a route
+    // restored from history on refresh). Mark initialised so the NEXT real
+    // navigation pushes a back entry instead of replacing this one.
+    if (sameAsCurrent) { histInitRef.current = true; return; }
     const st = { atithiRoute: { name: route.name, arg: route.arg } };
     if (!histInitRef.current) {
       histInitRef.current = true;
       window.history.replaceState(st, '');
     } else {
       window.history.pushState(st, '');
+      histDepthRef.current += 1;
     }
   }, [route]);
   useEffect(() => {
     if (typeof window === 'undefined' || !window.history) return;
     const onPop = (e) => {
       histPopRef.current = true;
+      histDepthRef.current = Math.max(0, histDepthRef.current - 1);
       const r = (e.state && e.state.atithiRoute) ? e.state.atithiRoute : { name: 'home', arg: null };
       // Restore edit-mode flag in step with the route (string arg = booking id
       // to edit; object/null = create or a non-booking screen).

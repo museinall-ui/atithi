@@ -113,11 +113,14 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
     border = `2px dashed ${HOLD}`;
     badge = { color: HOLD, icon: 'clock', label: b.releaseAt || '' };
   } else if (isCheckedin) {
-    bg = `color-mix(in oklch, ${T.indigo} 18%, white)`;
+    // Stronger fill (was 18%) so checked-in reads as clearly indigo at a
+    // glance — the faint tint looked almost identical to a plain confirmed
+    // pill on the calendar.
+    bg = `color-mix(in oklch, ${T.indigo} 34%, white)`;
     border = `2px solid ${T.indigo}`;
     badge = { color: T.indigo, icon: 'bed', label: 'IN' };
   } else if (isCheckedout) {
-    bg = `color-mix(in oklch, ${T.ok} 18%, white)`;
+    bg = `color-mix(in oklch, ${T.ok} 34%, white)`;
     border = `2px solid ${T.ok}`;
     badge = { color: T.ok, icon: 'check', label: 'OUT' };
   }
@@ -772,7 +775,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, position: 'relative' }}>
       <ScreenHeader title={t('diaryTitle')} subtitle={t('diarySub')}
-        onBack={() => go('home')}
+        onBack={() => go('__back')}
         right={<div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setZoom(z => Math.max(40, z - 10))} aria-label="Zoom out" style={iconBtn}><span style={{ fontSize: 18, lineHeight: 1, color: T.ink2 }}>−</span></button>
           <button onClick={() => setZoom(z => Math.min(90, z + 10))} aria-label="Zoom in" style={iconBtn}><span style={{ fontSize: 16, lineHeight: 1, color: T.ink2 }}>+</span></button>

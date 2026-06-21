@@ -20,7 +20,7 @@ const OTAS = [
 export default function Channels({ go, t }) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
-      <ScreenHeader title={t('channelsTitle')} subtitle="OTA sync · coming soon" onBack={() => go('home')} />
+      <ScreenHeader title={t('channelsTitle')} subtitle="OTA sync · coming soon" onBack={() => go('__back')} />
       <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 100 }}>
         <Card padding={20} style={{ marginBottom: 14, textAlign: 'center', background: `linear-gradient(160deg, ${T.primary} 0%, ${T.primaryDk} 100%)`, color: '#fff', borderColor: T.primary, overflow: 'hidden' }}>
           <div style={{

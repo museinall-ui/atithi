@@ -199,7 +199,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
       <ScreenHeader
         title={t('expensesTitle')}
         subtitle={`${filtered.length} ${t('expEntries')} · ${fmtINR(summary.total)} ${t('expThisPeriod')}`}
-        onBack={() => go('more')}
+        onBack={() => go('__back')}
         right={<button onClick={exportCsv} style={{ background: 'none', border: 'none', color: T.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="download" size={13} stroke={2} color={T.primary} /> {t('exportLabel')}</button>}
       />
 

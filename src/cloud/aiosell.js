@@ -38,6 +38,11 @@ import {
   ratePerNight,
   computeUnitUsage,
   effectiveRoomTypes,
+  mealPlanById,
+  defaultMealPlanId,
+  baseCapacityAdults,
+  singleOccActive,
+  singleOccRateFor,
 } from '../data.js';
 
 // ----------------------------------------------------------------------------
@@ -229,23 +234,60 @@ export function computeInventoryUpdates({ property, bookings, mapping, fromIdx =
 }
 
 // Build AIOSELL rate `updates[]` (one block per day) from AtithiBook's calendar
-// rate — ratePerNight() already layers base + weekend uplift + season +
-// per-day override. Each mapped room pushes its computed rate under the mapped
-// rateplanCode. (Rate-plan multipliers and meal-inclusive pricing across
-// multiple rateplans per room are a later-chunk refinement; Chunk 1 pushes the
-// standard calendar rate under each room's default rateplanCode.) Feed the
-// result to buildRatePush(hotelCode, updates).
+// rate. Each mapped room can carry SEVERAL AIOSELL rate plans, one per
+// (occupancy × meal-plan) combination the hotelier sells on the OTAs — e.g.
+// executive-s-ep (single, room-only) vs executive-d-cp (double, breakfast).
+//
+// The per-night price for a (room, occupancy, meal-plan) is composed from the
+// same pieces the hotelier's own booking flow uses:
+//   - room portion: the calendar rate ratePerNight() for double occupancy; the
+//     flat single-occupancy rate (singleOccRateFor) for single, when enabled +
+//     set, else the calendar rate.
+//   - meal portion: AtithiBook treats the calendar rate as already INCLUDING the
+//     property's default meal plan, so we add the per-guest-per-night delta
+//     between the plan's price and the default plan's price, × the occupancy's
+//     guest count. (Default-plan rate plans therefore add nothing.)
+export function ratePlanRateForDay(property, rateOverrides, roomTypeId, dayIdx, planSpec) {
+  const occupancy = (planSpec && planSpec.occupancy) === 'single' ? 'single' : 'double';
+  const guests = occupancy === 'single' ? 1 : (baseCapacityAdults(property) || 2);
+
+  let roomRate;
+  if (occupancy === 'single' && singleOccActive(property)) {
+    const category = effectiveRoomTypes(property).find(r => r.id === roomTypeId) || null;
+    const solo = singleOccRateFor({ adults: 1 }, category, property);
+    roomRate = (solo != null) ? solo : ratePerNight(property, rateOverrides, roomTypeId, dayIdx);
+  } else {
+    roomRate = ratePerNight(property, rateOverrides, roomTypeId, dayIdx);
+  }
+
+  const mealId = (planSpec && planSpec.mealPlanId) || defaultMealPlanId(property);
+  const selPlan = mealPlanById(property, mealId);
+  const defPlan = mealPlanById(property, defaultMealPlanId(property));
+  const mealDelta = ((selPlan && selPlan.price) || 0) - ((defPlan && defPlan.price) || 0);
+  return Math.round(roomRate + mealDelta * guests);
+}
+
+// Build AIOSELL rate `updates[]` (one block per day). For each mapped room we
+// emit one rate entry per mapped rate plan. Back-compat: a room with the legacy
+// single `rateplanCode` (and no `ratePlans`) is treated as one double-occupancy
+// default-meal-plan rate plan, so it prices identically to before.
 export function computeRateUpdates({ property, rateOverrides = null, mapping, fromIdx = 0, days = 30 }) {
   const roomMap = (mapping && mapping.rooms) || [];
+  const plansFor = (rm) => {
+    if (Array.isArray(rm.ratePlans) && rm.ratePlans.length) return rm.ratePlans.filter(p => p && p.code);
+    if (rm.rateplanCode) return [{ code: rm.rateplanCode, mealPlanId: null, occupancy: 'double' }];
+    return [];
+  };
   const updates = [];
 
   for (let i = 0; i < days; i++) {
     const idx = fromIdx + i;
     const rates = [];
     for (const rm of roomMap) {
-      if (!rm.rateplanCode) continue; // no rate plan mapped — push inventory only
-      const rate = ratePerNight(property, rateOverrides, rm.roomTypeId, idx);
-      rates.push({ roomCode: rm.roomCode, rate, rateplanCode: rm.rateplanCode });
+      for (const pl of plansFor(rm)) {
+        const rate = ratePlanRateForDay(property, rateOverrides, rm.roomTypeId, idx, pl);
+        rates.push({ roomCode: rm.roomCode, rate, rateplanCode: pl.code });
+      }
     }
     const date = idxToDate(idx);
     updates.push({ startDate: date, endDate: date, rates });

@@ -43,6 +43,20 @@ function relTime(iso) {
   return Math.round(hrs / 24) + 'd ago';
 }
 
+function SelectField({ label, value, onChange, options, style }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
+      {label ? <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>{label}</label> : null}
+      <select value={value} onChange={onChange} style={{
+        background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10,
+        height: 44, padding: '0 8px', fontSize: 13, fontWeight: 500, color: T.ink, outline: 'none',
+      }}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export default function OperatorConsole({ go, session }) {
   const [view, setView] = useState({ loading: true });
   const [editing, setEditing] = useState(null);   // propertyId being edited
@@ -87,18 +101,50 @@ export default function OperatorConsole({ go, session }) {
 
   function startEdit(h) {
     const rooms = {};
-    h.rooms.forEach(r => { rooms[r.roomTypeId] = { roomCode: r.roomCode || '', rateplanCode: r.rateplanCode || '' }; });
+    const defMeal = h.defaultMealPlanId || 'ep';
+    h.rooms.forEach(r => {
+      // Editable shape: roomCode + a list of rate plans. A legacy single
+      // rateplanCode becomes one double / default-meal-plan plan.
+      let ratePlans = Array.isArray(r.ratePlans) && r.ratePlans.length
+        ? r.ratePlans.map(p => ({ code: p.code || '', mealPlanId: p.mealPlanId || defMeal, occupancy: p.occupancy === 'single' ? 'single' : 'double' }))
+        : [];
+      if (!ratePlans.length && (r.rateplanCode || '').trim()) {
+        ratePlans = [{ code: r.rateplanCode, mealPlanId: defMeal, occupancy: 'double' }];
+      }
+      rooms[r.roomTypeId] = { roomCode: r.roomCode || '', ratePlans };
+    });
     setDraft({ hotelCode: h.hotelCode || '', rooms });
     setSaveMsg(null);
     setEditing(h.id);
   }
-  function setRoom(id, field, val) {
-    setDraft(d => ({ ...d, rooms: { ...d.rooms, [id]: { ...(d.rooms[id] || {}), [field]: val } } }));
+  function setRoomCode(id, val) {
+    setDraft(d => ({ ...d, rooms: { ...d.rooms, [id]: { ...(d.rooms[id] || { ratePlans: [] }), roomCode: val } } }));
   }
+  function mutatePlans(id, fn) {
+    setDraft(d => {
+      const room = d.rooms[id] || { roomCode: '', ratePlans: [] };
+      return { ...d, rooms: { ...d.rooms, [id]: { ...room, ratePlans: fn(room.ratePlans || []) } } };
+    });
+  }
+  const addRatePlan = (id, defMeal) => mutatePlans(id, ps => [...ps, { code: '', mealPlanId: defMeal || 'ep', occupancy: 'double' }]);
+  const setRatePlan = (id, idx, field, val) => mutatePlans(id, ps => ps.map((p, i) => i === idx ? { ...p, [field]: val } : p));
+  const removeRatePlan = (id, idx) => mutatePlans(id, ps => ps.filter((_, i) => i !== idx));
+
   async function save(h) {
     setSaving(true);
     setSaveMsg(null);
-    const r = await call({ action: 'setMapping', propertyId: h.id, hotelCode: (draft.hotelCode || '').trim(), rooms: draft.rooms });
+    // Sanitise: trim codes, drop blank rate plans, keep only rooms with a code.
+    const cleanRooms = {};
+    Object.keys(draft.rooms || {}).forEach(rid => {
+      const room = draft.rooms[rid] || {};
+      const roomCode = (room.roomCode || '').trim();
+      if (!roomCode) return;
+      const ratePlans = (room.ratePlans || [])
+        .filter(p => (p.code || '').trim())
+        .map(p => ({ code: p.code.trim(), mealPlanId: p.mealPlanId || 'ep', occupancy: p.occupancy === 'single' ? 'single' : 'double' }));
+      cleanRooms[rid] = { roomCode, ratePlans };
+    });
+    const r = await call({ action: 'setMapping', propertyId: h.id, hotelCode: (draft.hotelCode || '').trim(), rooms: cleanRooms });
     setSaving(false);
     if (r.status === 200 && r.data && r.data.ok) {
       setEditing(null);
@@ -194,15 +240,34 @@ export default function OperatorConsole({ go, session }) {
                   <div style={{ height: 12 }} />
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: T.ink2, marginBottom: 8 }}>Room → AIOSELL codes</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {h.rooms.map(r => (
-                      <div key={r.roomTypeId} style={{ border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: 10 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink, marginBottom: 8 }}>{r.name}</div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <Field label="Room code" value={(draft.rooms[r.roomTypeId] || {}).roomCode || ''} onChange={(e) => setRoom(r.roomTypeId, 'roomCode', e.target.value)} placeholder="executive" style={{ flex: 1 }} />
-                          <Field label="Rate plan code" value={(draft.rooms[r.roomTypeId] || {}).rateplanCode || ''} onChange={(e) => setRoom(r.roomTypeId, 'rateplanCode', e.target.value)} placeholder="executive-s-ep" style={{ flex: 1 }} />
+                    {h.rooms.map(r => {
+                      const room = draft.rooms[r.roomTypeId] || { roomCode: '', ratePlans: [] };
+                      const mealOpts = (h.mealPlans && h.mealPlans.length ? h.mealPlans : [{ id: 'ep', label: 'Room only' }])
+                        .map(m => ({ value: m.id, label: m.label || m.code || m.id }));
+                      return (
+                        <div key={r.roomTypeId} style={{ border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: 10 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink, marginBottom: 8 }}>{r.name}</div>
+                          <Field label="AIOSELL room code" value={room.roomCode || ''} onChange={(e) => setRoomCode(r.roomTypeId, e.target.value)} placeholder="executive" />
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: T.ink3, margin: '10px 0 6px' }}>RATE PLANS (one per package you sell on OTAs)</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {(room.ratePlans || []).map((pl, idx) => (
+                              <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                                <Field label={idx === 0 ? 'AIOSELL code' : ''} value={pl.code || ''} onChange={(e) => setRatePlan(r.roomTypeId, idx, 'code', e.target.value)} placeholder="executive-d-cp" style={{ flex: 1.5 }} />
+                                <SelectField label={idx === 0 ? 'Meal' : ''} value={pl.mealPlanId || 'ep'} onChange={(e) => setRatePlan(r.roomTypeId, idx, 'mealPlanId', e.target.value)} options={mealOpts} />
+                                <SelectField label={idx === 0 ? 'Guests' : ''} value={pl.occupancy || 'double'} onChange={(e) => setRatePlan(r.roomTypeId, idx, 'occupancy', e.target.value)} options={[{ value: 'double', label: '2' }, { value: 'single', label: '1' }]} />
+                                <button onClick={() => removeRatePlan(r.roomTypeId, idx)} title="Remove" style={{ height: 44, width: 32, flexShrink: 0, border: `1px solid ${T.borderSoft}`, background: T.card, borderRadius: 8, color: T.ink3, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                              </div>
+                            ))}
+                            {(!room.ratePlans || room.ratePlans.length === 0) && (
+                              <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>No rate plans yet — add the packages this room is sold as.</div>
+                            )}
+                          </div>
+                          <div style={{ marginTop: 8 }}>
+                            <Btn variant="ghost" size="sm" onClick={() => addRatePlan(r.roomTypeId, h.defaultMealPlanId)}>+ Add rate plan</Btn>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   {saveMsg && <div style={{ marginTop: 10, fontSize: 11.5, color: T.danger, fontWeight: 600 }}>{saveMsg}</div>}
                   <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>

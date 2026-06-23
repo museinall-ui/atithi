@@ -27,11 +27,21 @@ export function aiosellMappingFromProperty(property, roomTypes) {
   const rooms = aio.rooms || {};
   const list = (roomTypes || [])
     .filter(rt => rooms[rt.id] && (rooms[rt.id].roomCode || '').trim())
-    .map(rt => ({
-      roomTypeId: rt.id,
-      roomCode: (rooms[rt.id].roomCode || '').trim(),
-      rateplanCode: (rooms[rt.id].rateplanCode || '').trim(),
-    }));
+    .map(rt => {
+      const cfg = rooms[rt.id];
+      // New shape: an explicit list of rate plans, each { code, mealPlanId,
+      // occupancy }. Back-compat: a single legacy `rateplanCode` becomes one
+      // double-occupancy, default-meal-plan rate plan.
+      let ratePlans = Array.isArray(cfg.ratePlans)
+        ? cfg.ratePlans
+            .filter(p => p && (p.code || '').trim())
+            .map(p => ({ code: (p.code || '').trim(), mealPlanId: p.mealPlanId || null, occupancy: p.occupancy === 'single' ? 'single' : 'double' }))
+        : [];
+      if (!ratePlans.length && (cfg.rateplanCode || '').trim()) {
+        ratePlans = [{ code: (cfg.rateplanCode || '').trim(), mealPlanId: null, occupancy: 'double' }];
+      }
+      return { roomTypeId: rt.id, roomCode: (cfg.roomCode || '').trim(), ratePlans };
+    });
   return { hotelCode: (aio.hotelCode || '').trim(), rooms: list };
 }
 
@@ -96,7 +106,7 @@ export async function syncPropertyToAiosell({ property, bookings, overrides, roo
   const inventory = await postPush({ kind: 'inventory', payload: invPayload, session, propertyId });
 
   let rates = null;
-  if (mapping.rooms.some(r => r.rateplanCode)) {
+  if (mapping.rooms.some(r => Array.isArray(r.ratePlans) && r.ratePlans.length)) {
     const ratePayload = buildRatePush(
       mapping.hotelCode,
       computeRateUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days: horizon }),

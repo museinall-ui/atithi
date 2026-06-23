@@ -75,6 +75,37 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
     });
   };
 
+  // Per-OTA rules (min-stay override + pause). Stored on accountant.channelRules
+  // (no migration); the channel manager reads them per OTA when pushing.
+  const channelRules = (property.accountant && property.accountant.channelRules) || {};
+  const OTA_LIST = [
+    { id: 'mmt', name: 'MakeMyTrip' },
+    { id: 'goibibo', name: 'Goibibo' },
+    { id: 'booking', name: 'Booking.com' },
+    { id: 'agoda', name: 'Agoda' },
+    { id: 'airbnb', name: 'Airbnb' },
+  ];
+  const setChannelRule = (ota, patch) => {
+    if (!canEdit) return;
+    onChangeProperty(p => {
+      const acc = p.accountant || {};
+      const all = { ...(acc.channelRules || {}) };
+      all[ota] = { ...(all[ota] || {}), ...patch };
+      return { ...p, accountant: { ...acc, channelRules: all } };
+    });
+  };
+  const setChannelMinNights = (ota, patch) => {
+    if (!canEdit) return;
+    onChangeProperty(p => {
+      const acc = p.accountant || {};
+      const all = { ...(acc.channelRules || {}) };
+      const cur = all[ota] || {};
+      const curMin = cur.minNights || { enabled: false, weekend: 2, allDays: 1 };
+      all[ota] = { ...cur, minNights: { ...curMin, ...patch } };
+      return { ...p, accountant: { ...acc, channelRules: all } };
+    });
+  };
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <ScreenHeader title={t('advancedTitle')} subtitle={t('advancedSub')} onBack={() => go('__back')} />
@@ -114,6 +145,52 @@ export default function AdvancedSettings({ go, t, property, onChangeProperty, ca
               </div>
             </div>
           )}
+        </Card>
+
+        {/* ── Per-channel (OTA) rules ───────────────────────────── */}
+        <Card padding={14} style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Per-channel rules</div>
+          <div style={{ fontSize: 11.5, color: T.ink3, marginTop: 3, lineHeight: 1.45 }}>
+            Pause an OTA, or give it a different minimum-stay. Leave a channel untouched to use your default rules above.
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {OTA_LIST.map(o => {
+              const cr = channelRules[o.id] || {};
+              const cm = cr.minNights || { enabled: false, weekend: 2, allDays: 1 };
+              return (
+                <div key={o.id} style={{ border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{o.name}</div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: T.ink3, fontWeight: 600 }}>
+                      Pause<Toggle on={!!cr.paused} onChange={(v) => setChannelRule(o.id, { paused: v })} />
+                    </label>
+                  </div>
+                  {cr.paused ? (
+                    <div style={{ marginTop: 8, fontSize: 10.5, color: '#b45309', fontWeight: 600 }}>Paused — not selling on this OTA.</div>
+                  ) : (
+                    <div style={{ marginTop: 10 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: T.ink2, fontWeight: 600 }}>Custom minimum-stay</span>
+                        <Toggle on={!!cm.enabled} onChange={(v) => setChannelMinNights(o.id, { enabled: v })} />
+                      </label>
+                      {cm.enabled && (
+                        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 12, color: T.ink }}>Weekend nights</span>
+                            <Stepper value={cm.weekend} onChange={(n) => setChannelMinNights(o.id, { weekend: n })} disabled={!canEdit} />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 12, color: T.ink }}>Other days</span>
+                            <Stepper value={cm.allDays} onChange={(n) => setChannelMinNights(o.id, { allDays: n })} disabled={!canEdit} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </Card>
 
         {/* ── Multiple rate plans (master toggle) ───────────────── */}

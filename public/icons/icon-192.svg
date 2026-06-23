@@ -5,12 +5,11 @@
       <stop offset="1" stop-color="#8E2D1A"/>
     </linearGradient>
   </defs>
-  <!-- Maskable safe zone: full 192x192 fill. App content sits inside the
-       central 80% so iOS/Android crops never clip the brand letter. -->
+  <!-- Full-bleed fill keeps the PWA maskable safe-zone intact. The brand mark is
+       the Devanagari अ (Atithi = guest), matching the in-app Logo + Sign In —
+       was previously a Latin "A", which didn't match the logo. -->
   <rect width="192" height="192" fill="url(#bg)"/>
-  <text x="96" y="118" font-family="Georgia, 'Times New Roman', serif"
-        font-size="120" font-weight="800" fill="#ffffff"
-        text-anchor="middle" letter-spacing="-4">A</text>
-  <!-- A small underline mark, evokes the diary -->
-  <rect x="56" y="138" width="80" height="3.5" fill="#ffffff" opacity="0.85" rx="2"/>
+  <text x="96" y="100" font-family="'Noto Sans Devanagari','Nirmala UI','Mangal','Kohinoor Devanagari',sans-serif"
+        font-size="116" font-weight="700" fill="#ffffff"
+        text-anchor="middle" dominant-baseline="central">अ</text>
 </svg>

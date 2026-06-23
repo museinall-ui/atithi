@@ -1921,7 +1921,7 @@ export default function App() {
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
     case 'rates':             screen = can('manage_rates')    ? <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} /> : <PermissionDenied go={go} t={t} action="edit the rate calendar" />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} can={can} />; break;
-    case 'channels':          screen = <Channels go={go} t={t} />; break;
+    case 'channels':          screen = <Channels go={go} t={t} property={property} plan={plan} />; break;
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} session={session} propertyId={propertyId} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;
     case 'settings':          screen = <Settings go={go} plan={plan} onChangePlan={setPlan} lang={lang} onChangeLang={setLang} property={property} onChangeProperty={setProperty} savedExtras={savedCustomExtras} onChangeSavedExtras={setSavedCustomExtras} bookings={bookings} t={t} session={session} propertyId={propertyId} onSignOut={supaSignOut} can={can} />; break;
     case 'advanced':          screen = can('manage_settings') ? <AdvancedSettings go={go} t={t} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="change advanced settings" />; break;

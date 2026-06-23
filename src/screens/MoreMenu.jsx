@@ -7,11 +7,11 @@ export default function MoreMenu({ go, t, can = () => true }) {
   // Hide tiles for screens this user can't open. Settings stays visible
   // for everyone (the EDIT pill inside is what's gated by manage_settings
   // — language / plan / sign-out remain accessible to all team members).
-  // Channels is also always visible because it's just a "coming soon"
-  // placeholder; no point hiding it from anyone.
+  // Channels is always visible — it's the AIOSELL connect / room-mapping
+  // screen; the actual push is permission-gated inside it (manage_rates).
   const items = [
     can('manage_rates')    && { id: 'rates',    icon: 'tag',   color: T.primary, title: t('ratesTitle'),    sub: 'Daily rates · close-outs' },
-    { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'OTAs · coming soon' },
+    { id: 'channels', icon: 'plug',  color: T.indigo,  title: t('channelsTitle'), sub: 'OTAs · rates & availability' },
     can('view_reports')    && { id: 'reports',  icon: 'chart', color: T.teal,    title: t('reportsTitle'),  sub: 'Money earned · rooms full · invoicing' },
     can('manage_expenses') && { id: 'expenses', icon: 'inr',   color: 'oklch(55% 0.15 30)', title: 'Expenses', sub: 'Daily costs · ledger · by category' },
     can('view_reports')    && { id: 'activity', icon: 'clock', color: 'oklch(50% 0.14 265)', title: 'Activity log', sub: 'Who did what · when · timestamped' },

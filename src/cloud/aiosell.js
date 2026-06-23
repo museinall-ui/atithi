@@ -295,55 +295,73 @@ export function computeRateUpdates({ property, rateOverrides = null, mapping, fr
   return updates;
 }
 
-// Min length-of-stay for a single day, from Advanced Settings
-// (accountant.minNights = { enabled, weekend, allDays }). Weekend days (per the
-// property's weekendRules) get the weekend minimum; others the all-days minimum.
-// Returns null when min-stay is off or the value is the trivial 1 (no restriction).
-function minLosForDay(property, dayIdx) {
-  const ml = property && property.accountant && property.accountant.minNights;
+// Min length-of-stay for a single day from a minNights config
+// ({ enabled, weekend, allDays }). Weekend days (per weekendDays) get the weekend
+// minimum; others the all-days minimum. Null when off or the trivial 1.
+function minLosFromCfg(ml, weekendDays, dayIdx) {
   if (!ml || !ml.enabled) return null;
   const d = new Date(ANCHOR);
   d.setDate(d.getDate() + dayIdx);
-  const weekendDays = (property && property.weekendRules && property.weekendRules.weekendDays) || [0, 6];
-  const v = weekendDays.includes(d.getDay()) ? (ml.weekend || 0) : (ml.allDays || 0);
+  const v = (weekendDays || [0, 6]).includes(d.getDay()) ? (ml.weekend || 0) : (ml.allDays || 0);
   return v > 1 ? v : null;
 }
 
-// Does the property have ANY restriction worth pushing over the horizon — a
-// real min-stay (>1) enabled, or at least one whole-type close-out in range?
-// Used to skip restriction pushes entirely for properties that don't use them.
-export function hasRestrictions(property, rateOverrides, mapping, fromIdx = 0, days = 365) {
-  const ml = property && property.accountant && property.accountant.minNights;
+// The OTA channels (internal ids) that restrictions are pushed to / varied across.
+export const RESTRICTION_OTAS = ['mmt', 'goibibo', 'booking', 'agoda', 'airbnb'];
+
+// Effective restriction rules for one OTA: its per-channel min-stay override
+// (accountant.channelRules[ota].minNights) or the property default, plus whether
+// the hotelier has paused selling on that OTA entirely.
+export function channelRulesFor(property, otaKey) {
+  const all = (property && property.accountant && property.accountant.channelRules) || {};
+  const ov = all[otaKey] || {};
+  const def = (property && property.accountant && property.accountant.minNights) || null;
+  const minNights = (ov.minNights && typeof ov.minNights === 'object') ? ov.minNights : def;
+  return { minNights: minNights || { enabled: false }, paused: !!ov.paused };
+}
+
+// Whether a given OTA has any restriction to push — paused, a real min-stay (>1),
+// or any whole-type close-out in range (close-outs are uniform across OTAs).
+export function otaHasRestrictions(property, rateOverrides, mapping, fromIdx, days, rules) {
+  if (rules && rules.paused) return true;
+  const ml = rules && rules.minNights;
   if (ml && ml.enabled && ((ml.weekend || 0) > 1 || (ml.allDays || 0) > 1)) return true;
   const rooms = (mapping && mapping.rooms) || [];
-  if (!rateOverrides) return false;
-  for (let i = 0; i < days; i++) {
-    const idx = fromIdx + i;
-    for (const rm of rooms) {
-      const ov = rateOverrides[`${rm.roomTypeId}:${idx}`];
-      if (ov && ov.closed) return true;
+  if (rateOverrides) {
+    for (let i = 0; i < days; i++) {
+      const idx = fromIdx + i;
+      for (const rm of rooms) {
+        const ov = rateOverrides[`${rm.roomTypeId}:${idx}`];
+        if (ov && ov.closed) return true;
+      }
     }
   }
   return false;
 }
 
-// Build AIOSELL inventory-restriction `updates[]` (room-level) from close-outs
-// (stop-sell) + the Advanced-Settings min-stay. One block per day; every mapped
-// room carries the FULL normalised restriction shape (unset fields sent as
-// explicit null per the spec) so re-opening a date / clearing a min-stay
-// propagates too. Feed to buildInventoryRestrictionsPush(hotelCode, toChannels, …).
-export function computeInventoryRestrictionUpdates({ property, rateOverrides = null, mapping, fromIdx = 0, days = 365 }) {
+// Property-wide check (any OTA has restrictions). Gate before the per-OTA loop.
+export function hasRestrictions(property, rateOverrides, mapping, fromIdx = 0, days = 365) {
+  return RESTRICTION_OTAS.some(ota => otaHasRestrictions(property, rateOverrides, mapping, fromIdx, days, channelRulesFor(property, ota)));
+}
+
+// Build AIOSELL inventory-restriction `updates[]` (room-level). stop-sell comes
+// from close-outs OR a channel pause; min-stay from the passed minNightsCfg (a
+// per-OTA override or the default). Full normalised shape per day so re-opening /
+// clearing propagates. Feed to buildInventoryRestrictionsPush(hotelCode, [ota], …).
+export function computeInventoryRestrictionUpdates({ property, rateOverrides = null, mapping, fromIdx = 0, days = 365, minNightsCfg = null, paused = false }) {
   const roomMap = (mapping && mapping.rooms) || [];
+  const weekendDays = (property && property.weekendRules && property.weekendRules.weekendDays) || [0, 6];
+  const ml = minNightsCfg || (property && property.accountant && property.accountant.minNights) || null;
   const updates = [];
   for (let i = 0; i < days; i++) {
     const idx = fromIdx + i;
-    const minLos = minLosForDay(property, idx);
+    const minLos = minLosFromCfg(ml, weekendDays, idx);
     const rooms = [];
     for (const rm of roomMap) {
       const ov = rateOverrides ? rateOverrides[`${rm.roomTypeId}:${idx}`] : null;
       rooms.push({
         roomCode: rm.roomCode,
-        restrictions: normaliseRestrictions({ stopSell: !!(ov && ov.closed), minimumStay: minLos }),
+        restrictions: normaliseRestrictions({ stopSell: paused || !!(ov && ov.closed), minimumStay: minLos }),
       });
     }
     updates.push({ startDate: idxToDate(idx), endDate: idxToDate(idx), rooms });

@@ -11,13 +11,9 @@
 import {
   computeInventoryUpdates, computeRateUpdates,
   buildInventoryPush, buildRatePush,
-  buildInventoryRestrictionsPush, computeInventoryRestrictionUpdates, hasRestrictions,
+  buildInventoryRestrictionsPush, computeInventoryRestrictionUpdates,
+  RESTRICTION_OTAS, channelRulesFor, otaHasRestrictions, internalChannelToAiosell,
 } from './aiosell.js';
-
-// OTA channels we push stay-restrictions to by default. AtithiBook doesn't yet
-// have per-property channel selection, so restrictions apply across the OTAs we
-// know about. (Restriction pushes require an explicit toChannels list per spec.)
-export const DEFAULT_RESTRICTION_CHANNELS = ['booking.com', 'makemytrip', 'goibibo', 'agoda', 'airbnb'];
 
 // Build the translator mapping from the operator-set config on the property.
 // `roomTypes` is effectiveRoomTypes(property) (passed in to avoid re-importing
@@ -114,17 +110,22 @@ export async function syncPropertyToAiosell({ property, bookings, overrides, roo
     rates = await postPush({ kind: 'rates', payload: ratePayload, session, propertyId });
   }
 
-  // Stay restrictions (stop-sell from close-outs + min-stay from Advanced
-  // Settings). Skipped entirely when the property uses no restrictions, so we
-  // don't push a horizon of all-null rows.
+  // Stay restrictions, pushed PER OTA so each can carry its own min-stay
+  // override / channel pause (close-outs are uniform across OTAs). Skips OTAs
+  // with nothing to push, so we never send a horizon of all-null rows.
   let restrictions = null;
-  if (hasRestrictions(property, overrides, mapping, 0, horizon)) {
-    const restrPayload = buildInventoryRestrictionsPush(
-      mapping.hotelCode,
-      DEFAULT_RESTRICTION_CHANNELS,
-      computeInventoryRestrictionUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days: horizon }),
-    );
-    restrictions = await postPush({ kind: 'inventoryRestrictions', payload: restrPayload, session, propertyId });
+  const restrResults = [];
+  for (const ota of RESTRICTION_OTAS) {
+    const rules = channelRulesFor(property, ota);
+    if (!otaHasRestrictions(property, overrides, mapping, 0, horizon, rules)) continue;
+    const chan = internalChannelToAiosell(ota);
+    if (!chan) continue;
+    const updates = computeInventoryRestrictionUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days: horizon, minNightsCfg: rules.minNights, paused: rules.paused });
+    const r = await postPush({ kind: 'inventoryRestrictions', payload: buildInventoryRestrictionsPush(mapping.hotelCode, [chan], updates), session, propertyId });
+    restrResults.push(r);
+  }
+  if (restrResults.length) {
+    restrictions = restrResults.find(r => !(r.status === 200 && r.data && r.data.ok)) || restrResults[0];
   }
 
   return { inventory, rates, restrictions, days: horizon };

@@ -111,7 +111,8 @@ function buildRow(payload, propertyId, mapping) {
   const addr = guest.address || {};
   const adults = roomItems.reduce((s, r) => s + (r.adults || 0), 0) || 1;
   const children = roomItems.reduce((s, r) => s + (r.children || 0), 0);
-  const country = (String(addr.country || '').trim().toLowerCase() === 'india') ? 'IN' : (addr.country || 'IN');
+  const cc = String(addr.country || '').trim().toLowerCase();
+  const country = (!cc || cc === 'india' || cc === 'in') ? 'IN' : String(addr.country).trim();
   const channel = mapChannel(payload.channel);
 
   return {
@@ -191,6 +192,26 @@ async function recordOtaPaymentAndNotify(sb, req, propertyId, bookingId, row) {
   } catch { /* best-effort */ }
 }
 
+// On a modify, reconcile the prepaid OTA ledger row to the NEW amount so Reports'
+// cash-basis P&L (which sums payments[], not booking.paid) stays in step: drop any
+// prior 'ota' row for this booking, then write the current prepaid amount if any.
+async function reconcileOtaPayment(sb, propertyId, bookingId, paid) {
+  if (!bookingId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/payments?booking_id=eq.${encodeURIComponent(bookingId)}&method=eq.ota`, {
+      method: 'DELETE', headers: { ...sb, Prefer: 'return=minimal' },
+    });
+  } catch { /* best-effort */ }
+  if ((paid || 0) > 0) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+        method: 'POST', headers: { ...sb, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ booking_id: bookingId, property_id: propertyId, kind: 'payment', method: 'ota', amount: paid, note: 'OTA prepaid (updated)' }),
+      });
+    } catch { /* best-effort */ }
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -268,10 +289,12 @@ export default async function handler(req, res) {
     // the Diary) — drop it into the first category and flag the original code in
     // the notes so the hotelier + we can fix the mapping.
     let categories = [];
-    try {
-      const cr = await fetch(`${SUPABASE_URL}/rest/v1/room_categories?property_id=eq.${encodeURIComponent(propertyId)}&select=code,units&order=sort_order`, { headers: sb });
-      if (cr.ok) categories = await cr.json();
-    } catch { /* ignore — fall through */ }
+    for (let attempt = 0; attempt < 2 && categories.length === 0; attempt++) {
+      try {
+        const cr = await fetch(`${SUPABASE_URL}/rest/v1/room_categories?property_id=eq.${encodeURIComponent(propertyId)}&select=code,units&order=sort_order`, { headers: sb });
+        if (cr.ok) categories = await cr.json();
+      } catch { /* retry once — a transient blip must not reject the booking */ }
+    }
     const validCodes = new Set((categories || []).map(c => c.code));
     if (categories.length && !validCodes.has(row.room_category_code)) {
       const original = row.room_category_code;
@@ -289,6 +312,7 @@ export default async function handler(req, res) {
         body: JSON.stringify(patch),
       });
       if (!ur.ok) return res.status(502).json({ success: false, message: 'Update failed', detail: (await ur.text()).slice(0, 200) });
+      await reconcileOtaPayment(sb, propertyId, existing.id, row.paid);
       return res.status(200).json({ success: true, message: 'Reservation Updated Successfully' });
     }
 
@@ -307,6 +331,21 @@ export default async function handler(req, res) {
         ir = await doInsert(stripped);
         if (!ir.ok) return res.status(502).json({ success: false, message: 'Insert failed', detail: (await ir.text()).slice(0, 200) });
         note = 'stored without OTA id — run migration 20260622 to enable modify/cancel';
+      } else if (/duplicate key|23505|unique constraint/i.test(txt)) {
+        // A concurrent delivery of the same reservation inserted first (the
+        // partial unique index won the race). Re-find that row and UPDATE it,
+        // instead of creating a second booking. Idempotent recovery.
+        const er2 = await fetch(`${SUPABASE_URL}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propertyId)}&ext_ota_id=eq.${encodeURIComponent(bookingId)}&select=id&limit=1`, { headers: sb });
+        const arr2 = er2.ok ? await er2.json() : [];
+        const dupId = arr2 && arr2[0] && arr2[0].id;
+        if (dupId) {
+          const { property_id, ...patch } = row;
+          patch.unit_idx = await pickUnit(sb, propertyId, row.room_category_code, row.start_date, row.nights, dupId, unitsForRoom);
+          await fetch(`${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(dupId)}`, { method: 'PATCH', headers: { ...sb, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+          await reconcileOtaPayment(sb, propertyId, dupId, row.paid);
+          return res.status(200).json({ success: true, message: 'Reservation Updated Successfully', id: dupId });
+        }
+        return res.status(200).json({ success: true, message: 'Duplicate ignored (already recorded)' });
       } else {
         return res.status(502).json({ success: false, message: 'Insert failed', detail: txt.slice(0, 200) });
       }

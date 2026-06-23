@@ -674,6 +674,9 @@ export default function App() {
   const aioSyncSig = useRef(null);
   const aioInFlightRef = useRef(false);
   const aioHealthRef = useRef(null);
+  const aioPendingRef = useRef(false);   // a change landed while a push was in flight
+  const aioRestrRef = useRef(false);     // did the last sync push restrictions (for clear-on-remove)
+  const [aioTick, setAioTick] = useState(0); // bump to re-arm the sync after an in-flight push
   const t = useT(lang);
 
   // Automatic channel-manager sync. AtithiBook is the service provider: once WE
@@ -700,7 +703,9 @@ export default function App() {
       ov: rateOverrides,
       cat: (property.categories || []).map(c => [c.id, c.base, c.units]),
       wk: property.weekendRules, se: property.seasons,
-      ml: property.accountant && property.accountant.minNights, aio,
+      ml: property.accountant && property.accountant.minNights,
+      cr: property.accountant && property.accountant.channelRules,   // per-OTA pause / min-stay must wake the sync
+      aio,
     });
     if (aioSyncSig.current === sig) return;   // already synced / syncing this state
 
@@ -708,7 +713,9 @@ export default function App() {
     const snap = { property, bookings, overrides: rateOverrides, session, propertyId };
     aioSyncTimer.current = setTimeout(async () => {
       aioSyncTimer.current = null;
-      if (aioInFlightRef.current) return;     // a push is already running; a later change re-fires
+      // If a push is already running, remember to re-run with the latest state
+      // once it finishes (instead of silently dropping this edit).
+      if (aioInFlightRef.current) { aioPendingRef.current = true; return; }
       aioInFlightRef.current = true;
       // Persist sync health only on a status transition (ok<->fail), so the
       // Operator Console can show it without churning the property row.
@@ -718,25 +725,31 @@ export default function App() {
         setProperty(prev => ({ ...prev, accountant: { ...(prev.accountant || {}), aiosellSync: { at: new Date().toISOString(), ok: okVal } } }));
       };
       try {
-        const r = await syncPropertyToAiosell({ ...snap, roomTypes: effectiveRoomTypes(snap.property) });
+        // clearRestrictions: if the last sync pushed restrictions, ask this one to
+        // push the (possibly all-clear) restriction range too, so removing the
+        // last restriction un-does the stale stop-sell/min-stay on AIOSELL.
+        const r = await syncPropertyToAiosell({ ...snap, roomTypes: effectiveRoomTypes(snap.property), clearRestrictions: aioRestrRef.current });
         const parts = [r.inventory, r.rates, r.restrictions].filter(Boolean);
         const dormant = parts.some(p => p && p.status === 503);
         const ok = !!r.skipped || dormant || (parts.length > 0 && parts.every(p => p && p.status === 200 && p.data && p.data.ok));
         // Commit the signature only on success/dormant — a real failure leaves it
         // uncommitted so the next change retries it.
         if (ok) aioSyncSig.current = sig;
+        aioRestrRef.current = !!r.hadRestrictions;
         persistHealth(ok);
       } catch {
         persistHealth(false);
       } finally {
         aioInFlightRef.current = false;
+        // Re-arm for any edit that arrived mid-flight (its sync was deferred).
+        if (aioPendingRef.current) { aioPendingRef.current = false; setAioTick(x => x + 1); }
       }
     }, 4500);
     // No cleanup-clear on purpose: this is the root App component (never unmounts
     // in practice), and clearing on every unrelated re-render would cancel a
     // legitimately-scheduled push. The timer is reset above only when a genuinely
     // new change arrives — the correct debounce.
-  }, [bookings, rateOverrides, property, plan, session, propertyId, cloudReady]);
+  }, [bookings, rateOverrides, property, plan, session, propertyId, cloudReady, aioTick]);
 
   // RBAC. `can(permission)` is the single helper every screen calls to
   // decide whether to show a button / open an action sheet. Resolves

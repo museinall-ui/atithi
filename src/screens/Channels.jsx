@@ -119,7 +119,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
     setSyncing(true);
     setResult(null);
 
-    const r = await syncPropertyToAiosell({ property, bookings, overrides, roomTypes, session, propertyId });
+    const r = await syncPropertyToAiosell({ property, bookings, overrides, roomTypes, session, propertyId, clearRestrictions: true });
     setSyncing(false);
 
     if (r.skipped) {

@@ -41,6 +41,8 @@ import Guests from './screens/Guests.jsx';
 import Settings from './screens/Settings.jsx';
 import AdvancedSettings from './screens/AdvancedSettings.jsx';
 import MoreMenu from './screens/MoreMenu.jsx';
+import OperatorConsole from './screens/OperatorConsole.jsx';
+import { isOperator } from './operator.js';
 import SignIn from './screens/SignIn.jsx';
 import Landing from './screens/Landing.jsx';
 import Legal from './screens/Legal.jsx';
@@ -1927,7 +1929,8 @@ export default function App() {
     case 'advanced':          screen = can('manage_settings') ? <AdvancedSettings go={go} t={t} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="change advanced settings" />; break;
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
-    case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
+    case 'more':              screen = <MoreMenu go={go} t={t} can={can} isOperator={isOperator(session)} />; break;
+    case 'ops':               screen = <OperatorConsole go={go} session={session} />; break;
     case 'terms':             screen = <Legal tab="terms"   go={go} />; break;
     case 'privacy':           screen = <Legal tab="privacy" go={go} />; break;
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />;

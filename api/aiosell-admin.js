@@ -94,7 +94,8 @@ export default async function handler(req, res) {
         const hotelCode = aio.hotelCode || '';
         const configured = !!(hotelCode && mappedCount > 0);
         const status = configured ? (platformConnected ? 'active' : 'mapped_offline') : 'unmapped';
-        return { id: p.id, name: p.name || '(unnamed property)', hotelCode, rooms: rows, mappedCount, totalRooms: rows.length, status };
+        const syncHealth = (p.accountant && p.accountant.aiosellSync) || null; // { at, ok } from the client auto-sync
+        return { id: p.id, name: p.name || '(unnamed property)', hotelCode, rooms: rows, mappedCount, totalRooms: rows.length, status, syncHealth };
       });
       hotels.sort((a, b) => a.name.localeCompare(b.name));
       return res.status(200).json({ ok: true, platformConnected, hotels });

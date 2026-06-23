@@ -672,6 +672,8 @@ export default function App() {
   // AIOSELL auto-sync: debounce timer + a signature of the last-synced state.
   const aioSyncTimer = useRef(null);
   const aioSyncSig = useRef(null);
+  const aioInFlightRef = useRef(false);
+  const aioHealthRef = useRef(null);
   const t = useT(lang);
 
   // Automatic channel-manager sync. AtithiBook is the service provider: once WE
@@ -700,15 +702,35 @@ export default function App() {
       wk: property.weekendRules, se: property.seasons,
       ml: property.accountant && property.accountant.minNights, aio,
     });
-    if (aioSyncSig.current === sig) return;   // nothing sync-relevant changed
-    aioSyncSig.current = sig;
+    if (aioSyncSig.current === sig) return;   // already synced / syncing this state
 
     if (aioSyncTimer.current) clearTimeout(aioSyncTimer.current);
     const snap = { property, bookings, overrides: rateOverrides, session, propertyId };
-    aioSyncTimer.current = setTimeout(() => {
+    aioSyncTimer.current = setTimeout(async () => {
       aioSyncTimer.current = null;
-      syncPropertyToAiosell({ ...snap, roomTypes: effectiveRoomTypes(snap.property) })
-        .catch(() => { /* background sync is best-effort */ });
+      if (aioInFlightRef.current) return;     // a push is already running; a later change re-fires
+      aioInFlightRef.current = true;
+      // Persist sync health only on a status transition (ok<->fail), so the
+      // Operator Console can show it without churning the property row.
+      const persistHealth = (okVal) => {
+        if (aioHealthRef.current === okVal) return;
+        aioHealthRef.current = okVal;
+        setProperty(prev => ({ ...prev, accountant: { ...(prev.accountant || {}), aiosellSync: { at: new Date().toISOString(), ok: okVal } } }));
+      };
+      try {
+        const r = await syncPropertyToAiosell({ ...snap, roomTypes: effectiveRoomTypes(snap.property) });
+        const parts = [r.inventory, r.rates, r.restrictions].filter(Boolean);
+        const dormant = parts.some(p => p && p.status === 503);
+        const ok = !!r.skipped || dormant || (parts.length > 0 && parts.every(p => p && p.status === 200 && p.data && p.data.ok));
+        // Commit the signature only on success/dormant — a real failure leaves it
+        // uncommitted so the next change retries it.
+        if (ok) aioSyncSig.current = sig;
+        persistHealth(ok);
+      } catch {
+        persistHealth(false);
+      } finally {
+        aioInFlightRef.current = false;
+      }
     }, 4500);
     // No cleanup-clear on purpose: this is the root App component (never unmounts
     // in practice), and clearing on every unrelated re-render would cancel a

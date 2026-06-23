@@ -21,6 +21,7 @@ import { acceptPendingInvitesForUser, loadMyMembership } from './cloud/team.js';
 import { logActivity } from './cloud/activity.js';
 import { effectivePermissions } from './components/TeamSection.jsx';
 import { syncCloud, syncFire, notifySyncFailure } from './cloud/sync.js';
+import { syncPropertyToAiosell } from './cloud/aiosellSync.js';
 import SyncOverlay from './components/SyncOverlay.jsx';
 import SearchOverlay from './components/SearchOverlay.jsx';
 import InstallPrompt from './components/InstallPrompt.jsx';
@@ -668,7 +669,50 @@ export default function App() {
   const savedExtrasRef = useRef(savedCustomExtras);
   const rateOverridesRef = useRef(rateOverrides);
   const cashClosesRef = useRef(cashCloses);
+  // AIOSELL auto-sync: debounce timer + a signature of the last-synced state.
+  const aioSyncTimer = useRef(null);
+  const aioSyncSig = useRef(null);
   const t = useT(lang);
+
+  // Automatic channel-manager sync. AtithiBook is the service provider: once WE
+  // have set up a hotel's AIOSELL mapping (accountant.aiosell) and they're on a
+  // channels plan, their rates + availability push to the OTAs on their own a few
+  // seconds after any change — so "Sync now" on the Channels screen is just a
+  // manual backup. Guards keep it dormant otherwise (demo, signed-out, no cloud,
+  // not on plan, not mapped), and the push itself 503s harmlessly until the
+  // AIOSELL login is set, so this is safe to ship before go-live. We only fire
+  // when the sync-relevant slice of state actually changed, and debounce so a
+  // burst of edits collapses into a single push of the full year ahead.
+  useEffect(() => {
+    if (DEMO_MODE || !session || !propertyId || !cloudReady) return;
+    const onPlan = plan === 'channels' || plan === 'invoicing';
+    if (!onPlan) return;
+    const aio = property && property.accountant && property.accountant.aiosell;
+    const configured = !!(aio && aio.hotelCode && aio.rooms &&
+      Object.keys(aio.rooms).some(k => aio.rooms[k] && aio.rooms[k].roomCode));
+    if (!configured) return;
+
+    const sig = JSON.stringify({
+      bk: (bookings || []).map(b => [b.id, b.startIdx, b.nights, b.roomTypeId, b.status, b.unitIdx, b.roomItems]),
+      ov: rateOverrides,
+      cat: (property.categories || []).map(c => [c.id, c.base, c.units]),
+      wk: property.weekendRules, se: property.seasons, aio,
+    });
+    if (aioSyncSig.current === sig) return;   // nothing sync-relevant changed
+    aioSyncSig.current = sig;
+
+    if (aioSyncTimer.current) clearTimeout(aioSyncTimer.current);
+    const snap = { property, bookings, overrides: rateOverrides, session, propertyId };
+    aioSyncTimer.current = setTimeout(() => {
+      aioSyncTimer.current = null;
+      syncPropertyToAiosell({ ...snap, roomTypes: effectiveRoomTypes(snap.property) })
+        .catch(() => { /* background sync is best-effort */ });
+    }, 4500);
+    // No cleanup-clear on purpose: this is the root App component (never unmounts
+    // in practice), and clearing on every unrelated re-render would cancel a
+    // legitimately-scheduled push. The timer is reset above only when a genuinely
+    // new change arrives — the correct debounce.
+  }, [bookings, rateOverrides, property, plan, session, propertyId, cloudReady]);
 
   // RBAC. `can(permission)` is the single helper every screen calls to
   // decide whether to show a button / open an action sheet. Resolves

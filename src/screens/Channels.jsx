@@ -5,10 +5,7 @@ import Card from '../components/Card.jsx';
 import Btn from '../components/Btn.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 import { effectiveRoomTypes } from '../data.js';
-import {
-  computeInventoryUpdates, computeRateUpdates,
-  buildInventoryPush, buildRatePush,
-} from '../cloud/aiosell.js';
+import { syncPropertyToAiosell } from '../cloud/aiosellSync.js';
 
 // Phase 5, Chunk 3 — hotelier-facing Channel Manager screen.
 //
@@ -110,35 +107,8 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
 
   const propName = (property && property.profile && property.profile.name) || 'your property';
 
-  // The mapping the translator needs — derived from operator config.
-  const mapping = {
-    hotelCode: (aio.hotelCode || '').trim(),
-    rooms: mappedRoomTypes.map(rt => ({
-      roomTypeId: rt.id,
-      roomCode: (rooms[rt.id].roomCode || '').trim(),
-      rateplanCode: (rooms[rt.id].rateplanCode || '').trim(),
-    })),
-  };
-
-  async function pushOne(kind, payload) {
-    const ac = new AbortController();
-    const timeoutId = setTimeout(() => ac.abort(), 20000);
-    try {
-      const resp = await fetch('/api/aiosell-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || '') },
-        body: JSON.stringify({ propertyId, kind, payload }),
-        signal: ac.signal,
-      });
-      const data = await resp.json().catch(() => ({}));
-      return { status: resp.status, data };
-    } catch (e) {
-      return { status: 0, data: { error: String(e?.message || e) } };
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
+  // Manual "Sync now" runs the same shared push as the automatic background sync
+  // in App.jsx (inventory + rates + restrictions), so the two never diverge.
   async function syncNow() {
     if (!session || !session.access_token) {
       setResult({ tone: 'err', msg: 'Please sign in to sync.' });
@@ -147,18 +117,18 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
     setSyncing(true);
     setResult(null);
 
-    const invUpdates = computeInventoryUpdates({ property, bookings, mapping, fromIdx: 0, days: SYNC_DAYS, rateOverrides: overrides });
-    const r1 = await pushOne('inventory', buildInventoryPush(mapping.hotelCode, invUpdates));
-
-    const rateUpdates = computeRateUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days: SYNC_DAYS });
-    const r2 = await pushOne('rates', buildRatePush(mapping.hotelCode, rateUpdates));
-
+    const r = await syncPropertyToAiosell({ property, bookings, overrides, roomTypes, session, propertyId, days: SYNC_DAYS });
     setSyncing(false);
-    const both = [r1, r2];
-    const dormant = both.some(r => r.status === 503 && r.data && r.data.code === 'no_aiosell');
-    const okAll = both.every(r => r.status === 200 && r.data && r.data.ok);
+
+    if (r.skipped) {
+      setResult({ tone: 'warn', msg: 'Setup looks incomplete — please contact support.' });
+      return;
+    }
+    const parts = [r.inventory, r.rates, r.restrictions].filter(Boolean);
+    const dormant = parts.some(p => p.status === 503 && p.data && p.data.code === 'no_aiosell');
+    const okAll = parts.length > 0 && parts.every(p => p.status === 200 && p.data && p.data.ok);
     if (okAll) {
-      setResult({ tone: 'ok', msg: `Synced — a full year of rates & availability sent to your OTAs.` });
+      setResult({ tone: 'ok', msg: 'Synced — a full year of rates & availability sent to your OTAs.' });
     } else if (dormant) {
       setResult({ tone: 'warn', msg: "We're finalising your channel connection — your rates are saved and will go live shortly." });
     } else {

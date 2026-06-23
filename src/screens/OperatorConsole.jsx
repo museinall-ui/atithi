@@ -31,6 +31,18 @@ const STATUS = {
   unmapped:       { tone: 'warn', label: 'Not set up' },
 };
 
+function relTime(iso) {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.round(hrs / 24) + 'd ago';
+}
+
 export default function OperatorConsole({ go, session }) {
   const [view, setView] = useState({ loading: true });
   const [editing, setEditing] = useState(null);   // propertyId being edited
@@ -154,6 +166,11 @@ export default function OperatorConsole({ go, session }) {
                   <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, marginTop: 3 }}>
                     {h.mappedCount}/{h.totalRooms} rooms mapped{h.hotelCode ? ` · code: ${h.hotelCode}` : ' · no hotel code'}
                   </div>
+                  {h.syncHealth && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: h.syncHealth.ok ? '#166534' : T.danger }}>
+                      {h.syncHealth.ok ? '● Sync OK' : '● Sync failing'} · {relTime(h.syncHealth.at)}
+                    </div>
+                  )}
                 </div>
                 <Pill tone={st.tone}>{st.label}</Pill>
               </div>

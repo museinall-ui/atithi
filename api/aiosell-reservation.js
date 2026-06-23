@@ -139,12 +139,14 @@ function buildRow(payload, propertyId, mapping) {
 
 // Lowest free physical unit of a room type over [startDate, startDate+nights),
 // so an OTA booking doesn't blindly stack on unit 0. Best-effort; falls back to 0.
-async function pickUnit(sb, propertyId, roomCode, startDate, nights, excludeId) {
-  let units = 1;
-  try {
-    const cr = await fetch(`${SUPABASE_URL}/rest/v1/room_categories?property_id=eq.${encodeURIComponent(propertyId)}&code=eq.${encodeURIComponent(roomCode)}&select=units&limit=1`, { headers: sb });
-    if (cr.ok) { const a = await cr.json(); if (a && a[0] && a[0].units) units = a[0].units; }
-  } catch { /* default 1 */ }
+async function pickUnit(sb, propertyId, roomCode, startDate, nights, excludeId, knownUnits) {
+  let units = (knownUnits != null && knownUnits > 0) ? knownUnits : 1;
+  if (knownUnits == null) {
+    try {
+      const cr = await fetch(`${SUPABASE_URL}/rest/v1/room_categories?property_id=eq.${encodeURIComponent(propertyId)}&code=eq.${encodeURIComponent(roomCode)}&select=units&limit=1`, { headers: sb });
+      if (cr.ok) { const a = await cr.json(); if (a && a[0] && a[0].units) units = a[0].units; }
+    } catch { /* default 1 */ }
+  }
   const end = addDays(startDate, nights);
   const used = new Set();
   try {
@@ -163,6 +165,31 @@ async function pickUnit(sb, propertyId, roomCode, startDate, nights, excludeId) 
 }
 
 const isMissingExtCol = (txt) => /ext_ota_id|ext_channel/.test(txt || '') && /(column|schema cache|does not exist)/i.test(txt || '');
+
+// After a new OTA booking lands: (1) write a payments-ledger row for the prepaid
+// amount so Reports' collection-date P&L counts it (booking.paid alone isn't in
+// the ledger), and (2) fire the same best-effort push alert website bookings get.
+// Both are best-effort — they never fail the webhook.
+async function recordOtaPaymentAndNotify(sb, req, propertyId, bookingId, row) {
+  if (bookingId && (row.paid || 0) > 0) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+        method: 'POST', headers: { ...sb, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ booking_id: bookingId, property_id: propertyId, kind: 'payment', method: 'ota', amount: row.paid, note: 'OTA prepaid (' + (row.ext_channel || row.channel || 'ota') + ')' }),
+      });
+    } catch { /* best-effort */ }
+  }
+  try {
+    const host = req.headers.host;
+    if (host) {
+      const proto = req.headers['x-forwarded-proto'] || 'https';
+      await fetch(`${proto}://${host}/api/notify-booking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId }),
+      });
+    }
+  } catch { /* best-effort */ }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -228,9 +255,27 @@ export default async function handler(req, res) {
     const row = buildRow(body, propertyId, mapping);
     if (extColMissing) { delete row.ext_ota_id; delete row.ext_channel; }
 
+    // Validate the room against the hotel's real categories. If AIOSELL sent a
+    // room code we haven't mapped, don't orphan the booking (it'd be invisible on
+    // the Diary) — drop it into the first category and flag the original code in
+    // the notes so the hotelier + we can fix the mapping.
+    let categories = [];
+    try {
+      const cr = await fetch(`${SUPABASE_URL}/rest/v1/room_categories?property_id=eq.${encodeURIComponent(propertyId)}&select=code,units&order=sort_order`, { headers: sb });
+      if (cr.ok) categories = await cr.json();
+    } catch { /* ignore — fall through */ }
+    const validCodes = new Set((categories || []).map(c => c.code));
+    if (categories.length && !validCodes.has(row.room_category_code)) {
+      const original = row.room_category_code;
+      row.room_category_code = categories[0].code;
+      if (Array.isArray(row.room_items) && row.room_items[0]) row.room_items[0].roomTypeId = categories[0].code;
+      row.notes = `[OTA room "${original}" not mapped — please check] ${row.notes || ''}`.trim();
+    }
+    const unitsForRoom = ((categories.find(c => c.code === row.room_category_code) || {}).units) || 1;
+
     if (existing) {
       const { property_id, ...patch } = row;                 // never reassign the property
-      patch.unit_idx = await pickUnit(sb, propertyId, row.room_category_code, row.start_date, row.nights, existing.id);
+      patch.unit_idx = await pickUnit(sb, propertyId, row.room_category_code, row.start_date, row.nights, existing.id, unitsForRoom);
       const ur = await fetch(`${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(existing.id)}`, {
         method: 'PATCH', headers: { ...sb, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(patch),
@@ -240,25 +285,28 @@ export default async function handler(req, res) {
     }
 
     // Insert new — the DB trigger assigns the BK-XXXX id.
-    row.unit_idx = await pickUnit(sb, propertyId, row.room_category_code, row.start_date, row.nights);
+    row.unit_idx = await pickUnit(sb, propertyId, row.room_category_code, row.start_date, row.nights, null, unitsForRoom);
     const doInsert = (r) => fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
       method: 'POST', headers: { ...sb, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify(r),
     });
     let ir = await doInsert(row);
+    let note;
     if (!ir.ok) {
       const txt = await ir.text();
       if (isMissingExtCol(txt)) {       // migration not pasted yet — land it without the ext id
         const { ext_ota_id, ext_channel, ...stripped } = row;
         ir = await doInsert(stripped);
         if (!ir.ok) return res.status(502).json({ success: false, message: 'Insert failed', detail: (await ir.text()).slice(0, 200) });
-        const ins = await ir.json();
-        return res.status(200).json({ success: true, message: 'Reservation Created Successfully', id: (ins && ins[0] && ins[0].id) || null, note: 'stored without OTA id — run migration 20260622 to enable modify/cancel' });
+        note = 'stored without OTA id — run migration 20260622 to enable modify/cancel';
+      } else {
+        return res.status(502).json({ success: false, message: 'Insert failed', detail: txt.slice(0, 200) });
       }
-      return res.status(502).json({ success: false, message: 'Insert failed', detail: txt.slice(0, 200) });
     }
     const ins = await ir.json();
-    return res.status(200).json({ success: true, message: 'Reservation Created Successfully', id: (ins && ins[0] && ins[0].id) || null });
+    const newId = (ins && ins[0] && ins[0].id) || null;
+    await recordOtaPaymentAndNotify(sb, req, propertyId, newId, row);
+    return res.status(200).json({ success: true, message: 'Reservation Created Successfully', id: newId, ...(note ? { note } : {}) });
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Server error', detail: String(e?.message || e) });
   }

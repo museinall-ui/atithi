@@ -221,12 +221,20 @@ export default async function handler(req, res) {
   const sb = { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey, Accept: 'application/json' };
 
   try {
-    // 1) Find the property whose stored AIOSELL hotelCode matches. (Small N; we
-    //    filter in JS to avoid brittle nested-jsonb query syntax.)
-    const pr = await fetch(`${SUPABASE_URL}/rest/v1/properties?select=id,accountant`, { headers: sb });
-    if (!pr.ok) return res.status(502).json({ success: false, message: 'Property lookup failed' });
-    const props = await pr.json();
-    const match = (props || []).find(p => p.accountant && p.accountant.aiosell && p.accountant.aiosell.hotelCode === hotelCode);
+    // 1) Find the property whose stored AIOSELL hotelCode matches. Try an indexed
+    //    nested-jsonb filter first (scales to many hotels); fall back to a full
+    //    scan + JS match if that query shape isn't supported / returns nothing.
+    let match = null;
+    try {
+      const fr = await fetch(`${SUPABASE_URL}/rest/v1/properties?select=id,accountant&accountant->aiosell->>hotelCode=eq.${encodeURIComponent(hotelCode)}&limit=1`, { headers: sb });
+      if (fr.ok) { const rows = await fr.json(); if (Array.isArray(rows) && rows[0]) match = rows[0]; }
+    } catch { /* fall through to scan */ }
+    if (!match) {
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/properties?select=id,accountant`, { headers: sb });
+      if (!pr.ok) return res.status(502).json({ success: false, message: 'Property lookup failed' });
+      const props = await pr.json();
+      match = (props || []).find(p => p.accountant && p.accountant.aiosell && p.accountant.aiosell.hotelCode === hotelCode) || null;
+    }
     if (!match) return res.status(200).json({ success: false, message: `Unknown hotelCode: ${hotelCode}` });
     const propertyId = match.id;
     const mapping = match.accountant.aiosell;

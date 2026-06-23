@@ -70,7 +70,7 @@ export default async function handler(req, res) {
   try {
     if (action === 'list') {
       const [pRes, cRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/properties?select=id,name,accountant`, { headers: sb }),
+        fetch(`${SUPABASE_URL}/rest/v1/properties?select=id,name,accountant,meal_plans,default_meal_plan_id`, { headers: sb }),
         fetch(`${SUPABASE_URL}/rest/v1/room_categories?select=property_id,code,name,sort_order&order=sort_order`, { headers: sb }),
       ]);
       if (!pRes.ok) return res.status(502).json({ error: 'Properties read failed', status: pRes.status });
@@ -89,13 +89,15 @@ export default async function handler(req, res) {
           name: c.name || c.code,
           roomCode: (roomsCfg[c.code] && roomsCfg[c.code].roomCode) || '',
           rateplanCode: (roomsCfg[c.code] && roomsCfg[c.code].rateplanCode) || '',
+          ratePlans: (roomsCfg[c.code] && Array.isArray(roomsCfg[c.code].ratePlans)) ? roomsCfg[c.code].ratePlans : [],
         }));
         const mappedCount = rows.filter(r => r.roomCode).length;
         const hotelCode = aio.hotelCode || '';
         const configured = !!(hotelCode && mappedCount > 0);
         const status = configured ? (platformConnected ? 'active' : 'mapped_offline') : 'unmapped';
         const syncHealth = (p.accountant && p.accountant.aiosellSync) || null; // { at, ok } from the client auto-sync
-        return { id: p.id, name: p.name || '(unnamed property)', hotelCode, rooms: rows, mappedCount, totalRooms: rows.length, status, syncHealth };
+        const mealPlans = Array.isArray(p.meal_plans) ? p.meal_plans.map(mp => ({ id: mp.id, code: mp.code || mp.id, label: mp.label || mp.code || mp.id })) : [];
+        return { id: p.id, name: p.name || '(unnamed property)', hotelCode, rooms: rows, mappedCount, totalRooms: rows.length, status, syncHealth, mealPlans, defaultMealPlanId: p.default_meal_plan_id || 'ep' };
       });
       hotels.sort((a, b) => a.name.localeCompare(b.name));
       return res.status(200).json({ ok: true, platformConnected, hotels });

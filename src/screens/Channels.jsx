@@ -35,10 +35,9 @@ const OTAS = [
   { id: 'airbnb',  name: 'Airbnb',      color: '#FF5A5F' },
 ];
 
-// Push a full year ahead so the hotelier can load rates/inventory as far out as
-// they like (OTAs accept long horizons). One call per kind carries the whole
-// range; if AIOSELL ever caps payload size we'll batch it — fine for now.
-const SYNC_DAYS = 365;
+// The sync horizon isn't hard-wired — syncPropertyToAiosell figures out how far
+// ahead to push from how far out the hotelier has actually set rates / bookings
+// (see dynamicHorizonDays). One call per kind carries the whole range.
 
 // Support reaches AtithiBook (us), not the property. WhatsApp if the contact
 // number env var is set (same one the Landing demo gate uses), else email.
@@ -99,7 +98,10 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
   const roomTypes = effectiveRoomTypes(property);
   const mappedRoomTypes = roomTypes.filter(rt => rooms[rt.id] && (rooms[rt.id].roomCode || '').trim());
   const configured = !!((aio.hotelCode || '').trim() && mappedRoomTypes.length > 0);
-  const active = onPlan && configured;
+  // "Active" is driven by the operator-set mapping (server-enforced entitlement),
+  // not the client plan. The plan only colours the messaging while NOT set up
+  // (pending vs upsell).
+  const active = configured;
 
   const canSync = !can || can('manage_rates');
   const [syncing, setSyncing] = useState(false);
@@ -117,7 +119,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
     setSyncing(true);
     setResult(null);
 
-    const r = await syncPropertyToAiosell({ property, bookings, overrides, roomTypes, session, propertyId, days: SYNC_DAYS });
+    const r = await syncPropertyToAiosell({ property, bookings, overrides, roomTypes, session, propertyId });
     setSyncing(false);
 
     if (r.skipped) {
@@ -128,7 +130,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
     const dormant = parts.some(p => p.status === 503 && p.data && p.data.code === 'no_aiosell');
     const okAll = parts.length > 0 && parts.every(p => p.status === 200 && p.data && p.data.ok);
     if (okAll) {
-      setResult({ tone: 'ok', msg: 'Synced — a full year of rates & availability sent to your OTAs.' });
+      setResult({ tone: 'ok', msg: 'Synced — your rates & availability are up to date on your OTAs.' });
     } else if (dormant) {
       setResult({ tone: 'warn', msg: "We're finalising your channel connection — your rates are saved and will go live shortly." });
     } else {
@@ -180,7 +182,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
           <>
             <Card padding={16} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12.5, color: T.ink2, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>
-                Send your current rates and availability (a full year ahead) to all your OTAs now.
+                Send your current rates and availability to all your OTAs now.
               </div>
               <Btn variant="primary" full onClick={syncNow} disabled={syncing || !canSync}>
                 {syncing ? 'Syncing…' : 'Sync now'}
@@ -226,7 +228,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
         )}
 
         {/* ON PLAN, NOT YET SET UP — we're doing it; contact support */}
-        {onPlan && !configured && (
+        {!active && onPlan && (
           <>
             <Card padding={16} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink, marginBottom: 6 }}>We're getting you connected</div>
@@ -255,7 +257,7 @@ export default function Channels({ go, t, property, plan, session, propertyId, c
         )}
 
         {/* NOT ON PLAN — value pitch + talk to us */}
-        {!onPlan && (
+        {!active && !onPlan && (
           <>
             <Card padding={16} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.3, marginBottom: 12 }}>WITH CHANNEL SYNC</div>

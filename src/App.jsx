@@ -682,11 +682,12 @@ export default function App() {
   // not on plan, not mapped), and the push itself 503s harmlessly until the
   // AIOSELL login is set, so this is safe to ship before go-live. We only fire
   // when the sync-relevant slice of state actually changed, and debounce so a
-  // burst of edits collapses into a single push of the full year ahead.
+  // burst of edits collapses into a single push.
   useEffect(() => {
     if (DEMO_MODE || !session || !propertyId || !cloudReady) return;
-    const onPlan = plan === 'channels' || plan === 'invoicing';
-    if (!onPlan) return;
+    // Entitlement is the operator-set mapping (server-enforced in
+    // api/aiosell-push), NOT the client-side plan — a hotel we've set up syncs
+    // regardless of what its local plan preference says.
     const aio = property && property.accountant && property.accountant.aiosell;
     const configured = !!(aio && aio.hotelCode && aio.rooms &&
       Object.keys(aio.rooms).some(k => aio.rooms[k] && aio.rooms[k].roomCode));

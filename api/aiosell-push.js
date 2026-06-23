@@ -103,6 +103,28 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'You are not a member of this property' });
     }
 
+    // 2.5) Entitlement + anti-spoofing. Read THIS property's operator-set AIOSELL
+    //      hotel code (RLS-scoped to what the caller can see) and require the
+    //      payload to target exactly that hotel. This makes "is this hotel allowed
+    //      to sync" a server-side fact — we only map hotels we've set up, so the
+    //      mapping's presence IS the entitlement (not the client's localStorage
+    //      plan) — and stops any client pushing under another hotel's code using
+    //      our shared platform login.
+    const propResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/properties?id=eq.${encodeURIComponent(propertyId)}&select=accountant`,
+      { headers: { Authorization: 'Bearer ' + accessToken, apikey: SUPABASE_ANON, Accept: 'application/json' } },
+    );
+    if (!propResp.ok) return res.status(502).json({ error: 'Property read failed' });
+    const propRows = await propResp.json();
+    const configuredHotelCode = ((((propRows[0] || {}).accountant || {}).aiosell || {}).hotelCode || '').toString().trim();
+    if (!configuredHotelCode) {
+      return res.status(403).json({ error: 'Channel manager is not set up for this property.', code: 'not_configured' });
+    }
+    const payloadHotel = String((payload && (payload.hotelCode || payload.hotelId)) || '').trim();
+    if (payloadHotel && payloadHotel !== configuredHotelCode) {
+      return res.status(403).json({ error: 'Hotel code does not match this property.', code: 'hotel_mismatch' });
+    }
+
     // 3) Forward to AIOSELL with Basic Auth. The endpoint is resolved from the
     //    secret slug here — the browser never picks the URL.
     const url = KIND_PATH[kind](base, slug);

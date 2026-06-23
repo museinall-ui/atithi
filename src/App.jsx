@@ -1485,6 +1485,51 @@ export default function App() {
     }
   };
 
+  // Report an OTA no-show to AIOSELL (Booking.com's no-show-fee workflow). Best-
+  // effort + only for a Booking.com reservation that carries its OTA id; for any
+  // other booking the local "no-show" mark still stands, we just don't push.
+  const pushAiosellNoShow = async (booking) => {
+    try {
+      if (DEMO_MODE || !session || !propertyId || !booking) return;
+      const hotelCode = property && property.accountant && property.accountant.aiosell && property.accountant.aiosell.hotelCode;
+      const otaId = booking.extOtaId;
+      const isBookingCom = booking.channel === 'booking' || booking.extChannel === 'booking';
+      if (!hotelCode || !otaId || !isBookingCom) return;
+      await fetch('/api/aiosell-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session.access_token || '') },
+        body: JSON.stringify({ propertyId, kind: 'noshow', payload: { hotelId: hotelCode, bookingId: String(otaId), partner: 'booking.com' } }),
+      });
+    } catch { /* best-effort */ }
+  };
+
+  // Mark a booking as a no-show. We reuse the 'cancelled' status (so the room
+  // frees + every screen already handles it) and record a 'noshow' event for the
+  // history; the no-show flag is derived from that event on reload. Then report
+  // it to the OTA.
+  const markNoShow = (bookingId) => {
+    const existing = bookings.find(b => b.id === bookingId);
+    if (!existing) return;
+    let nextEvents = null;
+    setBookings(arr => arr.map(b => {
+      if (b.id !== bookingId) return b;
+      const evts = Array.isArray(b.events) ? b.events : [];
+      nextEvents = [
+        ...evts,
+        { kind: 'noshow', text: 'Marked as no-show', time: new Date().toISOString() },
+        { kind: 'status', text: 'Booking cancelled (no-show)', time: new Date().toISOString() },
+      ];
+      const next = { ...b, status: 'cancelled', noShow: true, events: nextEvents };
+      delete next.releaseTs; delete next.releaseAt;
+      return next;
+    }));
+    if (cloudReady && propertyId) {
+      syncFire('Mark no-show', updateBookingCloud(bookingId, { status: 'cancelled', releaseTs: null, releaseAt: null, events: nextEvents }));
+    }
+    logEvent('booking.noshow', 'booking', bookingId, { guest: existing.guest, channel: existing.channel });
+    pushAiosellNoShow(existing);
+  };
+
   // Push a tentative booking's auto-release deadline further out. Adds `hours`
   // to the current releaseTs (or to now, if the timer has somehow gone stale)
   // and resyncs releaseAt + holdHours so the UI stays in sync.
@@ -2006,7 +2051,7 @@ export default function App() {
       }
       break;
     }
-    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onChangeProperty={setProperty} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} can={can} />; break;
+    case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} onChangeProperty={setProperty} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onMarkNoShow={markNoShow} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} can={can} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
     case 'rates':             screen = can('manage_rates')    ? <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} /> : <PermissionDenied go={go} t={t} action="edit the rate calendar" />; break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} can={can} />; break;

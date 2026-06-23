@@ -11,7 +11,13 @@
 import {
   computeInventoryUpdates, computeRateUpdates,
   buildInventoryPush, buildRatePush,
+  buildInventoryRestrictionsPush, computeInventoryRestrictionUpdates, hasRestrictions,
 } from './aiosell.js';
+
+// OTA channels we push stay-restrictions to by default. AtithiBook doesn't yet
+// have per-property channel selection, so restrictions apply across the OTAs we
+// know about. (Restriction pushes require an explicit toChannels list per spec.)
+export const DEFAULT_RESTRICTION_CHANNELS = ['booking.com', 'makemytrip', 'goibibo', 'agoda', 'airbnb'];
 
 // Build the translator mapping from the operator-set config on the property.
 // `roomTypes` is effectiveRoomTypes(property) (passed in to avoid re-importing
@@ -73,5 +79,19 @@ export async function syncPropertyToAiosell({ property, bookings, overrides, roo
     );
     rates = await postPush({ kind: 'rates', payload: ratePayload, session, propertyId });
   }
-  return { inventory, rates };
+
+  // Stay restrictions (stop-sell from close-outs + min-stay from Advanced
+  // Settings). Skipped entirely when the property uses no restrictions, so we
+  // don't push a horizon of all-null rows.
+  let restrictions = null;
+  if (hasRestrictions(property, overrides, mapping, 0, days)) {
+    const restrPayload = buildInventoryRestrictionsPush(
+      mapping.hotelCode,
+      DEFAULT_RESTRICTION_CHANNELS,
+      computeInventoryRestrictionUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days }),
+    );
+    restrictions = await postPush({ kind: 'inventoryRestrictions', payload: restrPayload, session, propertyId });
+  }
+
+  return { inventory, rates, restrictions };
 }

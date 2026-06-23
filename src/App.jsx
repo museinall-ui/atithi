@@ -696,7 +696,8 @@ export default function App() {
       bk: (bookings || []).map(b => [b.id, b.startIdx, b.nights, b.roomTypeId, b.status, b.unitIdx, b.roomItems]),
       ov: rateOverrides,
       cat: (property.categories || []).map(c => [c.id, c.base, c.units]),
-      wk: property.weekendRules, se: property.seasons, aio,
+      wk: property.weekendRules, se: property.seasons,
+      ml: property.accountant && property.accountant.minNights, aio,
     });
     if (aioSyncSig.current === sig) return;   // nothing sync-relevant changed
     aioSyncSig.current = sig;

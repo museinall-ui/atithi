@@ -668,6 +668,11 @@ export default function Landing({ go, lang = 'en', onChangeLang }) {
           <div style={{ marginBottom: 16 }}>
             <button onClick={() => go('terms')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', marginRight: 24, fontWeight: 500 }}>{s.terms}</button>
             <button onClick={() => go('privacy')} className="lp-link" style={{ background: 'none', border: 'none', color: C.body, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>{s.privacy}</button>
+            {/* Discreet operator/team entrance — AtithiBook staff only. Sets a
+                one-shot flag, then routes to sign-in; App.jsx sends operators
+                straight to the cross-hotel Operator Console after they log in.
+                Useless without operator credentials, so it's safe to show here. */}
+            <button onClick={() => { try { localStorage.setItem('atithi.ops.v1', '1'); } catch { /* noop */ } go('signin'); }} className="lp-link" style={{ background: 'none', border: 'none', color: C.muted, fontSize: 12, cursor: 'pointer', marginLeft: 24, fontWeight: 500 }}>Operator</button>
           </div>
           <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.7, maxWidth: 520, margin: '0 auto' }}>
             {s.footerTagline}<br />

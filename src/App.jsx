@@ -804,6 +804,25 @@ export default function App() {
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
 
+  // Operator entrance. AtithiBook is the service provider: operator/team tooling
+  // lives OUTSIDE the hotelier app. The discreet "Operator" link on the landing
+  // page sets a one-shot flag (atithi.ops.v1) then routes to sign-in; once the
+  // user is authenticated we send them straight to the cross-hotel Operator
+  // Console — but only if their account is on the operator list (server still
+  // enforces). The flag is consumed once, so an ordinary later sign-in lands on
+  // the hotelier home as usual, and a non-operator who set it is simply ignored.
+  useEffect(() => {
+    if (!session) return;
+    let flagged = false;
+    try {
+      flagged = localStorage.getItem('atithi.ops.v1') === '1';
+      if (flagged) localStorage.removeItem('atithi.ops.v1');
+    } catch { /* localStorage unavailable */ }
+    if (flagged && isOperator(session)) {
+      setRoute({ name: 'ops', arg: null });
+    }
+  }, [session]);
+
   // R10-9: ANCHOR (today at midnight) is frozen at module load and drives every
   // day-index calc (Diary "today", Dashboard arrivals/in-house/departing, cash-
   // close date key, Reports). A PWA that hoteliers install and leave open for
@@ -1929,7 +1948,7 @@ export default function App() {
     case 'advanced':          screen = can('manage_settings') ? <AdvancedSettings go={go} t={t} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="change advanced settings" />; break;
     case 'expenses':          screen = can('manage_expenses') ? <Expenses go={go} t={t} expenses={expenses} onAdd={addExpense} onRemove={removeExpense} onUpdate={updateExpense} property={property} onChangeProperty={setProperty} can={can} /> : <PermissionDenied go={go} t={t} action="log expenses" />; break;
     case 'activity':          screen = can('view_reports') ? <Activity go={go} t={t} propertyId={propertyId} session={session} /> : <PermissionDenied go={go} t={t} action="see the activity log" />; break;
-    case 'more':              screen = <MoreMenu go={go} t={t} can={can} isOperator={isOperator(session)} />; break;
+    case 'more':              screen = <MoreMenu go={go} t={t} can={can} />; break;
     case 'ops':               screen = <OperatorConsole go={go} session={session} />; break;
     case 'terms':             screen = <Legal tab="terms"   go={go} />; break;
     case 'privacy':           screen = <Legal tab="privacy" go={go} />; break;

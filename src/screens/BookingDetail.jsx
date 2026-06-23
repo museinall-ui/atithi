@@ -445,7 +445,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onChangeProperty, onEdit, onPayment, onSetStatus, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice, can = () => true }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, onChangeProperty, onEdit, onPayment, onSetStatus, onMarkNoShow, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice, can = () => true }) {
   // RBAC gates. New-staff role typically has create_bookings only —
   // they can take phone reservations but can't edit, cancel, or change
   // status on anyone's booking. Manage_payments + manage_invoices are
@@ -1239,6 +1239,22 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 }
               }}
             >{t('cancelBookingBtn')}</Btn>
+          )}
+          {/* No-show: only for OTA reservations (where it has reporting value).
+              Frees the room (recorded as a cancellation + a no-show event) and,
+              for Booking.com, reports the no-show to the OTA for the fee. */}
+          {['mmt', 'goibibo', 'booking', 'agoda', 'airbnb'].includes(b.channel)
+            && (b.status === 'confirmed' || b.status === 'checkedin') && canCancel && (
+            <Btn
+              variant="ghost"
+              icon="x"
+              style={{ flex: 1 }}
+              onClick={() => {
+                if (window.confirm('Mark this OTA booking as a no-show? The room is freed, and for Booking.com the no-show is reported to the OTA.')) {
+                  onMarkNoShow && onMarkNoShow(b.id);
+                }
+              }}
+            >No-show</Btn>
           )}
         </div>
       </div>

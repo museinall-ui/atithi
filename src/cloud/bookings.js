@@ -55,6 +55,11 @@ function cloudBookingToLocal(row, payments, invoices) {
     couponCode: row.coupon_code || '',
     discountAmount: row.discount_amount || 0,
     voiceNotes: Array.isArray(row.voice_notes) ? row.voice_notes : [],
+    // OTA / channel-manager refs (set by the inbound reservation webhook). Read
+    // so the app can report a no-show for an OTA booking. May be '' for bookings
+    // that didn't come from AIOSELL (or before migration 20260622 was pasted).
+    extOtaId: row.ext_ota_id || '',
+    extChannel: row.ext_channel || '',
     releaseTs: row.release_ts ? Number(row.release_ts) : undefined,
     releaseAt: row.release_at || undefined,
     holdHours: row.hold_hours || undefined,

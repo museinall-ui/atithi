@@ -1,27 +1,34 @@
+import { useState } from 'react';
 import { T } from '../tokens.js';
 import Icon from '../components/Icon.jsx';
 import Card from '../components/Card.jsx';
 import Btn from '../components/Btn.jsx';
 import ScreenHeader from '../components/ScreenHeader.jsx';
 import { effectiveRoomTypes } from '../data.js';
+import {
+  computeInventoryUpdates, computeRateUpdates,
+  buildInventoryPush, buildRatePush,
+} from '../cloud/aiosell.js';
 
 // Phase 5, Chunk 3 — hotelier-facing Channel Manager screen.
 //
 // PRODUCT PRINCIPLE: AtithiBook is the SERVICE PROVIDER. WE set up the AIOSELL
 // connection FOR each hotelier during onboarding — the per-property mapping
 // (AIOSELL hotel code + room / rate-plan codes) is operator config stored on
-// `property.accountant.aiosell`, which our team fills in (via Supabase / an
-// internal tool). The hotelier NEVER does this: their rooms, rates, availability
-// and restrictions already live in AtithiBook, and the channel manager simply
-// reflects them out to the OTAs automatically.
+// `property.accountant.aiosell`, which our team fills in (Supabase / an internal
+// operator tool). The hotelier NEVER sees codes or maps anything; their rooms,
+// rates, availability and restrictions already live in AtithiBook, and the
+// channel manager reflects them out to the OTAs.
 //
-// So this screen is STATUS ONLY — no codes, no mapping, no DIY setup:
-//   • Channels plan + set up by us   -> "Active", what's syncing, OTAs connected
+// So this screen is STATUS + ONE BUTTON:
+//   • Channels plan + set up by us   -> "Active", a single "Sync now" button,
+//     what's syncing, OTAs connected
 //   • Channels plan + not yet set up -> "We're setting this up — contact support"
 //   • Not on the Channels plan        -> a short value pitch + "Talk to us"
 //
-// The actual rate/inventory/restriction push runs server-side (api/aiosell-push
-// + a later auto-sync); inbound OTA bookings arrive via the Chunk 4 webhook.
+// "Sync now" pushes the hotelier's current calendar rates + live availability for
+// a full year ahead through the secure server function (api/aiosell-push). The
+// inbound OTA-booking webhook is Chunk 4; auto-sync-on-change is Chunk 5.
 
 const OTAS = [
   { id: 'mmt',     name: 'MakeMyTrip',  color: '#EB2026' },
@@ -30,6 +37,11 @@ const OTAS = [
   { id: 'agoda',   name: 'Agoda',       color: '#5392FF' },
   { id: 'airbnb',  name: 'Airbnb',      color: '#FF5A5F' },
 ];
+
+// Push a full year ahead so the hotelier can load rates/inventory as far out as
+// they like (OTAs accept long horizons). One call per kind carries the whole
+// range; if AIOSELL ever caps payload size we'll batch it — fine for now.
+const SYNC_DAYS = 365;
 
 // Support reaches AtithiBook (us), not the property. WhatsApp if the contact
 // number env var is set (same one the Landing demo gate uses), else email.
@@ -81,30 +93,92 @@ const SYNCS = [
   'OTA bookings → your diary',
 ];
 
-export default function Channels({ go, t, property, plan }) {
+export default function Channels({ go, t, property, plan, session, propertyId, can, bookings = [], overrides = null }) {
   const onPlan = plan === 'channels' || plan === 'invoicing';
   // Operator-set mapping. Its presence is our signal that we've completed setup
   // for this property — the hotelier never edits it.
   const aio = (property && property.accountant && property.accountant.aiosell) || {};
   const rooms = aio.rooms || {};
   const roomTypes = effectiveRoomTypes(property);
-  const mappedCount = roomTypes.filter(rt => rooms[rt.id] && (rooms[rt.id].roomCode || '').trim()).length;
-  const configured = !!((aio.hotelCode || '').trim() && mappedCount > 0);
+  const mappedRoomTypes = roomTypes.filter(rt => rooms[rt.id] && (rooms[rt.id].roomCode || '').trim());
+  const configured = !!((aio.hotelCode || '').trim() && mappedRoomTypes.length > 0);
   const active = onPlan && configured;
+
+  const canSync = !can || can('manage_rates');
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState(null); // { tone:'ok'|'warn'|'err', msg }
 
   const propName = (property && property.profile && property.profile.name) || 'your property';
 
+  // The mapping the translator needs — derived from operator config.
+  const mapping = {
+    hotelCode: (aio.hotelCode || '').trim(),
+    rooms: mappedRoomTypes.map(rt => ({
+      roomTypeId: rt.id,
+      roomCode: (rooms[rt.id].roomCode || '').trim(),
+      rateplanCode: (rooms[rt.id].rateplanCode || '').trim(),
+    })),
+  };
+
+  async function pushOne(kind, payload) {
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), 20000);
+    try {
+      const resp = await fetch('/api/aiosell-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || '') },
+        body: JSON.stringify({ propertyId, kind, payload }),
+        signal: ac.signal,
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { status: resp.status, data };
+    } catch (e) {
+      return { status: 0, data: { error: String(e?.message || e) } };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async function syncNow() {
+    if (!session || !session.access_token) {
+      setResult({ tone: 'err', msg: 'Please sign in to sync.' });
+      return;
+    }
+    setSyncing(true);
+    setResult(null);
+
+    const invUpdates = computeInventoryUpdates({ property, bookings, mapping, fromIdx: 0, days: SYNC_DAYS, rateOverrides: overrides });
+    const r1 = await pushOne('inventory', buildInventoryPush(mapping.hotelCode, invUpdates));
+
+    const rateUpdates = computeRateUpdates({ property, rateOverrides: overrides, mapping, fromIdx: 0, days: SYNC_DAYS });
+    const r2 = await pushOne('rates', buildRatePush(mapping.hotelCode, rateUpdates));
+
+    setSyncing(false);
+    const both = [r1, r2];
+    const dormant = both.some(r => r.status === 503 && r.data && r.data.code === 'no_aiosell');
+    const okAll = both.every(r => r.status === 200 && r.data && r.data.ok);
+    if (okAll) {
+      setResult({ tone: 'ok', msg: `Synced — a full year of rates & availability sent to your OTAs.` });
+    } else if (dormant) {
+      setResult({ tone: 'warn', msg: "We're finalising your channel connection — your rates are saved and will go live shortly." });
+    } else {
+      setResult({ tone: 'err', msg: "Couldn't sync just now. Please try again, or contact support." });
+    }
+  }
+
   const hero = active
-    ? { dot: '#86efac', label: 'Active · syncing automatically' }
+    ? { dot: '#86efac', label: 'Active · syncing to your OTAs' }
     : onPlan
       ? { dot: '#fde68a', label: 'Setting up — our team is on it' }
       : { dot: '#ffffff', label: 'Part of the Channels plan' };
 
   const heroText = active
-    ? `Your rooms, rates, availability and restrictions for ${propName} sync automatically to your OTAs. We manage the connection — there's nothing for you to set up.`
+    ? `Your rooms, rates, availability and restrictions for ${propName} are connected to your OTAs. We manage the connection — there's nothing for you to set up.`
     : onPlan
       ? `Your channel manager is included in your plan. Our team connects your OTAs and wires up ${propName}'s rooms, rates and availability for you — you don't need to do anything.`
       : `Push your rates & availability to MakeMyTrip, Booking.com, Goibibo, Agoda and more — and get OTA bookings straight in your diary. It's part of the Channels plan.`;
+
+  const resultColor = result ? (result.tone === 'ok' ? '#16a34a' : result.tone === 'warn' ? '#b45309' : T.danger) : null;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -131,11 +205,31 @@ export default function Channels({ go, t, property, plan }) {
           </div>
         </Card>
 
-        {/* ACTIVE — set up by us, syncing */}
+        {/* ACTIVE — set up by us. One sync button + what's syncing. */}
         {active && (
           <>
             <Card padding={16} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.3, marginBottom: 12 }}>SYNCING AUTOMATICALLY</div>
+              <div style={{ fontSize: 12.5, color: T.ink2, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>
+                Send your current rates and availability (a full year ahead) to all your OTAs now.
+              </div>
+              <Btn variant="primary" full onClick={syncNow} disabled={syncing || !canSync}>
+                {syncing ? 'Syncing…' : 'Sync now'}
+              </Btn>
+              {!canSync && (
+                <div style={{ marginTop: 8, fontSize: 11, color: T.ink3, fontWeight: 600 }}>
+                  You need the "manage rates" permission to sync. Ask your owner.
+                </div>
+              )}
+              {result && (
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 5, marginTop: 4, flexShrink: 0, background: resultColor }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: T.ink2, lineHeight: 1.5 }}>{result.msg}</span>
+                </div>
+              )}
+            </Card>
+
+            <Card padding={16} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.3, marginBottom: 12 }}>SYNCING TO YOUR OTAS</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {SYNCS.map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -145,9 +239,10 @@ export default function Channels({ go, t, property, plan }) {
                 ))}
               </div>
               <div style={{ marginTop: 12, padding: '10px 12px', background: T.bgSoft, borderRadius: 8, fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5 }}>
-                Set up and managed by AtithiBook. Whenever you change a rate, open or close rooms, or take a booking, your OTAs update automatically.
+                Set up and managed by AtithiBook. Change a rate or open/close rooms, then tap <strong>Sync now</strong> to push it everywhere.
               </div>
             </Card>
+
             <Card padding={16} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.3, marginBottom: 10 }}>CONNECTED TO</div>
               <OTARow />

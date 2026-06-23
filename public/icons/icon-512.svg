@@ -5,9 +5,10 @@
       <stop offset="1" stop-color="#8E2D1A"/>
     </linearGradient>
   </defs>
+  <!-- Full-bleed fill keeps the PWA maskable safe-zone intact. The brand mark is
+       the Devanagari अ (Atithi = guest), matching the in-app Logo + Sign In. -->
   <rect width="512" height="512" fill="url(#bg)"/>
-  <text x="256" y="316" font-family="Georgia, 'Times New Roman', serif"
-        font-size="320" font-weight="800" fill="#ffffff"
-        text-anchor="middle" letter-spacing="-10">A</text>
-  <rect x="148" y="370" width="216" height="10" fill="#ffffff" opacity="0.85" rx="5"/>
+  <text x="256" y="267" font-family="'Noto Sans Devanagari','Nirmala UI','Mangal','Kohinoor Devanagari',sans-serif"
+        font-size="310" font-weight="700" fill="#ffffff"
+        text-anchor="middle" dominant-baseline="central">अ</text>
 </svg>

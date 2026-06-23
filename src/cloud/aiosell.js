@@ -316,7 +316,11 @@ export function channelRulesFor(property, otaKey) {
   const all = (property && property.accountant && property.accountant.channelRules) || {};
   const ov = all[otaKey] || {};
   const def = (property && property.accountant && property.accountant.minNights) || null;
-  const minNights = (ov.minNights && typeof ov.minNights === 'object') ? ov.minNights : def;
+  // Use the per-OTA override only when it's an ENABLED object; a disabled
+  // override (the hotelier toggled custom min-stay off) falls back to the
+  // property default, matching the UI's "leave untouched to use your default".
+  const useOverride = ov.minNights && typeof ov.minNights === 'object' && ov.minNights.enabled;
+  const minNights = useOverride ? ov.minNights : def;
   return { minNights: minNights || { enabled: false }, paused: !!ov.paused };
 }
 

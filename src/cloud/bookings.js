@@ -60,6 +60,9 @@ function cloudBookingToLocal(row, payments, invoices) {
     // that didn't come from AIOSELL (or before migration 20260622 was pasted).
     extOtaId: row.ext_ota_id || '',
     extChannel: row.ext_channel || '',
+    // No-show is recorded as a cancellation + a 'noshow' event; rebuild the flag
+    // from that event so it survives a reload (no dedicated column needed).
+    noShow: Array.isArray(row.events) && row.events.some(e => e && e.kind === 'noshow'),
     releaseTs: row.release_ts ? Number(row.release_ts) : undefined,
     releaseAt: row.release_at || undefined,
     holdHours: row.hold_hours || undefined,

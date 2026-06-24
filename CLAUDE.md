@@ -4,7 +4,7 @@ Mobile-first hotel PMS / booking engine. Demo property: **Yatra Desert Camp, Jai
 
 **Brand name:** AtithiBook (domain: atithibook.com). The codebase still uses "atithi" as a prefix in localStorage keys, file names, and CSS classes — no rename needed until the owner decides to migrate the repo.
 
-**Live (primary):** https://atithi-seven.vercel.app/ — auto-deploys from `main` on every push (~60s)
+**Live (primary):** https://www.atithibook.com/ — custom domain on Vercel (`atithi-seven.vercel.app` still works as an alias). Auto-deploys from `main` on every push (~60s)
 **Live (mirror):** https://museinall-ui.github.io/atithi/ — manual deploys only
 **Repo:** https://github.com/museinall-ui/atithi
 **Supabase project:** `vaerzwmglfwslvqqcyhx.supabase.co` — Mumbai region, free tier
@@ -31,7 +31,7 @@ npm run dev        # start dev server → http://localhost:5173/atithi/
 Requires Node.js (use the official installer from nodejs.org — LTS or Current both work). Vite reads `PORT` env var, so the Claude Preview tooling can assign any free port.
 
 ## Cloud / browser-only options (preferred for non-technical use)
-- **Vercel:** wired. Push to `main` on GitHub → auto-build → live at atithi-seven.vercel.app in ~60s
+- **Vercel:** wired. Push to `main` on GitHub → auto-build → live at www.atithibook.com (custom domain) in ~60s
 - **StackBlitz:** `https://stackblitz.com/github/museinall-ui/atithi` — runs the app in a browser tab, zero install
 - **GitHub Codespaces:** full cloud dev env, 60 free hours/month
 - **Supabase dashboard:** all schema / table edits happen here. `supabase/migrations/` is for reference + reproducibility — files there have to be pasted into the SQL Editor manually (no CLI wired up).

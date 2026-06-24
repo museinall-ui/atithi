@@ -144,7 +144,7 @@ gets heavy traffic.
 
 ## 4. Sanity-check pointers (on the live site)
 
-Open **atithi-seven.vercel.app/?demo=1** (the `?demo=1` lets you poke around
+Open **www.atithibook.com/?demo=1** (the `?demo=1` lets you poke around
 without signing in), and spot-check:
 - **Reports** → "Earned this month" looks like real collections; the Daily
   P&L + take-home cards read sensibly. Flip language to हिंदी (Settings →

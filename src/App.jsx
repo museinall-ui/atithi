@@ -1614,6 +1614,13 @@ export default function App() {
   // Expense ledger actions. Each fires the local state update
   // optimistically + the cloud add/remove/update through syncCloud
   // so transient failures surface via the SyncOverlay toast.
+  // Resolve an expense-category id to a human label for the Activity log
+  // (custom categories carry a meaningless cx_* id; defaults stay legible).
+  const expCatLabel = (id) => {
+    const list = (property && property.accountant && Array.isArray(property.accountant.expenseCategories)) ? property.accountant.expenseCategories : [];
+    const hit = list.find(c => c && c.id === id);
+    return (hit && (hit.label || hit.name)) || id;
+  };
   const addExpense = async (expense) => {
     // Local: prepend to the list (newest first). Cloud assigns the
     // canonical uuid; if cloud succeeds we swap the local id for the
@@ -1627,7 +1634,7 @@ export default function App() {
         }
       } catch {}
     }
-    logEvent('expense.add', 'expense', expense.id, { amount: expense.amount, category: expense.category, paidVia: expense.paidVia, note: expense.note });
+    logEvent('expense.add', 'expense', expense.id, { amount: expense.amount, category: expense.category, categoryLabel: expCatLabel(expense.category), paidVia: expense.paidVia, note: expense.note });
   };
   const removeExpense = (expenseId) => {
     const removed = expenses.find(e => e.id === expenseId);
@@ -1635,14 +1642,14 @@ export default function App() {
     if (cloudReady && propertyId) {
       syncFire('Remove expense', removeExpenseCloud(expenseId));
     }
-    logEvent('expense.remove', 'expense', expenseId, removed ? { amount: removed.amount, category: removed.category } : {});
+    logEvent('expense.remove', 'expense', expenseId, removed ? { amount: removed.amount, category: removed.category, categoryLabel: expCatLabel(removed.category) } : {});
   };
   const updateExpense = (expenseId, patch) => {
     setExpenses(arr => arr.map(e => e.id === expenseId ? { ...e, ...patch } : e));
     if (cloudReady && propertyId) {
       syncFire('Update expense', updateExpenseCloud(expenseId, patch));
     }
-    logEvent('expense.update', 'expense', expenseId, { patch });
+    logEvent('expense.update', 'expense', expenseId, { patch, categoryLabel: patch && patch.category ? expCatLabel(patch.category) : undefined });
   };
 
   // Append a voice note to a booking. The note is an object
@@ -2029,7 +2036,11 @@ export default function App() {
           kind: 'payment',
           method: data.payMethod || 'cash',
           amount: paid,
-          date: 'now',
+          // A real human-readable stamp (matches PaymentSheet / Dashboard quick-
+          // settle). Was the literal 'now', which rendered the word "now" in the
+          // folio on the offline/cloud-error fallback (online, cloudBookingToLocal
+          // overwrites it with created_at).
+          date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
           dateIso: ymd(new Date()),
         }] : [],
         guests: guestsStr,

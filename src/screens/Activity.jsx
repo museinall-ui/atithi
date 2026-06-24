@@ -87,7 +87,7 @@ function metaSummary(action, meta, t) {
     case 'expense.add':
     case 'expense.update':
     case 'expense.remove':
-      return [meta.amount ? fmt(meta.amount) : null, meta.category, meta.paidVia ? meta.paidVia.toUpperCase() : null, meta.note].filter(Boolean).join(' · ');
+      return [meta.amount ? fmt(meta.amount) : null, meta.categoryLabel || meta.category, meta.paidVia ? meta.paidVia.toUpperCase() : null, meta.note].filter(Boolean).join(' · ');
     default:
       return '';
   }

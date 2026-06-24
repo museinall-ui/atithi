@@ -111,9 +111,14 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, sent: 0, note: 'no subscribers' });
   }
 
-  const appUrl = (typeof origin === 'string' && /^https?:\/\//.test(origin))
-    ? (origin.replace(/\/+$/, '') + '/')
-    : './';
+  // SECURITY: never reflect the caller-supplied `origin` into the click URL — the
+  // notificationclick handler opens it, so a forged origin would be an open
+  // redirect / phishing vector on an unauthenticated endpoint. Derive the app URL
+  // from the deployment host instead (the legitimate callers all send their own
+  // same-origin URL anyway).
+  const host = req.headers.host;
+  const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+  const appUrl = host ? `${proto}://${host}/` : './';
   const payload = JSON.stringify({ title, body, url: appUrl, tag: 'atithi-website-booking' });
 
   let sent = 0, pruned = 0;

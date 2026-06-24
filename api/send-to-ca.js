@@ -84,6 +84,28 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'You are not a member of this property' });
     }
 
+    // 2.5) Bound the recipient. The invoice register may ONLY be emailed to the
+    //      property's configured accountant address (or its own contact email),
+    //      read server-side under the caller's JWT — so a member can't turn this
+    //      into an open relay that sends to arbitrary addresses through our
+    //      shared, domain-verified Resend account.
+    const propResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/properties?id=eq.${encodeURIComponent(propertyId)}&select=accountant,email`,
+      { headers: { Authorization: 'Bearer ' + accessToken, apikey: SUPABASE_ANON, Accept: 'application/json' } },
+    );
+    if (!propResp.ok) return res.status(502).json({ error: 'Property read failed' });
+    const propRows = await propResp.json();
+    const prop = (Array.isArray(propRows) && propRows[0]) || {};
+    const allowed = [(prop.accountant && prop.accountant.email) || '', prop.email || '']
+      .map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    const recipients = (Array.isArray(to) ? to : [to]).map(a => String(a).trim()).filter(Boolean);
+    if (recipients.length === 0 || recipients.length > 3) {
+      return res.status(400).json({ error: 'Invalid recipient list' });
+    }
+    if (allowed.length === 0 || recipients.some(a => !allowed.includes(a.toLowerCase()))) {
+      return res.status(403).json({ error: 'Recipient must be your saved accountant email (set it in Settings → Accountant).', code: 'recipient_not_allowed' });
+    }
+
     // 3) Send via Resend. The HTML body IS the email body; we
     //    don't currently attach a PDF (the html renders well on
     //    its own and the CA can print-to-PDF if they want).

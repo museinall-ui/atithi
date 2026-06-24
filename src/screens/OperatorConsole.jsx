@@ -170,7 +170,7 @@ export default function OperatorConsole({ go, session }) {
 
   if (view.loading) return note('Loading…', 'Fetching every hotel and its channel-manager status.');
   if (view.denied) return note('Operators only', 'This area is for the AtithiBook team. Your account isn’t on the operator list.');
-  if (view.local) return note('Live site only', 'The operator console talks to a server function that only runs on the deployed site (atithi-seven.vercel.app), not local preview.');
+  if (view.local) return note('Live site only', 'The operator console talks to a server function that only runs on the deployed site (www.atithibook.com), not local preview.');
   if (view.error) return note('Couldn’t load', view.error);
 
   const hotels = view.hotels || [];

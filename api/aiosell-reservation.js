@@ -6,7 +6,7 @@
 // reservation into an AtithiBook booking, and write it so it lands on that
 // hotelier's Diary automatically. We host this URL and share it with AIOSELL:
 //
-//     https://atithi-seven.vercel.app/api/aiosell-reservation
+//     https://www.atithibook.com/api/aiosell-reservation
 //
 // Security: AIOSELL sends Basic Auth credentials WE define (a shared secret).
 // We compare them in constant time and reject (401) on mismatch. Cross-tenant

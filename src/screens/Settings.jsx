@@ -2228,7 +2228,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             // whether the user opens it on Vercel, GitHub Pages, or local
             // dev. The widget renders on the same app via the ?book=1
             // query param (App.jsx branches on IS_PUBLIC_WIDGET).
-            const origin = typeof window !== 'undefined' ? window.location.origin : 'https://atithi-seven.vercel.app';
+            const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.atithibook.com';
             const basePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/atithi/') ? '/atithi/' : '/';
             const slug = propertyShortCode({ profile });
             // Pretty URL with the property's slug — atithi.app/book/yatra-desert-camp.

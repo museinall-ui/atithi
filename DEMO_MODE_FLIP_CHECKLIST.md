@@ -95,13 +95,13 @@ All ten should be listed (`room_categories_by_property` + `bookings_by_property_
 **The code flip is already done.** `src/App.jsx` has `const HARDCODED_DEMO_MODE = false;` — committed and live. The site already shows the SignIn screen and requires a real magic-link sign-in. There is no code change left to make.
 
 **But the live sign-in only works if the Supabase dashboard is configured. Confirm these two settings** (Supabase → Authentication → URL Configuration):
-1. **Site URL** = `https://atithi-seven.vercel.app`
-2. **Redirect URLs** includes `https://atithi-seven.vercel.app/` (and the GitHub Pages mirror `https://museinall-ui.github.io/atithi/` if you use it).
+1. **Site URL** = `https://www.atithibook.com`
+2. **Redirect URLs** includes `https://www.atithibook.com/**` + `https://atithibook.com/**` (keep `https://atithi-seven.vercel.app/` and the GitHub Pages mirror `https://museinall-ui.github.io/atithi/` too if you use them).
 
 If these aren't set, the magic-link email's link won't land you signed in — sign-in will silently fail. **This is the single most common go-live gotcha.**
 
 **Then test sign-in end to end:**
-1. Open `atithi-seven.vercel.app` (logged out).
+1. Open `www.atithibook.com` (logged out).
 2. Enter your email → check inbox → click the magic-link → confirm the app opens signed in.
 3. First sign-in fires the onboarding wizard (fresh Supabase account): property basics → first room category → payment QR. ~2 minutes.
 4. From this point your data lives in Supabase and syncs across every device you sign in on.
@@ -119,7 +119,7 @@ The widget (`/book/<slug>`) lets **strangers on your hotel's website** book dire
 
 > ⚠️ Do NOT paste any hand-written `property_by_short_code` SQL — an earlier version of this checklist had inline SQL here that would *re-leak* coupon codes to the public. The migration files (`20260605` + `20260610`) are the correct, current versions. Just paste the migrations.
 
-**Test it before sharing the link:** open `atithi-seven.vercel.app/book/<your-short-code>` in a **private/logged-out** window, complete a booking, and confirm it lands in your diary as a tentative `website` booking.
+**Test it before sharing the link:** open `www.atithibook.com/book/<your-short-code>` in a **private/logged-out** window, complete a booking, and confirm it lands in your diary as a tentative `website` booking.
 
 **Before sharing the link publicly to untrusted traffic, do the anti-abuse step:**
 - **CAPTCHA (recommended):** Cloudflare Turnstile on the booking form, verified inside `book_widget_slot`. Free + invisible to real guests. **Owner action: create a free Turnstile account when ready, then I wire it.** (Tracked as an open to-do.)

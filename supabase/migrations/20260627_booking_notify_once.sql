@@ -1,0 +1,26 @@
+-- ----------------------------------------------------------------------------
+-- 20260627_booking_notify_once.sql
+-- Web Push anti-flood: notify AT MOST ONCE per booking.
+--
+-- api/notify-booking.js is intentionally callable WITHOUT auth (the public
+-- booking widget pings it after a guest books). The 2026-06-24 audit flagged
+-- that anyone who learns a property UUID could POST it repeatedly and flood
+-- every staff device with push alerts (harassment / quota drain) — the
+-- notification TEXT is server-built so it can't be spoofed, but the VOLUME was
+-- unbounded.
+--
+-- Fix: a single nullable timestamp on bookings. The endpoint now (a) only acts
+-- on a booking created in the last few minutes and (b) atomically flips
+-- notified_at from NULL → now() and bails if it was already set — so each
+-- booking triggers exactly one notification no matter how many times the
+-- endpoint is hit. Concurrent/duplicate/forged calls lose the race and send
+-- nothing.
+--
+-- Until this column exists the endpoint degrades gracefully (it falls back to
+-- the freshness gate alone), so pasting this is safe at any time and the link
+-- keeps working before and after.
+--
+-- Owner-side action: paste into the Supabase SQL Editor + Run. Idempotent.
+-- ----------------------------------------------------------------------------
+
+alter table bookings add column if not exists notified_at timestamptz;

@@ -147,7 +147,7 @@ function PermissionChecklist({ perms, onChange, disabled, role, onApplyRoleDefau
   );
 }
 
-export default function TeamSection({ session, propertyId }) {
+export default function TeamSection({ session, propertyId, canManageTeam = true }) {
   const signedIn = !!session && !!propertyId;
 
   const [members, setMembers] = useState([]);
@@ -265,6 +265,12 @@ export default function TeamSection({ session, propertyId }) {
         </div>
       )}
 
+      {!canManageTeam && (
+        <div style={{ padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink3, lineHeight: 1.5 }}>
+          You can view the team here, but only an owner (with the <strong>Manage team</strong> permission) can invite, remove, or change members.
+        </div>
+      )}
+
       {/* Current members */}
       <div>
         <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, marginBottom: 6, textTransform: 'uppercase' }}>Members</div>
@@ -306,13 +312,13 @@ export default function TeamSection({ session, propertyId }) {
                     <select
                       value={m.role}
                       onChange={(e) => handleRoleChange(m.id, e.target.value)}
-                      disabled={busy || isMe}
-                      title={isMe ? "Can't change your own role" : 'Change role'}
+                      disabled={busy || isMe || !canManageTeam}
+                      title={isMe ? "Can't change your own role" : (!canManageTeam ? 'Only an owner can change roles' : 'Change role')}
                       style={{ fontSize: 11, fontWeight: 700, color: T.ink2, padding: '4px 6px', border: `1px solid ${T.border}`, borderRadius: 5, background: isMe ? T.bgSunk : T.card, opacity: isMe ? 0.6 : 1 }}
                     >
                       {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                     </select>
-                    {!isMe && (
+                    {!isMe && canManageTeam && (
                       <button
                         onClick={() => handleRemove(m.id)}
                         disabled={busy}
@@ -347,7 +353,7 @@ export default function TeamSection({ session, propertyId }) {
                       <PermissionChecklist
                         perms={effPerms}
                         onChange={(next) => handlePermsChange(m.id, next)}
-                        disabled={busy}
+                        disabled={busy || !canManageTeam}
                         role={m.role}
                         onApplyRoleDefaults={() => handlePermsChange(m.id, ROLE_DEFAULT_PERMS[m.role] || [])}
                       />
@@ -379,12 +385,14 @@ export default function TeamSection({ session, propertyId }) {
                       {roleLabel(inv.role)} · {invPerms.length} perm{invPerms.length === 1 ? '' : 's'} · invited {new Date(inv.invited_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                     </div>
                   </div>
+                  {canManageTeam && (
                   <button
                     onClick={() => handleRevoke(inv.id)}
                     disabled={busy}
                     title="Revoke invite"
                     style={{ background: 'none', border: 'none', color: 'oklch(40% 0.10 75)', cursor: 'pointer', padding: 4, fontSize: 11, fontWeight: 700 }}
                   >Revoke</button>
+                  )}
                 </div>
               );
             })}
@@ -392,7 +400,8 @@ export default function TeamSection({ session, propertyId }) {
         </div>
       )}
 
-      {/* Invite form */}
+      {/* Invite form — gated to members with the manage_team permission */}
+      {canManageTeam && (
       <div style={{ paddingTop: 8, borderTop: `1px dashed ${T.borderSoft}` }}>
         <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, marginBottom: 6, textTransform: 'uppercase' }}>Invite someone</div>
         <input
@@ -456,6 +465,7 @@ export default function TeamSection({ session, propertyId }) {
           The invitee gets added to your property the next time they sign in to Atithi with this email (magic-link). No separate invite email is sent yet — share the app URL via WhatsApp.
         </div>
       </div>
+      )}
     </div>
   );
 }

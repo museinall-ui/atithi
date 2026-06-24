@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import {
@@ -1833,6 +1833,29 @@ export default function App() {
     // Persist any newly-added custom extras (saved across bookings)
     (data.customExtras || []).forEach(addSavedCustomExtra);
 
+    // Fold any selected SAVED custom extras (sx_*) into customExtras so the
+    // folio + voucher can itemise them. The +/- picker only writes
+    // data.extras[id]; the extra's {label,price,unit} definition lives in
+    // savedCustomExtras and would otherwise be lost on save — dropping the
+    // add-on line and inflating the room-tariff line. (The public booking
+    // widget already does this — R10-10; the hotelier path was missed.)
+    const mergedCustomExtras = (() => {
+      const cx = Array.isArray(data.customExtras) ? [...data.customExtras] : [];
+      const have = new Set(cx.map(c => c.id));
+      for (const [id, qty] of Object.entries(data.extras || {})) {
+        if (!qty || have.has(id)) continue;
+        const ex = (savedCustomExtras || []).find(x => x.id === id);
+        if (!ex) continue;
+        cx.push({
+          id: ex.id,
+          label: ex.label || ex.name || 'Extra',
+          price: (data.extraPrices && data.extraPrices[id] != null ? data.extraPrices[id] : ex.price) || 0,
+          unit: ex.unit || 'per stay',
+        });
+      }
+      return cx;
+    })();
+
     if (editing) {
       const existing = bookings.find(b => b.id === editing);
       // Editing must NOT recompute what's been paid. The payment step's
@@ -1889,31 +1912,51 @@ export default function App() {
         couponCode: existing ? (existing.couponCode || '') : '',
         discountAmount: keepDiscount,
         notes: data.notes, extras: data.extras,
-        roomItems: data.roomItems, customExtras: data.customExtras, extraPrices: data.extraPrices,
+        roomItems: data.roomItems, customExtras: mergedCustomExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
         ratePlanId: data.ratePlanId || 'standard',
         guests: guestsStr,
       };
-      // R11-2 (part A): if the room type changed on edit, the old unitIdx may
-      // not exist in the new type (old had 8 units, new has 3) or may collide
-      // with another booking. Re-allocate to the first free unit of the new
-      // type so the Diary places it cleanly instead of stacking / pointing at a
-      // non-existent unit. (unit_idx is NOT NULL in the DB, so we assign a real
-      // index rather than relying on the null→greedy path.)
-      if (existing && data.roomTypeId !== existing.roomTypeId) {
-        const others = bookings.filter(x => x.id !== editing);
-        patch.unitIdx = findFirstFreeUnit(others, data.roomTypeId, newStartIdx, data.nights, effectiveRoomTypes(property)) ?? 0;
-        // Keep the primary roomItem in lockstep with the new type + the
-        // re-allocated unit. The edit form seeds roomItems from the original
-        // booking (carrying the OLD unitIdx), and the Diary pill is rendered
-        // from roomItems[0] — so without this the pill points at a stale unit
-        // of the old room. Mirrors the drag-move path's roomItems[0] rewrite.
-        if (Array.isArray(patch.roomItems) && patch.roomItems.length > 0) {
-          patch.roomItems = patch.roomItems.map((it, i) =>
-            i === 0 ? { ...it, roomTypeId: data.roomTypeId, unitIdx: patch.unitIdx } : it
-          );
+      // R11-2 + audit fix: re-validate the unit whenever the room type, the
+      // check-in date, OR the length of stay changed. The old code only
+      // re-allocated on a TYPE change — so a date-only or nights-only edit kept
+      // the booking's original stored unitIdx, which could now collide with
+      // another booking on that exact unit and silently double-book it (the
+      // Diary renders single-room pills on the stored unit with no conflict
+      // check). Keep the current unit when it's still free; otherwise move to
+      // the first free unit, confirming an overbooking if none is free — the
+      // same eyes-open guard the create + drag-move paths use.
+      if (existing) {
+        const typeChanged = data.roomTypeId !== existing.roomTypeId;
+        const dateChanged = newStartIdx !== (existing.startIdx || 0);
+        const nightsChanged = (data.nights || 0) !== (existing.nights || 0);
+        if (typeChanged || dateChanged || nightsChanged) {
+          const others = bookings.filter(x => x.id !== editing);
+          const rts = effectiveRoomTypes(property);
+          const curUnit = existing.unitIdx || 0;
+          let nextUnit = (!typeChanged && isUnitFree(others, data.roomTypeId, curUnit, newStartIdx, data.nights, rts))
+            ? curUnit
+            : findFirstFreeUnit(others, data.roomTypeId, newStartIdx, data.nights, rts);
+          if (nextUnit === null || nextUnit === undefined) {
+            const roomType = rts.find(r => r.id === data.roomTypeId);
+            const proceed = window.confirm(
+              `All ${roomType?.units || ''} unit${(roomType?.units || 0) === 1 ? '' : 's'} of ${roomType?.name || 'this room type'} are already booked for these dates.\n\nSave this change anyway? (It will stack on unit 1 and you'll need to move it once a unit frees up.)`
+            );
+            if (!proceed) return;
+            nextUnit = 0;
+          }
+          patch.unitIdx = nextUnit;
+          // Keep the primary roomItem in lockstep with the type + re-allocated
+          // unit. The edit form seeds roomItems from the original booking
+          // (carrying the OLD unitIdx) and the Diary pill renders from
+          // roomItems[0], so without this the pill points at a stale unit.
+          if (Array.isArray(patch.roomItems) && patch.roomItems.length > 0) {
+            patch.roomItems = patch.roomItems.map((it, i) =>
+              i === 0 ? { ...it, roomTypeId: data.roomTypeId, unitIdx: nextUnit } : it
+            );
+          }
         }
       }
       if (isHold) {
@@ -1990,7 +2033,7 @@ export default function App() {
         notes: data.notes,
         extras: data.extras,
         roomItems: data.roomItems,
-        customExtras: data.customExtras,
+        customExtras: mergedCustomExtras,
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
@@ -2081,6 +2124,18 @@ export default function App() {
     default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />;
   }
 
+  // Public booking widget — customer-facing UI. URL has ?book=1 or /book/<slug>.
+  // MUST render BEFORE the splash + no-session gates below: a real customer
+  // hitting the link is NOT signed in (session === null), and with DEMO_MODE
+  // off the no-session gate would otherwise shadow the widget with the Landing
+  // marketing page. The widget is self-contained — it loads the property by
+  // slug over anon RLS — so it needs neither authReady/cloudReady nor a
+  // hotelier session. (Regression guard: this used to sit after the no-session
+  // gate and broke for every logged-out guest once DEMO_MODE was flipped off.)
+  if (IS_PUBLIC_WIDGET) {
+    return <PublicWidgetEntry slug={WIDGET_SLUG} fallbackProperty={property} fallbackBookings={bookings} fallbackOverrides={rateOverrides} fallbackExtras={savedCustomExtras} lang={lang} />;
+  }
+
   // Splash while Supabase tells us whether the user is signed in, and again
   // (after sign-in) while the cloud property is loading/bootstrapping. Both
   // are normally sub-second; the splash just prevents the app from rendering
@@ -2103,14 +2158,6 @@ export default function App() {
     if (route.name === 'signin')  return <SignIn t={t} lang={lang} onChangeLang={setLang} go={go} />;
     if (route.name === 'terms' || route.name === 'privacy') return <Legal tab={route.name} go={go} />;
     return <Landing go={go} lang={lang} onChangeLang={setLang} />;
-  }
-
-  // Public booking widget — customer-facing UI. URL has ?book=1 or /book.
-  // Doesn't render the hotelier dashboard at all. Submit creates a booking
-  // in the same property's diary with channel='website' + status='tentative'
-  // so the hotelier can review before confirming.
-  if (IS_PUBLIC_WIDGET) {
-    return <PublicWidgetEntry slug={WIDGET_SLUG} fallbackProperty={property} fallbackBookings={bookings} fallbackOverrides={rateOverrides} fallbackExtras={savedCustomExtras} lang={lang} />;
   }
 
   // Session-demo banner — visible only when the visitor opted into demo

@@ -587,11 +587,23 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
     const dailyOccPct = dailyOccupied.map(n => totalUnits ? Math.round((n / totalUnits) * 100) : 0);
 
-    // Per-room-type revenue share, sorted high → low.
-    const byType = ROOM_TYPES.map(rt => {
-      const rev = active.filter(b => b.roomTypeId === rt.id).reduce((s, b) => s + (b.total || 0), 0);
-      return { ...rt, rev };
-    }).sort((a, b) => b.rev - a.rev);
+    // Per-room-type revenue share, sorted high → low. Split each booking's total
+    // across its room items by each item's rate share, so a mixed-type multi-room
+    // booking credits each type instead of dumping the whole total on the primary
+    // type (mirrors the occupancy CSV's per-item attribution).
+    const revByType = {};
+    for (const b of active) {
+      const items = (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems : [{ roomTypeId: b.roomTypeId, rate: b.total }];
+      const weights = items.map(it => Math.max(0, it.rate || 0));
+      const wsum = weights.reduce((s, w) => s + w, 0);
+      items.forEach((it, idx) => {
+        const tid = it.roomTypeId || b.roomTypeId;
+        const share = wsum > 0 ? (b.total || 0) * (weights[idx] / wsum) : (b.total || 0) / items.length;
+        revByType[tid] = (revByType[tid] || 0) + share;
+      });
+    }
+    const byType = ROOM_TYPES.map(rt => ({ ...rt, rev: Math.round(revByType[rt.id] || 0) }))
+      .sort((a, b) => b.rev - a.rev);
     const topRevenue = byType[0]?.rev || 1;
 
     const formC = active.filter(b => b.formC).length;
@@ -663,7 +675,12 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     for (const b of bookings) {
       if (b.status === 'cancelled') continue;
       const channel = b.channel || 'direct';
-      for (const p of (b.payments || [])) {
+      // Synthetic fallback so the P&L matches the Dashboard: a legacy/imported
+      // booking with paid>0 but an empty ledger still counts its collected money,
+      // attributed to the stay date (same shape the Dashboard daily-income uses).
+      const pays = (b.payments && b.payments.length) ? b.payments
+        : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', method: '', dateIso: idxToDate(b.startIdx || 0) }] : []);
+      for (const p of pays) {
         const payIso = payIsoFor(p, b);
         if (!payIso) continue;
         if (payIso < rangeStart || payIso > rangeEnd) continue;

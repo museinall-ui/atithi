@@ -245,6 +245,10 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   // full and render an explicit Discount row below — the two cancel, so the
   // rows still sum to the exact total.
   const discountAmount = isInvoice ? 0 : Math.max(0, +b.discountAmount || 0);
+  // A credit note also reduced the stored total (addPayment subtracts it). Add it
+  // back so the room rate prints in full + render an explicit Credit note row
+  // below — same treatment as the discount row, so the rows still sum to the total.
+  const credits = isInvoice ? 0 : (Array.isArray(b.payments) ? b.payments : []).reduce((s, p) => s + ((p.kind === 'credit' || p.kind === 'credit_note') ? (+p.amount || 0) : 0), 0);
   // Cancellation policy from the booking's rate plan (dedicated block below).
   // Falls back to a flexible 48h default for the Standard plan / legacy rows.
   const _rpList = Array.isArray(prop.ratePlans) ? prop.ratePlans : [];
@@ -255,7 +259,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     : _cxn === 'moderate' ? L.cancelModerate(_refH)
     : _cxn === 'strict' ? L.cancelStrict(_refH)
     : L.cancelFlexible(_refH);
-  const tariffLine = preTax - extrasSum - mealCost - extraGuests + discountAmount;
+  const tariffLine = preTax - extrasSum - mealCost - extraGuests + discountAmount + credits;
   const docNumber = isInvoice ? invoice.number : b.id;
 
   const html = `<!DOCTYPE html>
@@ -477,6 +481,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
       })()}
       ${extrasList.map(e => `<tr><td>${esc(e.label)}</td><td class="r">${e.qty}</td><td class="r">${fmtINR(e.price)}</td><td class="r">${fmtINR(e.total)}</td></tr>`).join('')}
       ${discountAmount > 0 ? `<tr><td>${lang === 'hi' ? 'छूट' : 'Discount'}${b.couponCode ? ` · <strong>${esc(b.couponCode)}</strong>` : ''}</td><td class="r">—</td><td class="r">—</td><td class="r" style="color:#0a7a3a;">− ${fmtINR(discountAmount)}</td></tr>` : ''}
+      ${credits > 0 ? `<tr><td>${lang === 'hi' ? 'क्रेडिट नोट' : 'Credit note'}</td><td class="r">—</td><td class="r">—</td><td class="r" style="color:#0a7a3a;">− ${fmtINR(credits)}</td></tr>` : ''}
       ${withTax ? (() => {
         const halfRate = (tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0);
         return `

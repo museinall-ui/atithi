@@ -705,6 +705,12 @@ export default function App() {
       wk: property.weekendRules, se: property.seasons,
       ml: property.accountant && property.accountant.minNights,
       cr: property.accountant && property.accountant.channelRules,   // per-OTA pause / min-stay must wake the sync
+      // Meal-plan prices, the default plan, base capacity, and single-occupancy
+      // all feed the pushed OTA rate (ratePlanRateForDay) — editing any of them
+      // must wake the auto-sync so OTAs don't keep a stale rate.
+      mp: property.mealPlans, dmp: property.defaultMealPlanId, bca: property.baseCapacityAdults,
+      so: property.accountant && property.accountant.singleOccEnabled,
+      sr: property.accountant && property.accountant.singleRates,
       aio,
     });
     if (aioSyncSig.current === sig) return;   // already synced / syncing this state

@@ -295,6 +295,15 @@ export default async function handler(req, res) {
         if (cr.ok) categories = await cr.json();
       } catch { /* retry once — a transient blip must not reject the booking */ }
     }
+    // If we genuinely couldn't load the hotel's categories (transient DB / RLS
+    // blip), do NOT proceed — an unmapped/raw OTA room code would otherwise be
+    // inserted verbatim and violate the room_category_code foreign key (a dirty
+    // 500). Return a clean RETRYABLE error so AIOSELL re-delivers; once the blip
+    // clears the booking lands normally. During certification the cert property's
+    // categories always load, so this never fires there.
+    if (!Array.isArray(categories) || categories.length === 0) {
+      return res.status(503).json({ success: false, message: 'Room validation temporarily unavailable — please retry.' });
+    }
     const validCodes = new Set((categories || []).map(c => c.code));
     if (categories.length && !validCodes.has(row.room_category_code)) {
       const original = row.room_category_code;

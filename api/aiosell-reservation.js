@@ -223,20 +223,29 @@ export default async function handler(req, res) {
     return res.status(503).json({ success: false, message: 'Webhook not configured (service-role key missing).', code: 'no_service_role' });
   }
 
-  const auth = checkWebhookAuth(req);
-  if (!auth.configured) {
-    return res.status(503).json({ success: false, message: 'Webhook not configured. Set AIOSELL_WEBHOOK_USER / AIOSELL_WEBHOOK_PASS in Vercel.', code: 'no_webhook_auth' });
-  }
-  if (!auth.ok) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
-
   const body = req.body || {};
   const action = String(body.action || 'book').toLowerCase();
   const hotelCode = body.hotelCode;
   const bookingId = body.bookingId != null ? String(body.bookingId) : '';
   if (!hotelCode || !bookingId) {
     return res.status(400).json({ success: false, message: 'Missing hotelCode or bookingId' });
+  }
+
+  // Auth. AIOSELL's PRODUCTION webhook sends Basic Auth — a shared secret we set
+  // via AIOSELL_WEBHOOK_USER / AIOSELL_WEBHOOK_PASS. But AIOSELL's PRE-ONBOARDING
+  // "Webhook Tester" on their docs site sends NO Authorization header at all
+  // (verified live: the only marker is user-agent AiosellDocsWebhookTester/1.0),
+  // because the webhook credentials don't exist until onboarding. So we let the
+  // RESERVED test hotelCode 'sandbox-pms' through WITHOUT auth — but ONLY while no
+  // production credentials are configured. As soon as real creds are set (at
+  // onboarding) every request must authenticate (sandbox included), and a real
+  // hotelCode ALWAYS requires it. This sandbox path self-disables once you go live.
+  const isSandbox = hotelCode === 'sandbox-pms';
+  const auth = checkWebhookAuth(req);
+  if (auth.configured) {
+    if (!auth.ok) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  } else if (!isSandbox) {
+    return res.status(503).json({ success: false, message: 'Webhook not configured. Set AIOSELL_WEBHOOK_USER / AIOSELL_WEBHOOK_PASS in Vercel.', code: 'no_webhook_auth' });
   }
 
   const sb = { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey, Accept: 'application/json' };

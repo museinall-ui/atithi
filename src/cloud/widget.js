@@ -234,19 +234,14 @@ export async function insertWidgetBooking(propertyId, booking) {
       throw error;
     }
   }
-  // Best-effort: record the coupon redemption so its maxUses limit
-  // actually counts down. This is intentionally fire-and-forget AFTER
-  // the booking is safely inserted — if the redeem_coupon RPC is
-  // missing (owner hasn't pasted 20260606_redeem_coupon.sql yet) or
-  // errors, we must NOT fail the guest's booking. Worst case the
-  // coupon's usedCount stays at 0, exactly as it behaved before.
-  if (payload.coupon_code) {
-    try {
-      await supabase.rpc('redeem_coupon', { p_property_id: propertyId, p_code: payload.coupon_code });
-    } catch (e) {
-      console.warn('[atithi widget] redeem_coupon skipped', e);
-    }
-  }
+  // Coupon redemption is NO LONGER done here. As of 20260626_widget_pricing_
+  // hardening.sql, book_widget_slot validates the coupon and redeems it
+  // (bumps usedCount) ATOMICALLY inside the same transaction as the insert —
+  // so maxUses actually counts down and can't be skipped or double-spammed
+  // from the client. Calling redeem_coupon here too would double-count.
+  // (Pre-migration the old RPC simply won't redeem until the owner pastes
+  // 20260626; the booking still works, exactly as before.)
+
   // Best-effort: ping the hotelier's subscribed devices via Web Push so their
   // phone buzzes on this booking. Fire-and-forget (no await) so a slow/missing
   // endpoint never delays the guest's confirmation. The /api function lives on

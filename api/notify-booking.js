@@ -70,22 +70,60 @@ export default async function handler(req, res) {
   // (server-verified — the caller cannot spoof the guest's name / dates into
   // your alert). Works for both website bookings and staff-entered ones; the
   // wording adapts to the channel.
+  //
+  // ANTI-FLOOD: this endpoint is unauthenticated (the public widget pings it),
+  // so to stop it being used to spam a hotelier's devices we (a) only act on a
+  // booking created in the last few minutes, and (b) notify AT MOST ONCE per
+  // booking via an atomic claim on bookings.notified_at. Repeated / forged /
+  // concurrent calls lose the race and send nothing.
   let title = '📩 New booking';
   let body = 'Tap to open your diary.';
+  const FRESH_MS = 5 * 60 * 1000;
+  let latest = null;
   try {
-    const bUrl = `${SUPABASE_URL}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propertyId)}&order=created_at.desc&limit=1&select=guest_name,nights,start_date,channel`;
+    const bUrl = `${SUPABASE_URL}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propertyId)}&order=created_at.desc&limit=1&select=id,guest_name,nights,start_date,channel,created_at`;
     const bResp = await fetch(bUrl, { headers: sbHeaders });
     if (bResp.ok) {
       const rows = await bResp.json();
-      if (Array.isArray(rows) && rows[0]) {
-        const b = rows[0];
-        const who = (b.guest_name || 'A guest').toString().slice(0, 40);
-        const n = b.nights || 1;
-        title = b.channel === 'website' ? '📩 New website booking' : '📅 New booking';
-        body = `${who} · ${n} night${n === 1 ? '' : 's'}${b.start_date ? ' from ' + b.start_date : ''}. Tap to view.`;
+      latest = (Array.isArray(rows) && rows[0]) || null;
+    }
+  } catch (e) { /* fall through to the no-booking guard */ }
+
+  if (!latest) {
+    return res.status(200).json({ ok: true, sent: 0, note: 'no booking to notify' });
+  }
+  const createdMs = latest.created_at ? Date.parse(latest.created_at) : 0;
+  if (!createdMs || (Date.now() - createdMs) > FRESH_MS) {
+    // Latest booking isn't a just-made one — ignore. Neutralises replayed /
+    // forged calls that aren't tied to a real, recent booking.
+    return res.status(200).json({ ok: true, sent: 0, note: 'no fresh booking' });
+  }
+  // Notify at most once per booking: atomically flip notified_at from NULL.
+  // Only the first caller wins; duplicates get an empty result and stop. If the
+  // column isn't installed yet (pre-20260627), claimResp is not ok and we
+  // degrade to "notify anyway" — the freshness gate above still bounds abuse.
+  try {
+    const claimResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(latest.id)}&notified_at=is.null`,
+      { method: 'PATCH',
+        headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ notified_at: new Date().toISOString() }) }
+    );
+    if (claimResp.ok) {
+      const claimed = await claimResp.json();
+      if (!Array.isArray(claimed) || claimed.length === 0) {
+        return res.status(200).json({ ok: true, sent: 0, note: 'already notified' });
       }
     }
-  } catch (e) { /* keep the generic message */ }
+    // claimResp not ok → column likely absent (pre-migration); fall through.
+  } catch (e) { /* network error on claim → degrade to notify (freshness-gated) */ }
+
+  {
+    const who = (latest.guest_name || 'A guest').toString().slice(0, 40);
+    const n = latest.nights || 1;
+    title = latest.channel === 'website' ? '📩 New website booking' : '📅 New booking';
+    body = `${who} · ${n} night${n === 1 ? '' : 's'}${latest.start_date ? ' from ' + latest.start_date : ''}. Tap to view.`;
+  }
 
   // Read the property's subscribers (service role bypasses RLS).
   let subs = [];

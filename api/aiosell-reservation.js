@@ -184,10 +184,16 @@ async function recordOtaPaymentAndNotify(sb, req, propertyId, bookingId, row) {
     const host = req.headers.host;
     if (host) {
       const proto = req.headers['x-forwarded-proto'] || 'https';
-      await fetch(`${proto}://${host}/api/notify-booking`, {
+      // FIRE-AND-FORGET — do NOT await. The push alert is best-effort, and the
+      // notify endpoint does its own Supabase reads + web-push round-trips (often
+      // several seconds). Awaiting it here held AIOSELL's webhook response open
+      // for that whole time, pushing their proxy past its 10s timeout (the
+      // book→modify→cancel test failed on exactly this). The booking is already
+      // written + visible on the Diary, so a missed push is harmless.
+      fetch(`${proto}://${host}/api/notify-booking`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ propertyId }),
-      });
+      }).catch(() => {});
     }
   } catch { /* best-effort */ }
 }

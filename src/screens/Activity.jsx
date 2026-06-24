@@ -149,8 +149,13 @@ export default function Activity({ go, t, propertyId, session }) {
     if (!signedIn) { setEntries([]); return; }
     setLoading(true);
     setError('');
-    const sinceIso = rangeStart + 'T00:00:00';
-    const untilIso = rangeEnd + 'T23:59:59';
+    // Convert the local day bounds to true UTC instants before querying.
+    // created_at is a timestamptz; a bare 'YYYY-MM-DDT00:00:00' string with no
+    // offset is read by Postgres as UTC, which shifts an IST hotelier's window
+    // by +5:30h (early-morning entries fall out of / leak into the range).
+    // new Date('…T00:00:00') parses as LOCAL; .toISOString() gives correct UTC.
+    const sinceIso = new Date(rangeStart + 'T00:00:00').toISOString();
+    const untilIso = new Date(rangeEnd + 'T23:59:59.999').toISOString();
     const f = GROUP_FILTERS.find(g => g.id === filter) || GROUP_FILTERS[0];
     loadActivity(propertyId, { sinceIso, untilIso, actionPrefix: f.prefix || null })
       .then(rows => { setEntries(rows); setLoading(false); })

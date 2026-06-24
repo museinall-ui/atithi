@@ -401,7 +401,7 @@ function AccordionGroup({ title, hint, open, onToggle, children }) {
   );
 }
 
-function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, bookings = [], session, propertyId }) {
+function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, bookings = [], session, propertyId, canManageTeam = true }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
   const [rules, setRules] = useState(property.rules);
@@ -2669,7 +2669,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <AccordionGroup title="Team members" open={openGroups.teamMembers} onToggle={() => toggleGroup('teamMembers')} hint={session ? 'Live' : 'Sign-in required'}>
           <SectionHead title="People with access to this property" style={{ marginTop: 0 }} />
           <Card padding={12}>
-            <TeamSection session={session} propertyId={propertyId} />
+            <TeamSection session={session} propertyId={propertyId} canManageTeam={canManageTeam} />
           </Card>
         </AccordionGroup>
 
@@ -3227,7 +3227,7 @@ export default function Settings({ go, plan = 'engine', onChangePlan, lang, onCh
         )}
       </div>
 
-      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} bookings={bookings} session={session} propertyId={propertyId} onClose={() => setShowProfile(false)} />}
+      {showProfile && <PropertyProfile t={t} property={property} plan={plan} onSave={onChangeProperty} savedExtras={savedExtras} onChangeSavedExtras={onChangeSavedExtras} bookings={bookings} session={session} propertyId={propertyId} canManageTeam={can('manage_team')} onClose={() => setShowProfile(false)} />}
 
       {/* Upgrade-tier popup. Shown when the hotelier taps a paid tier
           (Channels or Invoicing) in the plan selector. We don't have

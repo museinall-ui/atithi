@@ -69,7 +69,9 @@ function cloudBookingToLocal(row, payments, invoices) {
     autoReleased: !!row.auto_released,
     payments: (payments || []).map(p => ({
       id: p.id,
-      kind: p.kind,
+      // The app uses 'credit' for credit notes; the DB enum stores 'credit_note'.
+      // Map it back so the app's existing 'credit' checks keep working on reload.
+      kind: p.kind === 'credit_note' ? 'credit' : p.kind,
       method: p.method || '',
       amount: p.amount || 0,
       note: p.note || '',
@@ -246,7 +248,7 @@ export async function seedBookings(propertyId, userId, localBookings) {
       paymentRows.push({
         booking_id: b.id,
         property_id: propertyId,
-        kind: p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note' ? p.kind : 'payment',
+        kind: p.kind === 'refund' ? 'refund' : (p.kind === 'credit' || p.kind === 'credit_note') ? 'credit_note' : 'payment',
         method: p.method || '',
         amount: p.amount || 0,
         note: p.note || '',
@@ -315,7 +317,7 @@ export async function createBookingCloud(propertyId, userId, booking) {
     const rows = booking.payments.map(p => ({
       booking_id: data.id,
       property_id: propertyId,
-      kind: (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? p.kind : 'payment',
+      kind: p.kind === 'refund' ? 'refund' : (p.kind === 'credit' || p.kind === 'credit_note') ? 'credit_note' : 'payment',
       method: p.method || '',
       amount: p.amount || 0,
       note: p.note || '',
@@ -350,7 +352,7 @@ export async function addPaymentCloud({ bookingId, propertyId, userId, entry, se
   const toRow = (e) => ({
     booking_id: bookingId,
     property_id: propertyId,
-    kind: e.kind === 'refund' || e.kind === 'credit' || e.kind === 'credit_note' ? e.kind : 'payment',
+    kind: e.kind === 'refund' ? 'refund' : (e.kind === 'credit' || e.kind === 'credit_note') ? 'credit_note' : 'payment',
     method: e.method || '',
     amount: e.amount || 0,
     note: e.note || '',

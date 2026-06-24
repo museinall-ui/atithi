@@ -290,6 +290,30 @@ export async function saveCloudProperty(propertyId, localProperty) {
     }
     propData.invoice_counters = merged;
   } catch { /* read failed — fall back to the local value (prior behaviour) */ }
+
+  // Same forward-only guard for coupon usedCount. The public booking widget
+  // increments it server-side (redeem_coupon), but the hotelier app loads
+  // coupons once at sign-in — so a routine property save would otherwise roll
+  // the count back and let a maxUses-capped coupon over-redeem. Never move a
+  // coupon's usedCount backward; every other coupon field stays hotelier-editable.
+  try {
+    const { data: cc } = await supabase
+      .from('properties').select('coupons').eq('id', propertyId).single();
+    const serverCoupons = Array.isArray(cc && cc.coupons) ? cc.coupons : [];
+    const usedByKey = {};
+    for (const s of serverCoupons) {
+      const key = s && (s.id || (s.code && String(s.code).toUpperCase()));
+      if (key) usedByKey[key] = +s.usedCount || 0;
+    }
+    if (Array.isArray(propData.coupons)) {
+      propData.coupons = propData.coupons.map(c => {
+        const key = c && (c.id || (c.code && String(c.code).toUpperCase()));
+        const serverUsed = key ? usedByKey[key] : undefined;
+        return serverUsed == null ? c : { ...c, usedCount: Math.max(serverUsed, +c.usedCount || 0) };
+      });
+    }
+  } catch { /* read failed — fall back to the local value (prior behaviour) */ }
+
   const { error: pErr } = await supabase
     .from('properties')
     .update(propData)

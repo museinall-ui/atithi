@@ -219,9 +219,15 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     if (o && o.rate != null) return o.rate;
     const cat = ROOM_TYPES.find(r => r.id === typeId);
     if (!cat) return null;
-    const day = days.find(d => d.idx === i);
-    const wknd = day && day.isWknd ? upliftMultiplier : 1;
-    const seasonMult = day ? seasonMultiplier(day.iso) : 1;
+    // Compute weekend/season from the idx DIRECTLY (not via the visible `days`
+    // window). The copy-from-source tool reads rates for dates far outside the
+    // 6-week grid; using `days` there returned undefined and silently dropped
+    // the weekend uplift + season multipliers, baking flat-base prices into the
+    // copied overrides. This mirrors data.js ratePerNight's window-independent logic.
+    const d = new Date(ANCHOR);
+    d.setDate(d.getDate() + i);
+    const wknd = weekendDaySet.has(d.getDay()) ? upliftMultiplier : 1;
+    const seasonMult = seasonMultiplier(ymd(d));
     return Math.round(cat.base * wknd * seasonMult);
   };
   const getRate = (i) => rateFor(selectedType, i);
@@ -613,7 +619,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       for (const i of indexes) {
         const sourceOverride = o[cellKey(i, copyState.sourceId)];
         if (sourceOverride && sourceOverride.closed) {
-          next[cellKey(i)] = { closed: true };
+          // Spread the prior target override so a target note / closedUnits
+          // survives a copy-of-a-closed-source (matches the rate branch below).
+          next[cellKey(i)] = { ...(next[cellKey(i)] || {}), closed: true };
           continue;
         }
         const sourceRate = rateFor(copyState.sourceId, i);

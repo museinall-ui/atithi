@@ -559,7 +559,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
       mealPlans, defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
-      coupons, cashAccounts, customReminders,
+      coupons, cashAccounts, customReminders, extras,
     });
     // Empty deps — capture the FIRST render's state as the baseline.
     // Subsequent renders compare against this snapshot.
@@ -571,7 +571,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       profile, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(), accountant, theme, invoiceCounters,
       mealPlans, defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
-      coupons, cashAccounts, customReminders,
+      coupons, cashAccounts, customReminders, extras,
     });
     return current !== initialSnapshotRef.current;
   };

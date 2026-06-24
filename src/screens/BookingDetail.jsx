@@ -1062,6 +1062,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       >
                         <Icon name="download" size={11} stroke={2} /> {t('viewInvoicePdf')}
                       </button>
+                      {canInvoice && (
                       <button
                         onClick={() => { if (confirm(t('voidInvoiceConfirm').replace('{number}', inv.number))) onVoidInvoice && onVoidInvoice(b.id, inv.id); }}
                         className="atithi-tap"
@@ -1069,6 +1070,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                       >
                         <Icon name="x" size={11} stroke={2} /> {t('voidWord')}
                       </button>
+                      )}
                     </div>
                   )}
                 </div>

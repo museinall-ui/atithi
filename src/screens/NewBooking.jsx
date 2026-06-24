@@ -1045,8 +1045,8 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
           </div>
         )}
         <Row label={t('tariffLine').replace('{n}', data.nights).replace('{rooms}', `${data.roomItems.length} ${data.roomItems.length>1?t('rooms'):t('room')}`)} value={`₹${roomsSubtotal.toLocaleString('en-IN')}`} />
-        {mealPlan && mealCost > 0 && (
-          <Row label={t('mealPlanLine').replace('{code}', mealPlan.code).replace('{label}', mealPlan.label)} value={`₹${mealCost.toLocaleString('en-IN')}`} />
+        {mealPlan && mealCost !== 0 && (
+          <Row label={t('mealPlanLine').replace('{code}', mealPlan.code).replace('{label}', mealPlan.label)} value={mealCost < 0 ? `− ₹${Math.abs(mealCost).toLocaleString('en-IN')}` : `₹${mealCost.toLocaleString('en-IN')}`} />
         )}
         {extrasTotal > 0 && <Row label={t('extrasLine').replace('{n}', Object.values(data.extras).reduce((a,b)=>a+b,0))} value={`₹${extrasTotal.toLocaleString('en-IN')}`} />}
         {extraGuestCost > 0 && <Row label={t('extraGuestCharges')} value={`₹${extraGuestCost.toLocaleString('en-IN')}`} />}

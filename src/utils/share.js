@@ -14,10 +14,11 @@ function fmtIN(amount) {
   return '₹' + Number(amount || 0).toLocaleString('en-IN');
 }
 
-function fmtDate(idx) {
+function fmtDate(idx, lang = 'en') {
   try {
     const d = new Date(idxToDate(idx) + 'T00:00:00');
-    return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+    const locale = lang === 'hi' ? 'hi-IN' : 'en-IN';
+    return d.toLocaleDateString(locale, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   } catch {
     return '—';
   }
@@ -31,8 +32,8 @@ export function bookingShareMessage(booking, property, lang = 'en') {
   if (!booking) return '';
   const propName = (property && property.profile && property.profile.name) || 'Your hotel';
   const propPhone = (property && property.profile && property.profile.phone) || '';
-  const checkIn = fmtDate(booking.startIdx);
-  const checkOut = fmtDate(booking.startIdx + (booking.nights || 1));
+  const checkIn = fmtDate(booking.startIdx, lang);
+  const checkOut = fmtDate(booking.startIdx + (booking.nights || 1), lang);
   const nights = booking.nights || 1;
   const total = booking.total || 0;
   const paid = booking.paid || 0;

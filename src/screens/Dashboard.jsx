@@ -54,7 +54,7 @@ function todayKey() {
   return ymd(ANCHOR);
 }
 
-function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts, t }) {
+function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts, dayCloseExpected, t }) {
   const dateKey = todayKey();
   const closes = cashCloses || {};
   const closed = closes[dateKey];
@@ -73,7 +73,9 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
   const [amounts, setAmounts] = useState({});
   const [note, setNote] = useState('');
 
-  const expected = todayBookings.reduce((s, b) => s + (b.total || 0), 0);
+  // Q2: expected = net cash that should be on hand from TODAY's activity
+  // (collected − spent), not the sum of today's arrival totals.
+  const expected = dayCloseExpected?.total ?? 0;
 
   const submit = () => {
     const collected = accounts.map(a => ({
@@ -88,7 +90,16 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
     const closedAt = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
     const cash = collected.filter(a => a.kind === 'cash').reduce((s, a) => s + a.amount, 0);
     const digital = total - cash;
-    onSetCashClose(dateKey, { accounts: collected, cash, digital, total, expected, note: note.trim(), closedAt });
+    onSetCashClose(dateKey, {
+      accounts: collected, cash, digital, total, expected,
+      // Per-kind expected + a movement flag so the closed view can show an
+      // honest "over expected / short" reconciliation (and so old close
+      // records — which lack these — never show a misleading gap).
+      expectedCash: dayCloseExpected?.cash ?? 0,
+      expectedDigital: dayCloseExpected?.digital ?? 0,
+      hadMovement: !!dayCloseExpected?.hasMovement,
+      note: note.trim(), closedAt,
+    });
     setOpen(false);
     setAmounts({});
     setNote('');
@@ -100,6 +111,10 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
 
   if (closed) {
     const gap = (closed.total || 0) - (closed.expected || 0);
+    // Only show the over/short reconciliation when this close was recorded
+    // with the new net-expected math; old records (no hadMovement) just show
+    // the counted total without a misleading "vs expected" line.
+    const showGap = Math.abs(gap) > 0 && closed.hadMovement;
     const closedAccounts = Array.isArray(closed.accounts) && closed.accounts.length
       ? closed.accounts
       : [
@@ -120,7 +135,7 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
               <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>{t('closedAt')} <span className="tnum">{closed.closedAt}</span></div>
               <div className="tnum" style={{ fontSize: 11, color: T.ink3, marginTop: 1 }}>
                 {t('totalVsBilled').replace('{total}', (closed.total || 0).toLocaleString('en-IN'))}
-                {Math.abs(gap) > 0 && (closed.expected || 0) > 0 && (
+                {showGap && (
                   <span style={{ color: gap < 0 ? T.danger : T.indigo, marginLeft: 4 }}>
                     · {gap > 0 ? t('vsBilledPlus').replace('{amt}', gap.toLocaleString('en-IN')) : t('vsBilledMinus').replace('{amt}', Math.abs(gap).toLocaleString('en-IN'))}
                   </span>
@@ -158,8 +173,15 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t('closeTodaysCash')}</div>
             <div style={{ fontSize: 11, color: T.ink3, marginTop: 1 }} className="tnum">
-              {expected > 0 ? t('nBookingsBilled').replace('{n}', `${todayBookings.length} ${todayBookings.length > 1 ? t('bookingN') : t('booking1')}`).replace('{amt}', expected.toLocaleString('en-IN')) : t('noBookingsToday')}
+              {dayCloseExpected?.hasMovement
+                ? `${t('dcExpectedToday')} ₹${expected.toLocaleString('en-IN')}`
+                : t('dcNoMovement')}
             </div>
+            {dayCloseExpected?.hasMovement && dayCloseExpected.expense > 0 && (
+              <div style={{ fontSize: 10, color: T.ink3, marginTop: 1 }} className="tnum">
+                {t('dcInMinusOut').replace('{inc}', dayCloseExpected.income.toLocaleString('en-IN')).replace('{exp}', dayCloseExpected.expense.toLocaleString('en-IN'))}
+              </div>
+            )}
           </div>
           {!open && (
             <button
@@ -171,6 +193,16 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
         </div>
         {open && (
           <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Reconciliation target: what today's recorded payments/expenses
+                say should be on hand, split cash vs digital, so the hotelier
+                knows what each count should land near. */}
+            {dayCloseExpected?.hasMovement && (
+              <div style={{ fontSize: 10.5, color: T.ink2, fontWeight: 700, padding: '7px 9px', background: T.bgSoft, borderRadius: 7 }} className="tnum">
+                {t('dcExpectedSplit')
+                  .replace('{c}', (dayCloseExpected.cash || 0).toLocaleString('en-IN'))
+                  .replace('{d}', (dayCloseExpected.digital || 0).toLocaleString('en-IN'))}
+              </div>
+            )}
             {/* One input row per hotelier-configured account. Caps at
                 whatever the property's cashAccounts list holds; the
                 bigger the list the more vertical space the card eats.
@@ -309,7 +341,7 @@ function ArrivalRow({ b, go, dayName, t, roomTypes, isRepeat }) {
   );
 }
 
-export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose, can = () => true, onVoiceBooking }) {
+export default function Dashboard({ go, bookings, property, plan = 'engine', t, lang, onAddPayment, onExtendHold, cashCloses, onSetCashClose, expenses = [], can = () => true, onVoiceBooking }) {
   // RBAC. Pending payment quick-settle buttons need manage_payments;
   // the day-close card needs manage_expenses (because the close-out
   // captures money in/out of the property and rolls into the daily
@@ -402,6 +434,48 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   };
   const collectedToday = collectedOn(idxToDate(TODAY_IDX));
   const collectedYesterday = collectedOn(idxToDate(TODAY_IDX - 1));
+
+  // Day-close reconciliation (Q2). The close used to compare the hotelier's
+  // counted drawer against the SUM OF TODAY'S ARRIVAL TOTALS — wildly wrong
+  // (it ignored what was actually collected, double-counted advances paid on
+  // earlier days, and never subtracted expenses). The honest target is the
+  // NET cash that should physically be on hand today: money COLLECTED today
+  // minus money SPENT today, split cash-vs-digital so a hotelier can count
+  // their drawer separately from what landed in UPI/card. Payments/expenses
+  // only reliably distinguish cash from non-cash (there's no per-account tag
+  // on a payment), so we reconcile at that granularity.
+  const dayCloseExpected = (() => {
+    const todayIso = idxToDate(TODAY_IDX);
+    const isCashMethod = (m) => (m || '').toLowerCase() === 'cash';
+    let incomeCash = 0, incomeDigital = 0;
+    for (const b of liveBookings) {
+      const pays = (b.payments && b.payments.length)
+        ? b.payments
+        // Legacy un-ledgered paid amount: no method recorded → treat as cash
+        // (a small property's default), dated to check-in like collectedOn.
+        : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', method: 'cash', dateIso: idxToDate(b.startIdx || 0) }] : []);
+      for (const p of pays) {
+        if (payIsoDash(p, b) !== todayIso) continue;
+        if (p.kind === 'credit' || p.kind === 'credit_note') continue; // credits don't move cash
+        const amt = p.kind === 'refund' ? -(p.amount || 0) : (p.amount || 0);
+        if (isCashMethod(p.method)) incomeCash += amt; else incomeDigital += amt;
+      }
+    }
+    let expenseCash = 0, expenseDigital = 0;
+    for (const e of (expenses || [])) {
+      if ((e.date || '').slice(0, 10) !== todayIso) continue;
+      const amt = +e.amount || 0;
+      if (isCashMethod(e.paidVia)) expenseCash += amt; else expenseDigital += amt;
+    }
+    const cash = incomeCash - expenseCash;
+    const digital = incomeDigital - expenseDigital;
+    return {
+      cash, digital, total: cash + digital,
+      incomeCash, incomeDigital, expenseCash, expenseDigital,
+      income: incomeCash + incomeDigital, expense: expenseCash + expenseDigital,
+      hasMovement: (incomeCash + incomeDigital + expenseCash + expenseDigital) !== 0,
+    };
+  })();
   const dailyChangePct = collectedYesterday > 0
     ? Math.round(((collectedToday - collectedYesterday) / collectedYesterday) * 100)
     : null;
@@ -1245,7 +1319,7 @@ ${arrivingTomorrow.map(b => {
         );
       })()}
 
-      {canDayClose && <DailyCloseCard todayBookings={today} isHi={isHi} t={t} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} />}
+      {canDayClose && <DailyCloseCard todayBookings={today} isHi={isHi} t={t} cashCloses={cashCloses} onSetCashClose={onSetCashClose} cashAccounts={property?.cashAccounts} dayCloseExpected={dayCloseExpected} />}
 
       {statSheet && (() => {
         const map = {

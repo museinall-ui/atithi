@@ -2135,7 +2135,7 @@ export default function App() {
 
   let screen;
   switch (route.name) {
-    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />; break;
+    case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} expenses={expenses} can={can} onVoiceBooking={() => setVoiceOpen(true)} />; break;
     case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} rateOverrides={rateOverrides} setRateOverrides={setRateOverrides} can={can} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
@@ -2168,7 +2168,7 @@ export default function App() {
     case 'ops':               screen = <OperatorConsole go={go} session={session} />; break;
     case 'terms':             screen = <Legal tab="terms"   go={go} />; break;
     case 'privacy':           screen = <Legal tab="privacy" go={go} />; break;
-    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} can={can} onVoiceBooking={() => setVoiceOpen(true)} />;
+    default:                  screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} expenses={expenses} can={can} onVoiceBooking={() => setVoiceOpen(true)} />;
   }
 
   // Public booking widget — customer-facing UI. URL has ?book=1 or /book/<slug>.

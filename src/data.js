@@ -654,7 +654,13 @@ export function extraGuestCostForItem(item, property, category, nights, booking)
   const childrenHalf = +item.children || 0;
   const childrenFree = +item.childrenFree || 0;
   const childrenFull = +item.childrenFull || 0;
-  const baseRate = (item.rate != null ? item.rate : (category.base || 0)) || 0;
+  // Extra-guest pct surcharge is "% of the category BASE rate" everywhere
+  // (engine, OTA, reception) per the owner's decision — so the widget (which
+  // passes the uplifted nightly rate as item.rate) and reception agree, and the
+  // figure matches the "% of base" preview in Settings. A manually-typed per-room
+  // rate no longer drags the pct up. (Flat mode ignores baseRate; the per-booking
+  // ₹ overrides below still win.)
+  const baseRate = (category.base || 0);
   // Resolution chain for the per-guest rate:
   //   1. item.extraAdultRate / extraChildRate — per-booking override
   //      the hotelier explicitly set in NewBooking (a plain ₹ number)

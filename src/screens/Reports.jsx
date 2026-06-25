@@ -61,7 +61,7 @@ function lastOfMonth(d) {
 // Tap-to-open date pill, same pattern Diary / NewBooking use. Wraps a
 // native date input with our brand-styled chrome so taps reliably
 // trigger the OS picker on every browser.
-function DatePill({ value, onChange, label, loc = 'en-IN' }) {
+function DatePill({ value, onChange, label, loc = 'en-IN', min, max }) {
   const ref = useRef(null);
   const open = () => {
     const el = ref.current;
@@ -87,6 +87,8 @@ function DatePill({ value, onChange, label, loc = 'en-IN' }) {
         ref={ref}
         type="date"
         value={value}
+        min={min}
+        max={max}
         onChange={(e) => onChange(e.target.value)}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
       />
@@ -432,6 +434,24 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
   // Number of days in the inclusive range. Used for available-room-night
   // math + the CSV row count.
   const rangeDays = Math.max(1, (rangeEndIdx - rangeStartIdx) + 1);
+  // #6: a valid range has end on/after start. The date pickers now carry
+  // min/max so the inverted state is unreachable through normal use; this
+  // flag is the backstop that hides the headline KPI grid + P&L card (which
+  // would otherwise show clamped 1-day numbers) when something slips through.
+  const rangeValid = rangeEndIdx >= rangeStartIdx;
+  // #5: the "Invoices issued" count + the downloadable invoice CSV honor the
+  // picked range, matching their sibling reports (OTA / payments / occupancy).
+  // The Send-to-CA register below deliberately stays all-time / FY-scoped — a
+  // CA wants the full gap-free sequence, not a month slice. An invoice whose
+  // date can't be parsed is kept in (never silently dropped from the register).
+  const invInRange = (inv) => {
+    const iso = typeof inv?.date === 'string' ? inv.date.slice(0, 10) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return true;
+    const idx = dateToIdx(iso);
+    return idx >= rangeStartIdx && idx <= rangeEndIdx;
+  };
+  const issuedInvoicesInRange = useMemo(() => issuedInvoices.filter(invInRange), [issuedInvoices, rangeStartIdx, rangeEndIdx]);
+  const caRegisterInRange = useMemo(() => caRegister.filter(invInRange), [caRegister, rangeStartIdx, rangeEndIdx]);
   // Pretty label for the picker subtitle ("May 2026" / "Apr 1 – Jun 30 2026")
   const rangeLabel = (() => {
     const s = new Date(rangeStart + 'T00:00:00');
@@ -738,9 +758,9 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         <Card padding={12} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 8 }}>{t('reportPeriod')}</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} loc={dateLoc(t)} />
+            <DatePill value={rangeStart} onChange={setRangeStart} label={t('rangeFrom')} loc={dateLoc(t)} max={rangeEnd} />
             <span style={{ color: T.ink3, fontSize: 13, fontWeight: 700, alignSelf: 'center' }}>→</span>
-            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} loc={dateLoc(t)} />
+            <DatePill value={rangeEnd} onChange={setRangeEnd} label={t('rangeTo')} loc={dateLoc(t)} min={rangeStart} />
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {[
@@ -781,6 +801,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             </div>
           )}
         </Card>
+        {rangeValid && (<>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
           <KPI label={t('kpiMoneyEarned')} value={fmtINR(stats.revenue)} sub={`${fmtINR(stats.billed)} ${t('kpiBilledSuffix')}`} icon="inr" color={T.primary} />
           <KPI label={t('kpiRoomsFull')} value={`${stats.avgOccPct}%`} sub={`${stats.rangeDays} ${t('repDays')} ${t('average')}`} icon="bed" color={T.indigo} />
@@ -796,6 +817,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
             we actually make this month?", the other answers "what's
             net of every deduction on what we billed?". */}
         <PnLCard t={t} pnl={pnl} rangeLabel={rangeLabel} rangeStart={rangeStart} rangeEnd={rangeEnd} property={property} expenseCategories={(property?.accountant?.expenseCategories) || []} />
+        </>)}
 
         {/* Take-home breakdown (Channels / Invoicing tiers only). Engine
             properties only sell direct, so gross == net minus tax; no need
@@ -975,11 +997,13 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 icon: 'tag',
                 color: T.indigo,
                 title: t('rptInvTitle'),
-                sub: `${issuedInvoices.length} ${t('rptInvSubTail')}`,
+                // #5: scoped to the picked range (its sibling reports all are);
+                // the all-time register lives in the Send-to-CA card below.
+                sub: `${issuedInvoicesInRange.length} ${t('rptInvSubTail')}`,
                 onClick: () => {
                   // Invoices + credit notes (negative-amount rows) so the CA's
                   // CSV nets the same way the printed register + email do.
-                  const rows = caRegister.map(inv => [
+                  const rows = caRegisterInRange.map(inv => [
                     inv.number, inv.fy, inv.date ? new Date(inv.date).toLocaleDateString('en-IN') : '',
                     inv.bookingId || '', inv.guest || '',
                     inv.recipient?.name || '', inv.recipient?.gstin || '',
@@ -990,9 +1014,9 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                       : (inv.note || ''),
                   ]);
                   const header = ['Invoice #', 'FY', 'Issue date', 'Booking ID', 'Guest', 'Bill recipient', 'Recipient GSTIN', 'Amount (₹)', 'Status', 'Note'];
-                  downloadCsv(`atithi-invoices-${ymd(new Date(ANCHOR))}`, buildCsv(header, rows));
+                  downloadCsv(`atithi-invoices-${rangeStart}-to-${rangeEnd}`, buildCsv(header, rows));
                 },
-                disabled: issuedInvoices.length === 0,
+                disabled: issuedInvoicesInRange.length === 0,
               }] : []),
             ];
             return reports.map((r, i) => (

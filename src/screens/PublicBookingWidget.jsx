@@ -40,7 +40,17 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     // distributed evenly across rooms.
     rooms: 1,
     adults: 2,
-    children: 0,
+    // Children split into the same three age bands reception uses, so the
+    // online quote matches exactly what the hotelier would charge: free band
+    // (under the property's free age), half-rate band (the middle), and full
+    // band (at/above the half age, billed like an adult). Thresholds come from
+    // the hotelier's House-rules settings (childFreeBelowAge / childAgeBelow).
+    // The 3-band picker only appears when the property actually charges for
+    // extra children — otherwise a single "Children (total)" stepper shows and
+    // everything lands in `children` (the bands wouldn't change the price).
+    children: 0,        // half-rate band (also the catch-all when no child charge)
+    childrenFree: 0,    // free band — no charge
+    childrenFull: 0,    // full-rate band — billed like an adult
     roomTypeId: null,
     ratePlanId: defaultRatePlanId(),
     // Default to the property's default meal plan so the displayed
@@ -202,6 +212,20 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   };
   const adultsPerRoom = distributeAcross(data.adults || 0, rooms);
   const childrenPerRoom = distributeAcross(data.children || 0, rooms);
+  const childrenFreePerRoom = distributeAcross(data.childrenFree || 0, rooms);
+  const childrenFullPerRoom = distributeAcross(data.childrenFull || 0, rooms);
+  // Headcount used for meals + per-guest extras counts EVERY band (a free-band
+  // toddler still eats a meal); only the extra-guest surcharge weights bands
+  // differently. Pricing weight ≠ headcount.
+  const totalChildren = (data.children || 0) + (data.childrenFree || 0) + (data.childrenFull || 0);
+  // The 3-band child picker only matters when the property charges for extra
+  // children (a per-category extraChild rule, or a season override). Otherwise
+  // the bands are price-identical, so we keep a single "Children" stepper.
+  const childFreeAge = property?.accountant?.childFreeBelowAge ?? 5;
+  const childHalfAge = property?.accountant?.childAgeBelow ?? 12;
+  const chargesForChildren =
+    (Array.isArray(property?.categories) && property.categories.some(c => c?.extraChild && (+c.extraChild.value || 0) > 0)) ||
+    (Array.isArray(property?.seasons) && property.seasons.some(s => s?.extraChild && (+s.extraChild.value || 0) > 0));
   // Room cost = per-night sum, per room. A room with exactly 1 adult uses the
   // single-occupancy rate (flat × nights) when the property has one set + the
   // feature on; other rooms use the full computed nightly sum. Matches the
@@ -231,7 +255,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     const def = mealPlanById(property, defaultMealPlanId);
     if (!picked || !def) return 0;
     if (picked.id === def.id) return 0;
-    const totalGuests = (data.adults || 0) + (data.children || 0);
+    const totalGuests = (data.adults || 0) + totalChildren;
     return Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
   })();
 
@@ -242,7 +266,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     .map(([id, qty]) => {
       const ex = savedCustomExtras.find(x => x.id === id);
       if (!ex || !qty) return null;
-      const totalGuests = (data.adults || 0) + (data.children || 0);
+      const totalGuests = (data.adults || 0) + totalChildren;
       let mult = 1;
       switch (ex.unit) {
         case 'per night': mult = data.nights || 1; break;
@@ -313,6 +337,8 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       roomTypeId: data.roomTypeId,
       adults: adultsPerRoom[i] || 0,
       children: childrenPerRoom[i] || 0,
+      childrenFree: childrenFreePerRoom[i] || 0,
+      childrenFull: childrenFullPerRoom[i] || 0,
       // Include the per-night rate the booking is SAVED with, so a percentage-
       // mode extra-guest surcharge (rate × pct%) computes the same here as the
       // folio/voucher recompute it later. Without it the live calc fell back to
@@ -329,7 +355,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     return 0;
   })();
   const total = Math.max(0, subtotal - discountAmount);
-  const guestsStr = `${data.adults}A${data.children > 0 ? ` ${data.children}C` : ''}`;
+  const guestsStr = `${data.adults}A${totalChildren > 0 ? ` ${totalChildren}C` : ''}`;
 
   // Minimum-night stays (Advanced settings → Minimum-night stays). Block a
   // too-short online booking; the applicable minimum is the weekend one when
@@ -393,6 +419,8 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
         roomTypeId: data.roomTypeId,
         adults: adultsPerRoom[i] || 0,
         children: childrenPerRoom[i] || 0,
+        childrenFree: childrenFreePerRoom[i] || 0,
+        childrenFull: childrenFullPerRoom[i] || 0,
         rate: perNight,
       })),
       total, paid: 0,
@@ -620,12 +648,34 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <Field label="Adults (total)">
                 <Stepper value={data.adults} onChange={(v) => set('adults', Math.max(1, Math.min(20, v)))} />
               </Field>
-              <Field label={`Children${(property?.accountant?.childAgeBelow ?? 12) ? ` (under ${property?.accountant?.childAgeBelow ?? 12}y, total)` : ' (total)'}`}>
-                <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
-              </Field>
+              {chargesForChildren ? (
+                <>
+                  {/* Three age bands so the guest self-classifies their kids and
+                      gets quoted exactly what reception would charge. Ages come
+                      from the hotelier's House-rules settings. Shown only when a
+                      room category (or season) actually charges for extra
+                      children — otherwise the single stepper below appears. */}
+                  <Field label={`Children under ${childFreeAge} (free)`}>
+                    <Stepper value={data.childrenFree} onChange={(v) => set('childrenFree', Math.max(0, Math.min(15, v)))} />
+                  </Field>
+                  <Field label={`Children ${childFreeAge}–${childHalfAge - 1} (half rate)`}>
+                    <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
+                  </Field>
+                  <Field label={`Children ${childHalfAge}+ (full rate)`}>
+                    <Stepper value={data.childrenFull} onChange={(v) => set('childrenFull', Math.max(0, Math.min(15, v)))} />
+                  </Field>
+                </>
+              ) : (
+                <Field label="Children (total)">
+                  <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
+                </Field>
+              )}
               {data.rooms > 1 && (
                 <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
-                  Guests will be split across {data.rooms} rooms: {adultsPerRoom.map((a, i) => `${a}A${childrenPerRoom[i] > 0 ? ` ${childrenPerRoom[i]}C` : ''}`).join(' · ')}
+                  Guests will be split across {data.rooms} rooms: {adultsPerRoom.map((a, i) => {
+                    const c = (childrenPerRoom[i] || 0) + (childrenFreePerRoom[i] || 0) + (childrenFullPerRoom[i] || 0);
+                    return `${a}A${c > 0 ? ` ${c}C` : ''}`;
+                  }).join(' · ')}
                 </div>
               )}
             </Card>
@@ -634,11 +684,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 requests more than 12 total guests, the widget isn't the
                 right tool; their best path is a direct WhatsApp ping to
                 the hotelier. We open a templated message via wa.me. */}
-            {((data.rooms >= 5) || ((data.adults || 0) + (data.children || 0) > 12)) && property?.profile?.phone && (() => {
+            {((data.rooms >= 5) || ((data.adults || 0) + totalChildren > 12)) && property?.profile?.phone && (() => {
               const phoneDigits = String(property.profile.phone).replace(/\D/g, '');
               const msg = [
                 `Hi ${propName},`,
-                `I'd like to enquire about a group booking — ${data.rooms} room${data.rooms > 1 ? 's' : ''} for ${data.adults} adults${data.children > 0 ? ` + ${data.children} children` : ''}${data.checkIn ? ` arriving ${data.checkIn}` : ''}. Please share your group rates.`,
+                `I'd like to enquire about a group booking — ${data.rooms} room${data.rooms > 1 ? 's' : ''} for ${data.adults} adults${totalChildren > 0 ? ` + ${totalChildren} children` : ''}${data.checkIn ? ` arriving ${data.checkIn}` : ''}. Please share your group rates.`,
                 ``,
                 `Thanks!`,
               ].join('\n');
@@ -852,7 +902,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     const sel = mp.id === data.mealPlanId;
                     const def = mealPlanById(property, defaultMealPlanId);
                     const isDefault = mp.id === defaultMealPlanId;
-                    const totalGuests = (data.adults || 0) + (data.children || 0);
+                    const totalGuests = (data.adults || 0) + totalChildren;
                     const deltaPerNight = isDefault ? 0 : ((mp.price || 0) - (def?.price || 0)) * totalGuests;
                     return (
                       <button

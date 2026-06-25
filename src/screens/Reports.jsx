@@ -821,8 +821,9 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
 
         {/* Take-home breakdown (Channels / Invoicing tiers only). Engine
             properties only sell direct, so gross == net minus tax; no need
-            to surface OTA commissions. */}
-        {plan !== 'engine' && (
+            to surface OTA commissions. Gated on rangeValid too (like the KPI/PnL
+            cards) so an inverted range can't show clamped ~₹0 money here. */}
+        {rangeValid && plan !== 'engine' && (
           <Card padding={14} style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <div style={{ width: 28, height: 28, borderRadius: 8, background: 'color-mix(in oklch, oklch(60% 0.14 175) 14%, white)', color: 'oklch(45% 0.14 175)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -630,6 +630,13 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
     () => expandToPillInstances(visibleBookings, ROOM_TYPES),
     [visibleBookings, ROOM_TYPES]
   );
+  // Occupancy is a property-wide metric and must NOT change with the pill
+  // filter, so it's computed from the UNFILTERED bookings (pillInstances above
+  // stays filter-driven, for pill rendering only).
+  const allPillInstances = useMemo(
+    () => expandToPillInstances(bookings, ROOM_TYPES),
+    [bookings, ROOM_TYPES]
+  );
   // P1/P2 (perf): precompute occupancy + per-type grouping ONCE per render. The
   // old code re-scanned pillInstances per day-column (occupancy header) and per
   // (unit × day) cell (RoomTypeBlock.isOccupied) — O(days × units × instances),
@@ -637,13 +644,13 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   // the header + blocks then index into in O(1).
   const occByDay = useMemo(() => {
     const m = new Map();
-    for (const inst of pillInstances) {
+    for (const inst of allPillInstances) {
       if (inst.b.status === 'cancelled') continue;
       const s = inst.b.startIdx, e = inst.b.startIdx + (inst.b.nights || 1);
       for (let d = s; d < e; d++) m.set(d, (m.get(d) || 0) + 1);
     }
     return m;
-  }, [pillInstances]);
+  }, [allPillInstances]);
   const totalRooms = useMemo(() => ROOM_TYPES.reduce((a, r) => a + r.units, 0), [ROOM_TYPES]);
   const instancesByType = useMemo(() => {
     const m = new Map();

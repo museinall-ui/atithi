@@ -99,9 +99,9 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
         const idx = lastNonCancelled.startIdx;
         if (idx === 0) lastStayLabel = 'Today';
         else if (idx === -1) lastStayLabel = 'Yesterday';
-        else if (idx === 1) lastStayLabel = 'Tomorrow';
+        else if (idx === 1) lastStayLabel = 'Next: tomorrow';
         else if (idx < 0) lastStayLabel = `${-idx} days ago`;
-        else lastStayLabel = `in ${idx} days`;
+        else lastStayLabel = `Next: in ${idx} days`;   // upcoming, not a past stay
       }
       const tags = [];
       if (g.vip) tags.push('VIP');

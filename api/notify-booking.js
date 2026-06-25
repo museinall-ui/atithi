@@ -29,6 +29,7 @@
 // fire alerts — nothing else changes.
 
 import webpush from 'web-push';
+import { pushInventoryForProperty } from '../lib/aiosellServer.js';
 
 const SUPABASE_URL = 'https://vaerzwmglfwslvqqcyhx.supabase.co';
 // VAPID PUBLIC key — safe to ship. Must match the one in src/push.js and the
@@ -117,6 +118,12 @@ export default async function handler(req, res) {
     }
     // claimResp not ok → column likely absent (pre-migration); fall through.
   } catch (e) { /* network error on claim → degrade to notify (freshness-gated) */ }
+
+  // A new booking (website or staff-entered) just consumed a unit — close it on
+  // the OTAs immediately via the channel manager, so a guest browsing an OTA
+  // can't book the same room in the gap before the hotelier's app next syncs.
+  // Idempotent + no-op until AIOSELL is connected; never blocks the alert below.
+  try { await pushInventoryForProperty(propertyId); } catch (e) { /* periodic reconciliation will catch it */ }
 
   {
     const who = (latest.guest_name || 'A guest').toString().slice(0, 40);

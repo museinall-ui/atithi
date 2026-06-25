@@ -31,6 +31,9 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      # 1) Holds first — release/expire-remind. Any unit it frees is in the DB
+      #    before step 2 reconciles OTA inventory, so freed rooms reopen on the
+      #    OTAs in the same cycle.
       - name: Trigger hold-watch
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -43,9 +46,32 @@ jobs:
             -X POST "https://www.atithibook.com/api/hold-watch" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json" \
-            --max-time 60 -d '{}' || true)
-          echo "HTTP $code"
-          cat /tmp/out.json || true
+            --max-time 70 -d '{}' || true)
+          echo "hold-watch HTTP $code"
+          cat /tmp/out.json || true; echo
           # 503 = endpoint dormant (env not configured) — treat as OK, not a failure.
+          if [ "$code" = "200" ] || [ "$code" = "503" ]; then exit 0; fi
+          echo "Unexpected status $code"; exit 1
+
+      # 2) OTA inventory safety net — push every mapped property's current
+      #    availability to AIOSELL so the OTAs are never more than one cycle
+      #    stale, whatever changed it (website booking taken while closed, a
+      #    close-out, a missed push). No-op until AIOSELL is connected.
+      - name: Trigger ota-inventory-sync
+        if: always()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret not set yet — nothing to do."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/inv.json -w '%{http_code}' \
+            -X POST "https://www.atithibook.com/api/ota-inventory-sync" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 70 -d '{}' || true)
+          echo "ota-inventory-sync HTTP $code"
+          cat /tmp/inv.json || true; echo
           if [ "$code" = "200" ] || [ "$code" = "503" ]; then exit 0; fi
           echo "Unexpected status $code"; exit 1

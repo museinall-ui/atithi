@@ -30,6 +30,7 @@
 // `Authorization: Bearer <CRON_SECRET>`. No secret set → 503; wrong secret → 401.
 
 import webpush from 'web-push';
+import { pushInventoryForProperty } from '../lib/aiosellServer.js';
 
 const SUPABASE_URL = 'https://vaerzwmglfwslvqqcyhx.supabase.co';
 // VAPID PUBLIC key — safe to ship. Must match src/push.js + the private key.
@@ -134,6 +135,7 @@ export default async function handler(req, res) {
   };
 
   const jobs = [];   // { propertyId, title, body, tag }
+  const releasedProps = new Set();   // properties whose OTA inventory must be re-pushed
   let cancelled = 0;
   for (const b of holds) {
     const total = Number(b.total) || 0;
@@ -148,7 +150,7 @@ export default async function handler(req, res) {
     const n = b.nights || 1;
 
     if (expired && mode === 'auto') {
-      if (await releaseHold(b)) cancelled++;
+      if (await releaseHold(b)) { cancelled++; releasedProps.add(b.property_id); }
       // Tell them once that it self-released (so they know the unit reopened).
       if (!b.hold_reminder_sent_at && await claimReminder(b.id)) {
         jobs.push({ propertyId: b.property_id, tag: 'atithi-hold-' + b.id,
@@ -162,6 +164,13 @@ export default async function handler(req, res) {
         title: expired ? '⏳ Hold expired' : '⏳ Hold expiring',
         body: `${who} · ${n} night${n === 1 ? '' : 's'} hold ${expired ? 'has expired' : 'expires soon'}. Open the app to extend or release.` });
     }
+  }
+
+  // A server-side auto-release frees a unit — push that property's fresh
+  // availability to the OTAs right away (don't wait for the periodic
+  // reconciliation). No-op until AIOSELL is connected.
+  for (const pid of releasedProps) {
+    try { await pushInventoryForProperty(pid); } catch (e) { /* reconciliation will catch it */ }
   }
 
   if (jobs.length === 0) {

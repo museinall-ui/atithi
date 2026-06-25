@@ -1459,6 +1459,20 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     onChange={(v) => setSeasons(arr => arr.map((x, j) => j === i ? { ...x, endIso: v } : x))}
                   />
                 </div>
+                {(() => {
+                  // Prevent overlapping seasons: a booking only applies the FIRST
+                  // matching season, while the Rates calendar multiplies all
+                  // overlapping ones — so an overlap makes the charged price differ
+                  // from the calendar. Warn clearly so the hotelier keeps seasons
+                  // non-overlapping (ISO YYYY-MM-DD strings compare correctly).
+                  const overlaps = s.startIso && s.endIso && seasons.some((o, j) =>
+                    j !== i && o.startIso && o.endIso && s.startIso <= o.endIso && o.startIso <= s.endIso);
+                  return overlaps ? (
+                    <div style={{ padding: '6px 9px', background: 'oklch(96% 0.05 70)', border: '1px solid oklch(74% 0.13 70)', borderRadius: 6, fontSize: 10.5, color: 'oklch(42% 0.13 70)', fontWeight: 600, lineHeight: 1.45 }}>
+                      ⚠ These dates overlap another season. A booking applies only the FIRST matching season, so the price charged can differ from what the calendar shows — please adjust the dates so your seasons don't overlap.
+                    </div>
+                  ) : null;
+                })()}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, color: T.ink3, fontWeight: 700 }}>MULTIPLIER</span>
                   <NumberInput

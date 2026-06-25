@@ -553,7 +553,24 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     <button onclick="window.print()">${L.printBtn}</button>
     <button class="ghost" onclick="window.close()">${L.closeBtn}</button>
   </div>
-  <script>setTimeout(function(){ window.print(); }, 400);<\/script>
+  <script>
+    // Wait for every image to finish loading before auto-printing, so the PDF
+    // never misses the logo / room photo / payment QR. This matters now that
+    // images can be CDN URLs (fetched at print time) rather than embedded
+    // base64 — a base64 image is already "complete", a URL one needs a moment.
+    // Hard 3s fallback guarantees the print always fires even if an image 404s.
+    (function(){
+      function doPrint(){ try { window.print(); } catch(e){} }
+      var imgs = Array.prototype.slice.call(document.images || []);
+      var pending = imgs.filter(function(i){ return !i.complete; });
+      if (pending.length === 0) { setTimeout(doPrint, 250); return; }
+      var left = pending.length, fired = false;
+      function go(){ if (fired) return; fired = true; setTimeout(doPrint, 150); }
+      function tick(){ if (--left <= 0) go(); }
+      pending.forEach(function(i){ i.addEventListener('load', tick); i.addEventListener('error', tick); });
+      setTimeout(go, 3000);
+    })();
+  <\/script>
 </body>
 </html>`;
 

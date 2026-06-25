@@ -5,6 +5,7 @@ import TeamSection from '../components/TeamSection.jsx';
 import NumberInput from '../components/NumberInput.jsx';
 import { useInstallPrompt } from '../components/InstallPrompt.jsx';
 import { resetMyProperty } from '../cloud/resetProperty.js';
+import { uploadPropertyMedia } from '../cloud/storage.js';
 import { useSyncState } from '../cloud/sync.js';
 import { isWidgetRlsLive } from '../cloud/widget.js';
 import { logActivity } from '../cloud/activity.js';
@@ -800,9 +801,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         setUploadError('Logo is too large. Please use an image under 200 KB.');
                         return;
                       }
-                      const r = new FileReader();
-                      r.onload = () => setProfile({ ...profile, logoDataUrl: String(r.result || '') });
-                      r.readAsDataURL(file);
+                      // Upload to Storage (CDN URL) when signed in; base64 fallback in demo.
+                      uploadPropertyMedia(propertyId, file, 'logo').then(url => setProfile(p => ({ ...p, logoDataUrl: url })));
                     }}
                   />
                 </label>
@@ -964,12 +964,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       setUploadError('Photo is too large. Please use an image under 2 MB.');
                       return;
                     }
-                    const r = new FileReader();
-                    r.onload = () => {
-                      const next = [...(profile.photoGallery || []), String(r.result || '')];
-                      setProfile({ ...profile, photoGallery: next });
-                    };
-                    r.readAsDataURL(file);
+                    // Gallery images each keep their own object (unique name).
+                    uploadPropertyMedia(propertyId, file, 'gallery', { unique: true }).then(url => {
+                      setProfile(p => ({ ...p, photoGallery: [...(p.photoGallery || []), url] }));
+                    });
                   }}
                 />
               </label>
@@ -1080,9 +1078,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           setUploadError('Image is too large. Please use a QR under 700 KB.');
                           return;
                         }
-                        const r = new FileReader();
-                        r.onload = () => setProfile({ ...profile, paymentQrDataUrl: String(r.result || '') });
-                        r.readAsDataURL(file);
+                        uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => setProfile(p => ({ ...p, paymentQrDataUrl: url })));
                       }}
                     />
                   </label>
@@ -1112,9 +1108,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     setUploadError('Image is too large. Please use a QR under 700 KB.');
                     return;
                   }
-                  const r = new FileReader();
-                  r.onload = () => setProfile({ ...profile, paymentQrDataUrl: String(r.result || '') });
-                  r.readAsDataURL(file);
+                  uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => setProfile(p => ({ ...p, paymentQrDataUrl: url })));
                 }}
               />
             </label>
@@ -1281,9 +1275,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                                 setUploadError('Photo is too large. Please use an image under 2 MB.');
                                 return;
                               }
-                              const r = new FileReader();
-                              r.onload = () => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: String(r.result || '') } : x));
-                              r.readAsDataURL(file);
+                              uploadPropertyMedia(propertyId, file, 'room-' + c.id).then(url => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: url } : x)));
                             }}
                           />
                         </label>
@@ -1308,9 +1300,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                             setUploadError('Photo is too large. Please use an image under 2 MB.');
                             return;
                           }
-                          const r = new FileReader();
-                          r.onload = () => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: String(r.result || '') } : x));
-                          r.readAsDataURL(file);
+                          uploadPropertyMedia(propertyId, file, 'room-' + c.id).then(url => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: url } : x)));
                         }}
                       />
                     </label>

@@ -669,6 +669,16 @@ export default function App() {
   useEffect(() => { propertyIdRef.current = propertyId; }, [propertyId]);
   useEffect(() => { cloudReadyRef.current = cloudReady; }, [cloudReady]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  // Mirrors for the mount-once auto-release ticker (Q3 + audit #8): it must
+  // read the LIVE property (for the hotelier's auto-release vs reminder choice)
+  // and the LIVE bookings (so the released-set is computed from current state
+  // BEFORE setBookings, not inside the updater — the old code populated an
+  // outer array from within the setState callback, which is fragile under
+  // double-invoked updaters).
+  const propertyRef = useRef(property);
+  const bookingsRef = useRef(bookings);
+  useEffect(() => { propertyRef.current = property; }, [property]);
+  useEffect(() => { bookingsRef.current = bookings; }, [bookings]);
   // Diff-sync refs hoisted above the cloud-load useEffect so the cloud
   // load can snapshot them with the freshly-loaded cloud values BEFORE
   // the diff-sync effects fire. Without that snapshot, the very first
@@ -1236,42 +1246,54 @@ export default function App() {
       // otherwise we'd cancel-and-sync stale local-only data the cloud
       // doesn't know about, against booking IDs that may not exist in
       // the current user's property at all.
-      if (!cloudReadyRef.current || !sessionRef.current || !canCancelRef.current) return;
+      if (!cloudReadyRef.current || !sessionRef.current) return;
       const now = Date.now();
+      // Q3 — auto-release vs reminder. The hotelier chooses (Settings → Booking
+      // link → Hold & auto-release) whether an expired unpaid hold is cancelled
+      // automatically or kept until they decide. In REMINDER mode this ticker
+      // does nothing destructive: the Dashboard surfaces an "expired hold" nudge
+      // and the server cron (api/hold-watch) buzzes their phone — the hotelier
+      // then extends or releases by hand. Auto mode is the default + the
+      // historical behaviour.
+      const prop = propertyRef.current;
+      const holdMode = (prop && prop.accountant && prop.accountant.holdMode) || 'auto';
+      if (holdMode === 'reminder') return;
+      // Auto-release is a destructive action gated on cancel_bookings (the DB
+      // policy 20260611 enforces it too) — a reception device without that
+      // permission leaves releases to an owner/manager device.
+      if (!canCancelRef.current) return;
+      // #8: compute the released-set from the LIVE bookings ref BEFORE touching
+      // state (the old code populated `changed` from inside the setBookings
+      // updater, which double-invoked updaters would corrupt).
+      const arr = bookingsRef.current || [];
       const changed = [];
-      setBookings(arr => {
-        const next = arr.map(b => {
-          // R8-9: also release a zero-total hold. The `paid < total` guard
-          // means total=0 gives 0 < 0 = false, so a free/comp hold (or a widget
-          // booking whose computed rate rounded to 0) would tie up a unit
-          // forever past its releaseTs. A hold with nothing to pay should still
-          // expire on schedule.
-          const notFullyPaid = (b.paid || 0) < (b.total || 0) || (b.total || 0) <= 0;
-          if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && notFullyPaid) {
-            // Snapshot the previous state so the hotelier can undo if
-            // they catch the auto-release in time. We give it a longer
-            // 30-second window than manual cancels because the user
-            // may not have been on the screen when it fired.
-            // M-11: log the auto-release as a status event so BookingDetail's
-            // activity feed shows the cancellation with a timestamp. Manual
-            // cancels already push a kind:'status' event; auto-releases used
-            // to flip the status silently, leaving a gap in the feed.
-            const evt = { kind: 'status', text: 'Auto-released — hold expired before payment', time: new Date(now).toISOString() };
-            const events = [...(Array.isArray(b.events) ? b.events : []), evt];
-            changed.push({
-              id: b.id,
-              guest: b.guest,
-              previousStatus: b.status,
-              previousReleaseTs: b.releaseTs,
-              previousReleaseAt: b.releaseAt,
-              events,
-            });
-            return { ...b, status: 'cancelled', autoReleased: true, events };
-          }
-          return b;
-        });
-        return changed.length ? next : arr;
-      });
+      for (const b of arr) {
+        // R8-9: also release a zero-total hold. The `paid < total` guard means
+        // total=0 gives 0 < 0 = false, so a free/comp hold (or a widget booking
+        // whose computed rate rounded to 0) would tie up a unit forever past its
+        // releaseTs. A hold with nothing to pay should still expire on schedule.
+        const notFullyPaid = (b.paid || 0) < (b.total || 0) || (b.total || 0) <= 0;
+        if (b.status === 'tentative' && b.releaseTs && b.releaseTs <= now && notFullyPaid) {
+          // M-11: log the auto-release as a status event so BookingDetail's
+          // activity feed shows the cancellation with a timestamp.
+          const evt = { kind: 'status', text: 'Auto-released — hold expired before payment', time: new Date(now).toISOString() };
+          const events = [...(Array.isArray(b.events) ? b.events : []), evt];
+          changed.push({
+            id: b.id,
+            guest: b.guest,
+            previousStatus: b.status,
+            previousReleaseTs: b.releaseTs,
+            previousReleaseAt: b.releaseAt,
+            events,
+          });
+        }
+      }
+      if (!changed.length) return;
+      const eventsById = Object.fromEntries(changed.map(c => [c.id, c.events]));
+      const changedIds = new Set(changed.map(c => c.id));
+      setBookings(a => a.map(b => (changedIds.has(b.id) && b.status === 'tentative')
+        ? { ...b, status: 'cancelled', autoReleased: true, events: eventsById[b.id] }
+        : b));
       if (cloudReadyRef.current && propertyIdRef.current && changed.length) {
         const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
         changed.forEach(c => {

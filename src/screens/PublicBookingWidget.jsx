@@ -380,19 +380,20 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // Submit gate.
   const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length >= 7;
 
-  // Dynamic hold window: how many hours the booking stays tentative
-  // before auto-release. Tighter when the check-in is close so we don't
-  // tie up inventory the hotelier can still sell.
-  //   >48h to check-in →  hold 12h (gives the hotelier a comfortable
-  //                       window to verify + chase payment by WhatsApp)
-  //   ≤48h to check-in → hold  4h (every hour matters; release fast
-  //                       if the guest doesn't lock it in)
+  // Hold window: how many hours an unpaid website booking stays tentative
+  // before it's eligible for release. The hotelier sets the length in
+  // Settings → Booking link → Hold & auto-release (default 12h). The only
+  // automatic adjustment is a safety cap: we never tie a unit up past the
+  // moment the guest is due to arrive, so a last-minute booking holds only
+  // until check-in.
   const computeHoldHours = () => {
-    if (!data.checkIn) return 12;
+    const base = Math.max(1, property?.accountant?.holdHours ?? 12);
+    if (!data.checkIn) return base;
     const checkInTime = (property?.profile?.checkIn || '14:00');
     const checkInTs = new Date(data.checkIn + 'T' + checkInTime + ':00').getTime();
     const hoursAway = (checkInTs - Date.now()) / (60 * 60 * 1000);
-    return hoursAway > 48 ? 12 : 4;
+    if (hoursAway <= 1) return 1;
+    return Math.max(1, Math.min(base, Math.round(hoursAway)));
   };
 
   const handleSubmit = async () => {

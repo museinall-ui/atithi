@@ -2534,14 +2534,57 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 </div>
 
                 <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
-                  <strong>How it works:</strong> Customer picks dates + room, fills in name + WhatsApp, taps Confirm. Booking lands in your Diary marked <strong>tentative</strong>. You confirm (or release) in the booking detail.
-                  <br/><br/>
-                  <strong>Hold policy:</strong> Widget bookings auto-release if you don't confirm:
-                  <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                    <li><strong>12 hours</strong> if the check-in date is more than 48 hours away — comfortable window to chase payment by WhatsApp / phone.</li>
-                    <li><strong>4 hours</strong> if check-in is within 48 hours — tight window so you don't tie up inventory you can still sell.</li>
-                  </ul>
-                  Tap an on-hold booking on the Diary to extend by 2h / 1 day / 2 days / custom.
+                  <strong>How it works:</strong> Customer picks dates + room, fills in name + WhatsApp, taps Confirm. Booking lands in your Diary marked <strong>tentative</strong>. You confirm (or release) in the booking detail. Marking it <strong>paid</strong> confirms it automatically.
+                </div>
+
+                {/* Hold & auto-release (Q3) — configurable hold window + what
+                    happens when the timer runs out. Stored on the accountant
+                    jsonb (holdHours / holdMode), so no migration needed. */}
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: T.ink2, letterSpacing: 0.3, marginBottom: 8 }}>HOLD &amp; AUTO-RELEASE</div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Hold an unpaid booking for</div>
+                      <div style={{ fontSize: 10.5, color: T.ink3, lineHeight: 1.4, marginTop: 2 }}>From when it's made. Never runs past the guest's check-in time.</div>
+                    </div>
+                    <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 10px', height: 40, display: 'flex', alignItems: 'center', gap: 4, width: 92, flexShrink: 0 }}>
+                      <NumberInput
+                        value={accountant.holdHours ?? 12}
+                        min={1} fallback={12}
+                        onChange={(n) => setAccountant({ ...accountant, holdHours: n })}
+                        placeholder="12"
+                        style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 600, color: T.ink, minWidth: 0, textAlign: 'right' }}
+                      />
+                      <span style={{ fontSize: 11, color: T.ink3, fontWeight: 700 }}>hrs</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {[
+                      { id: 'auto', title: 'Release automatically', sub: 'When the hold runs out unpaid, the unit frees itself and your OTAs are updated. Hands-off.' },
+                      { id: 'reminder', title: "Remind me — don't release", sub: 'The unit stays held past the timer. You get a reminder to extend or release it yourself.' },
+                    ].map(opt => {
+                      const sel = (accountant.holdMode || 'auto') === opt.id;
+                      return (
+                        <button key={opt.id} type="button" onClick={() => setAccountant({ ...accountant, holdMode: opt.id })}
+                          style={{ textAlign: 'left', display: 'flex', gap: 9, padding: '9px 11px', borderRadius: 9, cursor: 'pointer',
+                            background: sel ? T.primaryLt : T.card, border: `1.5px solid ${sel ? T.primary : T.border}` }}>
+                          <div style={{ width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, border: `2px solid ${sel ? T.primary : T.border}`, background: sel ? T.primary : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {sel && <div style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }} />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: sel ? T.primaryDk : T.ink }}>{opt.title}</div>
+                            <div style={{ fontSize: 10.5, color: T.ink3, lineHeight: 1.4, marginTop: 1 }}>{opt.sub}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 8, padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
+                    A reminder on your phone (even when the app is closed) needs the free alerts switched on in <strong>Settings → Notifications</strong>. You can also tap an on-hold booking on the Diary to extend by 2h / 1 day / 2 days / custom.
+                  </div>
                 </div>
               </>
             );

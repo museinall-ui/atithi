@@ -561,6 +561,14 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   //   - soon:     >10 min and ≤4h — amber, "chase payment"
   const holdsImminent     = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs <= 10 * 60 * 1000);
   const holdsExpiringSoon = bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs > nowMs && b.releaseTs - nowMs > 10 * 60 * 1000 && b.releaseTs - nowMs < 4 * 3600 * 1000);
+  // Q3 — in REMINDER mode the auto-release ticker never cancels an expired
+  // hold; it waits for the hotelier. So an unpaid hold past its release time
+  // lingers and needs a clear "decide now" nudge (in auto mode these are
+  // cancelled within ~30s, so the list is empty there).
+  const holdMode = property?.accountant?.holdMode || 'auto';
+  const holdsExpired = (holdMode === 'reminder')
+    ? bookings.filter(b => b.status === 'tentative' && b.releaseTs && b.releaseTs <= nowMs && ((b.paid || 0) < (b.total || 0) || (b.total || 0) <= 0))
+    : [];
 
   // Unseen website-channel bookings. The hotelier acknowledges by
   // tapping the nudge, which opens the booking AND clears the flag.
@@ -585,6 +593,17 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   };
 
   const nudges = [];
+  // Expired-but-waiting holds (reminder mode) are the most urgent — they're
+  // already overdue and tying up a unit until the hotelier acts.
+  if (holdsExpired.length > 0) {
+    const first = holdsExpired[0];
+    nudges.push({
+      icon: 'clock', tone: T.danger,
+      text: t('nudgeHoldsExpired').replace('{who}', holdsExpired.length === 1 ? first.guest : `${holdsExpired.length} ${t('nudgeHoldsWord')}`),
+      cta: holdsExpired.length === 1 ? t('nudgeOpen') : t('nudgeView'),
+      onClick: () => { if (holdsExpired.length === 1) go('booking', first.id); else go('diary'); },
+    });
+  }
   // Imminent holds get top priority — render first so the urgency
   // colour catches the eye before the calmer nudges below.
   if (holdsImminent.length > 0) {

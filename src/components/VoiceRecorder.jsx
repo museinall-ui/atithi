@@ -8,6 +8,7 @@ import { uploadPropertyAudio, signedAudioUrl, deletePropertyAudio } from '../clo
 // private bucket has no public URL). Renders a small placeholder while signing.
 function VoiceNotePlayer({ note }) {
   const [src, setSrc] = useState(note.dataUrl || '');
+  const retriesRef = useRef(0);
   useEffect(() => {
     let cancelled = false;
     if (note.dataUrl) { setSrc(note.dataUrl); return; }
@@ -16,10 +17,17 @@ function VoiceNotePlayer({ note }) {
     }
     return () => { cancelled = true; };
   }, [note.dataUrl, note.storagePath]);
+  // A signed URL (2h) expires if the page is left open all shift; on a play
+  // error, re-sign a fresh URL (capped to avoid a loop on a genuinely dead path).
+  const onError = () => {
+    if (note.dataUrl || !note.storagePath || retriesRef.current >= 3) return;
+    retriesRef.current += 1;
+    signedAudioUrl(note.storagePath).then(u => { if (u) setSrc(u); });
+  };
   if (!src) {
     return <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>…</span>;
   }
-  return <audio src={src} controls preload="metadata" style={{ flex: 1, minWidth: 0, height: 32 }} />;
+  return <audio src={src} controls preload="metadata" onError={onError} style={{ flex: 1, minWidth: 0, height: 32 }} />;
 }
 
 // Voice-note recorder + playback list. Lives inside BookingDetail as

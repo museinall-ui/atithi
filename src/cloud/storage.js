@@ -90,12 +90,17 @@ export async function uploadPropertyAudio(propertyId, blob, name) {
   let session = null;
   try { session = (await supabase.auth.getSession()).data.session; } catch { /* no session */ }
   if (!session) return null;
-  const ext = ((blob.type && blob.type.includes('/')) ? blob.type.split('/')[1] : 'webm').replace(/[^a-z0-9]/gi, '') || 'webm';
+  // Strip the codec parameter: Chrome's MediaRecorder yields 'audio/webm;codecs=opus'
+  // (Safari 'audio/mp4;codecs=...'), but the bucket's allowed_mime_types match the
+  // bare essence literally — so the FULL string is rejected as an unsupported mime
+  // and every note would silently fall back to base64, defeating the migration.
+  const baseMime = (blob.type || 'audio/webm').split(';')[0].trim() || 'audio/webm';
+  const ext = (baseMime.includes('/') ? baseMime.split('/')[1] : 'webm').replace(/[^a-z0-9]/gi, '') || 'webm';
   const path = `${propertyId}/${name}.${ext}`;
   try {
     const { data, error } = await supabase.storage.from(AUDIO_BUCKET).upload(path, blob, {
       upsert: true,
-      contentType: blob.type || 'audio/webm',
+      contentType: baseMime,
       cacheControl: '3600',
     });
     if (error) throw error;
@@ -144,9 +149,10 @@ export function dataUrlToBlob(dataUrl) {
 async function uploadDataUrl(propertyId, dataUrl, name, opts) {
   const blob = dataUrlToBlob(dataUrl);
   if (!blob) return null;
-  const ext = (blob.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
-  const file = new File([blob], `${name}.${ext}`, { type: blob.type });
-  const url = await uploadPropertyMedia(propertyId, file, name, opts);
+  // Pass the Blob straight to uploadPropertyMedia (it reads .type for ext +
+  // contentType) — no `new File()` wrapper, which is unnecessary and throws on a
+  // few legacy browsers, aborting the whole backfill.
+  const url = await uploadPropertyMedia(propertyId, blob, name, opts);
   return isStorageUrl(url) ? url : null;   // only count a real Storage URL (not a base64 fallback)
 }
 

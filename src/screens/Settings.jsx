@@ -966,7 +966,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     }
                     // Gallery images each keep their own object (unique name).
                     uploadPropertyMedia(propertyId, file, 'gallery', { unique: true }).then(url => {
-                      setProfile(p => ({ ...p, photoGallery: [...(p.photoGallery || []), url] }));
+                      if (url) setProfile(p => ({ ...p, photoGallery: [...(p.photoGallery || []), url] }));
                     });
                   }}
                 />

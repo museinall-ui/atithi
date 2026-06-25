@@ -4,6 +4,7 @@ import { T, applyTheme } from './tokens.js';
 import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
+import { migratePropertyImages } from './cloud/storage.js';
 import {
   loadBookings,
   createBookingCloud, updateBookingCloud,
@@ -679,6 +680,26 @@ export default function App() {
   const bookingsRef = useRef(bookings);
   useEffect(() => { propertyRef.current = property; }, [property]);
   useEffect(() => { bookingsRef.current = bookings; }, [bookings]);
+
+  // One-time photo backfill: once signed in + loaded, move any leftover base64
+  // images on the property to Supabase Storage (logo / payment QR / gallery /
+  // room photos) and replace them with CDN URLs. Idempotent (no-ops once the
+  // fields are URLs), race-free (the result is applied through the normal
+  // debounced save), and lossless (a field is only replaced after its upload
+  // succeeds). Runs at most once per session via the ref guard.
+  const mediaBackfillRef = useRef(false);
+  useEffect(() => {
+    if (mediaBackfillRef.current) return;
+    if (DEMO_MODE || !session || !cloudReady || !propertyId || !property) return;
+    mediaBackfillRef.current = true;
+    (async () => {
+      try {
+        const { property: migrated, migrated: n } = await migratePropertyImages(propertyId, property);
+        if (n > 0) setProperty(migrated);
+      } catch { /* leave base64 in place; retried next load */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, cloudReady, propertyId, property]);
   // Diff-sync refs hoisted above the cloud-load useEffect so the cloud
   // load can snapshot them with the freshly-loaded cloud values BEFORE
   // the diff-sync effects fire. Without that snapshot, the very first

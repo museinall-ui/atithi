@@ -76,3 +76,82 @@ export async function uploadPropertyMedia(propertyId, file, name, { unique = fal
 export function isStorageUrl(v) {
   return typeof v === 'string' && /^https?:\/\//.test(v);
 }
+
+const isB64 = (v) => typeof v === 'string' && v.startsWith('data:');
+
+// Decode a base64 (or url-encoded) data URL back into a Blob, for the backfill.
+export function dataUrlToBlob(dataUrl) {
+  const m = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(dataUrl || '');
+  if (!m) return null;
+  const mime = m[1] || 'application/octet-stream';
+  const b64 = !!m[2];
+  const data = m[3] || '';
+  try {
+    if (b64) {
+      const bin = atob(data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    return new Blob([decodeURIComponent(data)], { type: mime });
+  } catch { return null; }
+}
+
+async function uploadDataUrl(propertyId, dataUrl, name, opts) {
+  const blob = dataUrlToBlob(dataUrl);
+  if (!blob) return null;
+  const ext = (blob.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+  const file = new File([blob], `${name}.${ext}`, { type: blob.type });
+  const url = await uploadPropertyMedia(propertyId, file, name, opts);
+  return isStorageUrl(url) ? url : null;   // only count a real Storage URL (not a base64 fallback)
+}
+
+// One-time, idempotent backfill: convert any base64 image fields still on a
+// property to Storage URLs. Returns { property, migrated }. A field is only
+// replaced AFTER a successful upload — a failure leaves the base64 in place to
+// retry on the next load, so nothing is ever lost. Race-free: the caller applies
+// the returned property through the normal save path (no separate DB write).
+export async function migratePropertyImages(propertyId, property) {
+  if (!propertyId || !property) return { property, migrated: 0 };
+  let session = null;
+  try { session = (await supabase.auth.getSession()).data.session; } catch { /* no session */ }
+  if (!session) return { property, migrated: 0 };
+
+  const hasWork =
+    isB64(property?.profile?.logoDataUrl) ||
+    isB64(property?.profile?.paymentQrDataUrl) ||
+    (Array.isArray(property?.profile?.photoGallery) && property.profile.photoGallery.some(isB64)) ||
+    (Array.isArray(property?.categories) && property.categories.some(c => isB64(c?.photoDataUrl)));
+  if (!hasWork) return { property, migrated: 0 };
+
+  let migrated = 0;
+  const next = {
+    ...property,
+    profile: { ...(property.profile || {}) },
+    categories: (property.categories || []).map(c => ({ ...c })),
+  };
+
+  if (isB64(next.profile.logoDataUrl)) {
+    const u = await uploadDataUrl(propertyId, next.profile.logoDataUrl, 'logo');
+    if (u) { next.profile.logoDataUrl = u; migrated++; }
+  }
+  if (isB64(next.profile.paymentQrDataUrl)) {
+    const u = await uploadDataUrl(propertyId, next.profile.paymentQrDataUrl, 'payment-qr');
+    if (u) { next.profile.paymentQrDataUrl = u; migrated++; }
+  }
+  if (Array.isArray(next.profile.photoGallery) && next.profile.photoGallery.some(isB64)) {
+    const out = [];
+    for (const item of next.profile.photoGallery) {
+      if (isB64(item)) { const u = await uploadDataUrl(propertyId, item, 'gallery', { unique: true }); out.push(u || item); if (u) migrated++; }
+      else out.push(item);
+    }
+    next.profile.photoGallery = out;
+  }
+  for (const c of next.categories) {
+    if (isB64(c.photoDataUrl)) {
+      const u = await uploadDataUrl(propertyId, c.photoDataUrl, 'room-' + c.id);
+      if (u) { c.photoDataUrl = u; migrated++; }
+    }
+  }
+  return { property: next, migrated };
+}

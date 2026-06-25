@@ -1,0 +1,51 @@
+# Hold-expiry watcher — pings the AtithiBook /api/hold-watch endpoint on a
+# schedule so the hotelier's phone gets a reminder when an unpaid hold is about
+# to expire (and, in auto-release mode, so expired holds are released even when
+# nobody has the app open).
+#
+# Why GitHub Actions: scheduled workflows are FREE on a public repo and can run
+# every few minutes — unlike Vercel Cron, which only runs once a day on the free
+# Hobby plan. This is just a heartbeat: it makes ONE authenticated HTTPS call and
+# does no other work. All the logic lives in api/hold-watch.js.
+#
+# Setup (one-time): add a repository secret named CRON_SECRET
+#   (repo → Settings → Secrets and variables → Actions → New repository secret)
+#   with the SAME value you put in the Vercel CRON_SECRET env var.
+# Until both are set, the endpoint returns 503 and this workflow is a harmless
+# no-op. GitHub may delay scheduled runs by a few minutes at peak times — fine
+# for a 30-minute hold-reminder window.
+
+name: hold-watch
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # every 15 minutes (UTC)
+  workflow_dispatch: {}       # lets you trigger a run by hand from the Actions tab
+
+# Don't pile up overlapping runs if one is slow.
+concurrency:
+  group: hold-watch
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger hold-watch
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret not set yet — nothing to do."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            -X POST "https://www.atithibook.com/api/hold-watch" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 60 -d '{}' || true)
+          echo "HTTP $code"
+          cat /tmp/out.json || true
+          # 503 = endpoint dormant (env not configured) — treat as OK, not a failure.
+          if [ "$code" = "200" ] || [ "$code" = "503" ]; then exit 0; fi
+          echo "Unexpected status $code"; exit 1

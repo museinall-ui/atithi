@@ -394,9 +394,15 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     // adults + children. The folio sometimes muddles this (e.g. when
     // the booking has two rooms of different types). This card makes
     // it unambiguous + sums totals for the front-desk pre-check.
+    const parseGuests = (g) => {
+      const s = String(g || '');
+      const a = s.match(/(\d+)\s*A/i);
+      const c = s.match(/(\d+)\s*C/i);
+      return { adults: a ? parseInt(a[1], 10) : 2, children: c ? parseInt(c[1], 10) : 0 };
+    };
     const items = Array.isArray(b.roomItems) && b.roomItems.length > 0
       ? b.roomItems
-      : [{ roomTypeId: b.roomTypeId, adults: 2, children: 0 }];
+      : [{ roomTypeId: b.roomTypeId, ...parseGuests(b.guests) }];
     let totalA = 0, totalC = 0;
     const cats = Array.isArray(prop?.categories) ? prop.categories : [];
     const findCat = (id) => cats.find(c => c.id === id);

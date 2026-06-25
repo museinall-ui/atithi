@@ -646,7 +646,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
       gstin: gstin.trim(),
       // Merge customReminders into accountant jsonb (round-trips to
       // properties.accountant column without a migration).
-      accountant: { ...accountant, customReminders },
+      // Merge the LATEST accountant (prev.accountant) UNDER the local edits, so
+      // subfields written after this sheet opened — e.g. AIOSELL aiosellSync that
+      // the auto-sync stamps, or AdvancedSettings' minNights/singleRates — aren't
+      // clobbered by the sign-in-time snapshot.
+      accountant: { ...(prev.accountant || {}), ...accountant, customReminders },
       theme, invoiceCounters,
       mealPlans, defaultMealPlanId: defaultMealPlan, weekendRules, seasons, channelMarkups, channelCommissions, ratePlans, baseCapacityAdults,
       coupons,
@@ -1166,7 +1170,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       <NumberInput
                         value={effective}
                         min={0} max={28}
-                        onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: n } : x))}
+                        onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: n === slab.rate ? null : n } : x))}
                         className="tnum"
                         style={{ width: 50, border: `1px solid ${T.indigo}`, outline: 'none', background: T.card, borderRadius: 5, padding: '3px 6px', fontSize: 12, fontWeight: 700, color: T.indigo }}
                       />
@@ -1968,7 +1972,18 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     <Toggle
                       on={mp.enabled}
                       onChange={(v) => {
-                        setMealPlans(arr => arr.map((p, j) => j === i ? { ...p, enabled: v } : p));
+                        setMealPlans(arr => {
+                          const next = arr.map((p, j) => j === i ? { ...p, enabled: v } : p);
+                          // If we just disabled the current default plan, move the
+                          // default to a still-enabled plan so it never dangles
+                          // (a disabled default is unselectable + breaks the price
+                          // baseline between the create screen and the folio).
+                          if (!v && mp.id === defaultMealPlan) {
+                            const fallback = next.find(p => p.enabled);
+                            setDefaultMealPlan(fallback ? fallback.id : 'ep');
+                          }
+                          return next;
+                        });
                       }}
                     />
                     {!isStandard && (

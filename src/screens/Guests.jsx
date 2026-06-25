@@ -310,7 +310,7 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
                 {g.inhouse && <Chip color="ok" style={{ fontSize: 9, padding: '1px 6px' }}>In-house</Chip>}
               </div>
               <div className="tnum" style={{ fontSize: 12, color: T.ink3, marginTop: 2 }}>
-                {g.phone} · {g.stays} stay{g.stays > 1 ? 's' : ''} · {g.lastStay}
+                {g.phone} · {g.stays} stay{g.stays !== 1 ? 's' : ''} · {g.lastStay}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>

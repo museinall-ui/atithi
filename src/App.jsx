@@ -266,6 +266,15 @@ function migrateProperty(p) {
   if (!Array.isArray(out.mealPlans) || out.mealPlans.length === 0) {
     out.mealPlans = DEFAULT_PROPERTY.mealPlans.map(p => ({ ...p }));
   }
+  // Default meal plan must point at an ENABLED plan; if it dangles (e.g. the
+  // referenced plan was later disabled in Settings), reset it so the picker and
+  // the meal-cost baseline stay valid.
+  {
+    const enabledMealIds = (out.mealPlans || []).filter(p => p && p.enabled).map(p => p.id);
+    if (!out.defaultMealPlanId || !enabledMealIds.includes(out.defaultMealPlanId)) {
+      out.defaultMealPlanId = enabledMealIds.includes('ep') ? 'ep' : (enabledMealIds[0] || 'ep');
+    }
+  }
   // Weekend rules — seed defaults; clamp/migrate from any partial saved state.
   if (!out.weekendRules || typeof out.weekendRules !== 'object') {
     out.weekendRules = { ...DEFAULT_PROPERTY.weekendRules };
@@ -1264,8 +1273,13 @@ export default function App() {
         return changed.length ? next : arr;
       });
       if (cloudReadyRef.current && propertyIdRef.current && changed.length) {
+        const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
         changed.forEach(c => {
           syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true, events: c.events }));
+          // Record on the property-wide Activity log too. This mount-once ticker's
+          // captured logEvent closes over the initial null session/propertyId, so
+          // call logActivity directly via refs. Reuses the booking.cancel key.
+          logActivity(propertyIdRef.current, uid, 'booking.cancel', 'booking', c.id, { guest: c.guest, fromStatus: c.previousStatus, toStatus: 'cancelled', autoReleased: true });
         });
       }
       // Surface an undo snackbar for the FIRST one (if multiple fired
@@ -1399,7 +1413,7 @@ export default function App() {
     // never a fabricated timestamp).
     const hadLedger = Array.isArray(booking.payments) && booking.payments.length > 0;
     const seedRow = (!hadLedger && booking.paid > 0)
-      ? { id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Pre-existing balance · date not recorded', date: '' }
+      ? { id: 'p1', kind: 'payment', method: booking.channel === 'direct' ? 'upi' : 'card', amount: booking.paid, note: 'Pre-existing balance · date not recorded', date: '', dateIso: booking.startIdx != null ? idxToDate(booking.startIdx) : undefined }
       : null;
     const existing = hadLedger ? booking.payments : (seedRow ? [seedRow] : []);
     const nextPayments = [...existing, entry];
@@ -1976,6 +1990,15 @@ export default function App() {
         patch.status = 'tentative';
         patch.releaseTs = releaseTs;
         patch.releaseAt = releaseAt;
+        patch.holdHours = data.holdHours || 4;   // persist hold length (cloud + extendHold tally)
+      } else if (existing && existing.status === 'tentative' && adjTotal > 0 && keepPaid >= adjTotal) {
+        // Editing a tentative hold down to fully-paid (e.g. fewer nights / lower
+        // rate) should confirm it + clear the release timer, mirroring addPayment
+        // — otherwise it sits in tentative limbo that the auto-release ticker
+        // also skips (notFullyPaid is false once paid >= total).
+        patch.status = 'confirmed';
+        patch.releaseTs = null;
+        patch.releaseAt = null;
       }
       // Append an edit event with the diff so the activity feed
       // shows what changed and when. Empty diff → no event (saving
@@ -2092,8 +2115,15 @@ export default function App() {
         }
       }
 
-      // Offline or cloud-error fallback — assign an id locally.
-      newBk.id = 'BK-' + (2854 + bookings.length);
+      // Offline or cloud-error fallback — assign a LOCALLY-unique id. Don't use
+      // bookings.length: real ids come from a global, monotonic DB sequence, so
+      // "2854 + count" can collide with a loaded/cancelled booking and shadow it
+      // (id lookups + React keys would then resolve to the wrong record).
+      const maxBk = bookings.reduce((m, b) => {
+        const n = /^BK-(\d+)$/.exec(b.id || '');
+        return n ? Math.max(m, +n[1]) : m;
+      }, 2853);
+      newBk.id = 'BK-' + (maxBk + 1);
       setBookings(arr => [...arr, newBk]);
       logEvent('booking.create', 'booking', newBk.id, { guest: newBk.guest, total: newBk.total, nights: newBk.nights, channel: newBk.channel, offline: true });
       go('booking-confirmed', newBk.id);

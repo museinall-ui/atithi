@@ -561,22 +561,30 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
       selected.forEach(i => {
         const key = `${selectedType}:${i}`;
         const prev = next[key] || {};
-        if (target === total) {
-          // Fully open: drop closedUnits + closed but keep any rate override
-          // so the hotelier's prior custom price survives a "reopen all".
+        // Never close a unit out from under an existing guest: floor the target
+        // at the rooms already booked on THIS date (mirrors the Diary per-date
+        // editor's booked-floor). The bulk target is uniform, but bookings vary
+        // per date, so the floor must be applied per-date — otherwise a closed
+        // unit index that coincides with a booked room double-counts in the
+        // widget/RPC availability math (blocked = booked + closedCount).
+        const dayTarget = Math.min(total, Math.max(target, occupiedCountFor(i)));
+        const dayToBlock = total - dayTarget;
+        if (dayTarget >= total) {
+          // Fully open (or forced open because everything is booked): drop
+          // closedUnits + closed but keep any rate override.
           const { closedUnits: _drop, closed: _drop2, ...rest } = prev;
           if (Object.keys(rest).length === 0) {
             delete next[key];
           } else {
             next[key] = rest;
           }
-        } else if (target === 0) {
+        } else if (dayTarget === 0) {
+          // Truly empty date set to 0 → close the whole type.
           const { closedUnits: _drop, ...rest } = prev;
           next[key] = { ...rest, closed: true };
         } else {
-          // Convention: block the last `toBlock` units (units numbered
-          // (target+1) ... total in 1-indexed display, indices target..total-1).
-          const closedUnits = Array.from({ length: toBlock }, (_, k) => total - 1 - k).reverse();
+          // Block the last `dayToBlock` units (highest indices first).
+          const closedUnits = Array.from({ length: dayToBlock }, (_, k) => total - 1 - k).reverse();
           next[key] = { ...prev, closed: false, closedUnits };
         }
       });

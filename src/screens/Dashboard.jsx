@@ -110,11 +110,16 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
   };
 
   if (closed) {
-    const gap = (closed.total || 0) - (closed.expected || 0);
-    // Only show the over/short reconciliation when this close was recorded
-    // with the new net-expected math; old records (no hadMovement) just show
-    // the counted total without a misleading "vs expected" line.
-    const showGap = Math.abs(gap) > 0 && closed.hadMovement;
+    // The cloud table has no columns for the derived reconciliation fields, so a
+    // reload strips closed.expected / closed.hadMovement. The close record is
+    // always for TODAY (dateKey), so re-derive them from the live dayCloseExpected
+    // when missing — this keeps the over/short line alive after a refresh.
+    const expectedR = (closed.expected != null) ? closed.expected : (dayCloseExpected ? dayCloseExpected.total : 0);
+    const hadMovementR = (closed.hadMovement != null) ? closed.hadMovement : !!(dayCloseExpected && dayCloseExpected.hasMovement);
+    const gap = (closed.total || 0) - (expectedR || 0);
+    // Only show the over/short reconciliation when there was real movement today;
+    // old records with no expected at all just show the counted total.
+    const showGap = Math.abs(gap) > 0 && hadMovementR;
     const closedAccounts = Array.isArray(closed.accounts) && closed.accounts.length
       ? closed.accounts
       : [

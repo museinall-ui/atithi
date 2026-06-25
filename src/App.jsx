@@ -607,6 +607,26 @@ export default function App() {
           previousAutoReleased: undoState.previousAutoReleased,
         }];
     const byId = new Map(list.map(it => [it.bookingId, it]));
+    // Restoring an AUTO-RELEASED hold restores its ORIGINAL releaseTs, which is
+    // already in the past — so the 30s ticker would re-cancel it on the very next
+    // tick (in the default auto mode), making Undo futile. Give any restored
+    // expired hold a fresh window instead. Pre-compute from the live bookings ref
+    // so the value is consistent in both the local update and the cloud patch.
+    const now = Date.now();
+    const live = bookingsRef.current || [];
+    const releaseById = {};
+    for (const it of list) {
+      let releaseTs = it.previousReleaseTs;
+      let releaseAt = it.previousReleaseAt;
+      if (it.previousStatus === 'tentative' && releaseTs && releaseTs <= now) {
+        const b = live.find(x => x.id === it.bookingId);
+        const hrs = (b && b.holdHours) || 4;
+        releaseTs = now + hrs * 3600 * 1000;
+        const d = new Date(releaseTs);
+        releaseAt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+      releaseById[it.bookingId] = { releaseTs, releaseAt };
+    }
     const eventsById = {};
     setBookings(arr => arr.map(b => {
       const it = byId.get(b.id);
@@ -614,21 +634,23 @@ export default function App() {
       const evt = { kind: 'status', text: `Restored from cancellation (was ${it.previousStatus})`, time: new Date().toISOString() };
       const events = [...(Array.isArray(b.events) ? b.events : []), evt];
       eventsById[b.id] = events;
+      const r = releaseById[b.id] || { releaseTs: it.previousReleaseTs, releaseAt: it.previousReleaseAt };
       return {
         ...b,
         status: it.previousStatus,
-        releaseTs: it.previousReleaseTs,
-        releaseAt: it.previousReleaseAt,
+        releaseTs: r.releaseTs,
+        releaseAt: r.releaseAt,
         autoReleased: it.previousAutoReleased,
         events,
       };
     }));
     if (cloudReady && propertyId) {
       list.forEach(it => {
+        const r = releaseById[it.bookingId] || { releaseTs: it.previousReleaseTs, releaseAt: it.previousReleaseAt };
         const patch = {
           status: it.previousStatus,
-          releaseTs: it.previousReleaseTs || null,
-          releaseAt: it.previousReleaseAt || null,
+          releaseTs: r.releaseTs || null,
+          releaseAt: r.releaseAt || null,
           autoReleased: it.previousAutoReleased,
         };
         if (eventsById[it.bookingId]) patch.events = eventsById[it.bookingId];
@@ -695,7 +717,25 @@ export default function App() {
     (async () => {
       try {
         const { property: migrated, migrated: n } = await migratePropertyImages(propertyId, property);
-        if (n > 0) setProperty(migrated);
+        if (n > 0) {
+          // Merge ONLY the migrated image fields onto the LIVE property via the
+          // functional setter — so any field the hotelier edited during the
+          // multi-second upload window isn't clobbered by the pre-upload snapshot
+          // (the overwrite would otherwise be persisted by the debounced save).
+          setProperty(prev => ({
+            ...prev,
+            profile: {
+              ...(prev.profile || {}),
+              logoDataUrl: migrated.profile.logoDataUrl,
+              paymentQrDataUrl: migrated.profile.paymentQrDataUrl,
+              photoGallery: migrated.profile.photoGallery,
+            },
+            categories: (prev.categories || []).map(c => {
+              const m = (migrated.categories || []).find(x => x.id === c.id);
+              return m ? { ...c, photoDataUrl: m.photoDataUrl } : c;
+            }),
+          }));
+        }
       } catch { /* leave base64 in place; retried next load */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1030,6 +1070,10 @@ export default function App() {
       setPropertyId(null);
       setCloudReady(false);
       setCurrentMember(null);
+      // Re-arm the one-time photo backfill so the NEXT user who signs in on this
+      // same tab (no page reload between accounts) gets their own base64 images
+      // migrated, instead of being short-circuited by the first user's run.
+      mediaBackfillRef.current = false;
       if (DEMO_MODE) return; // DEMO has no session by design — don't wipe demo data
       setBookings([]);
       setProperty(EMPTY_PROPERTY);
@@ -1312,12 +1356,24 @@ export default function App() {
       if (!changed.length) return;
       const eventsById = Object.fromEntries(changed.map(c => [c.id, c.events]));
       const changedIds = new Set(changed.map(c => c.id));
-      setBookings(a => a.map(b => (changedIds.has(b.id) && b.status === 'tentative')
-        ? { ...b, status: 'cancelled', autoReleased: true, events: eventsById[b.id] }
-        : b));
-      if (cloudReadyRef.current && propertyIdRef.current && changed.length) {
+      // Capture which holds were ACTUALLY flipped (still tentative at apply time).
+      // bookingsRef lags a render, so a hold paid-in-full in the gap before it
+      // caught up gets skipped here — and must ALSO be skipped by the cloud sync +
+      // undo below, else a stale cloud cancel could overwrite the just-confirmed
+      // booking (leaving cloud=cancelled while local=confirmed).
+      const appliedIds = [];
+      setBookings(a => a.map(b => {
+        if (changedIds.has(b.id) && b.status === 'tentative') {
+          appliedIds.push(b.id);
+          return { ...b, status: 'cancelled', autoReleased: true, events: eventsById[b.id] };
+        }
+        return b;
+      }));
+      const applied = changed.filter(c => appliedIds.includes(c.id));
+      if (!applied.length) return;
+      if (cloudReadyRef.current && propertyIdRef.current) {
         const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
-        changed.forEach(c => {
+        applied.forEach(c => {
           syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true, events: c.events }));
           // Record on the property-wide Activity log too. This mount-once ticker's
           // captured logEvent closes over the initial null session/propertyId, so
@@ -1328,8 +1384,8 @@ export default function App() {
       // Surface an undo snackbar for the FIRST one (if multiple fired
       // in the same tick — rare). The hotelier seeing the snackbar
       // is the trigger to open the diary and review the rest.
-      if (changed.length > 0) {
-        const c = changed[0];
+      {
+        const c = applied[0];
         setUndoState({
           kind: 'autoRelease',
           bookingId: c.id,
@@ -1341,7 +1397,7 @@ export default function App() {
           // R10-D5: carry EVERY hold released this tick so Undo restores all of
           // them, not just the first. A phone waking from sleep can expire
           // several holds at once; previously only changed[0] was recoverable.
-          items: changed.map(x => ({
+          items: applied.map(x => ({
             bookingId: x.id,
             previousStatus: x.previousStatus,
             previousReleaseTs: x.previousReleaseTs,
@@ -1351,7 +1407,7 @@ export default function App() {
           // 30s window — twice the manual cancel because the auto-
           // release surprised them.
           expiresAt: Date.now() + 30 * 1000,
-          extraCount: changed.length - 1,
+          extraCount: applied.length - 1,
         });
       }
     };

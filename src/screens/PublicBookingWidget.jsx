@@ -255,7 +255,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     const def = mealPlanById(property, defaultMealPlanId);
     if (!picked || !def) return 0;
     if (picked.id === def.id) return 0;
-    const totalGuests = (data.adults || 0) + totalChildren;
+    // Meals + per-guest extras count adults + the half-rate child band only —
+    // matching reception (NewBooking) + the saved-booking folio recompute
+    // (bookingGuestCount in data.js). Free/full-band children still count toward
+    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
+    // widget total equals what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + (data.children || 0);
     return Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
   })();
 
@@ -266,7 +271,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     .map(([id, qty]) => {
       const ex = savedCustomExtras.find(x => x.id === id);
       if (!ex || !qty) return null;
-      const totalGuests = (data.adults || 0) + totalChildren;
+      // Meals + per-guest extras count adults + the half-rate child band only —
+    // matching reception (NewBooking) + the saved-booking folio recompute
+    // (bookingGuestCount in data.js). Free/full-band children still count toward
+    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
+    // widget total equals what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + (data.children || 0);
       let mult = 1;
       switch (ex.unit) {
         case 'per night': mult = data.nights || 1; break;
@@ -903,7 +913,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     const sel = mp.id === data.mealPlanId;
                     const def = mealPlanById(property, defaultMealPlanId);
                     const isDefault = mp.id === defaultMealPlanId;
-                    const totalGuests = (data.adults || 0) + totalChildren;
+                    // Meals + per-guest extras count adults + the half-rate child band only —
+    // matching reception (NewBooking) + the saved-booking folio recompute
+    // (bookingGuestCount in data.js). Free/full-band children still count toward
+    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
+    // widget total equals what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + (data.children || 0);
                     const deltaPerNight = isDefault ? 0 : ((mp.price || 0) - (def?.price || 0)) * totalGuests;
                     return (
                       <button

@@ -30,7 +30,18 @@
 // `Authorization: Bearer <CRON_SECRET>`. No secret set → 503; wrong secret → 401.
 
 import webpush from 'web-push';
+import crypto from 'crypto';
 import { pushInventoryForProperty } from '../lib/aiosellServer.js';
+
+// Constant-time bearer-token compare (matches the safeEqual pattern in
+// api/aiosell-reservation.js) so the secret can't be recovered byte-by-byte via
+// response-timing. Length mismatch short-circuits (acceptable).
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 const SUPABASE_URL = 'https://vaerzwmglfwslvqqcyhx.supabase.co';
 // VAPID PUBLIC key — safe to ship. Must match src/push.js + the private key.
@@ -49,8 +60,7 @@ export default async function handler(req, res) {
   if (!privKey || !serviceKey || !cronSecret) {
     return res.status(503).json({ error: 'hold-watch is not configured on this deployment yet.', code: 'no_cron' });
   }
-  const auth = req.headers.authorization || '';
-  if (auth !== `Bearer ${cronSecret}`) {
+  if (!safeEqual(req.headers.authorization || '', `Bearer ${cronSecret}`)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
@@ -188,9 +198,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, sent: 0, cancelled, note: 'nothing to notify' });
   }
 
-  const host = req.headers.host;
-  const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const appUrl = host ? `${proto}://${host}/` : 'https://www.atithibook.com/';
+  // Canonical app origin (a server constant), never derived from the request
+  // Host header — the notification click URL must not be influenceable by a
+  // forged Host on these push paths.
+  const appUrl = 'https://www.atithibook.com/';
 
   // Send pushes, caching each property's subscriber list.
   const subsByProp = {};

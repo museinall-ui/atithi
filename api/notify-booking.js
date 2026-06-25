@@ -103,6 +103,7 @@ export default async function handler(req, res) {
   // Only the first caller wins; duplicates get an empty result and stop. If the
   // column isn't installed yet (pre-20260627), claimResp is not ok and we
   // degrade to "notify anyway" — the freshness gate above still bounds abuse.
+  let claimWon = false;
   try {
     const claimResp = await fetch(
       `${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(latest.id)}&notified_at=is.null`,
@@ -115,6 +116,7 @@ export default async function handler(req, res) {
       if (!Array.isArray(claimed) || claimed.length === 0) {
         return res.status(200).json({ ok: true, sent: 0, note: 'already notified' });
       }
+      claimWon = true;
     }
     // claimResp not ok → column likely absent (pre-migration); fall through.
   } catch (e) { /* network error on claim → degrade to notify (freshness-gated) */ }
@@ -122,8 +124,10 @@ export default async function handler(req, res) {
   // A new booking (website or staff-entered) just consumed a unit — close it on
   // the OTAs immediately via the channel manager, so a guest browsing an OTA
   // can't book the same room in the gap before the hotelier's app next syncs.
-  // Idempotent + no-op until AIOSELL is connected; never blocks the alert below.
-  try { await pushInventoryForProperty(propertyId); } catch (e) { /* periodic reconciliation will catch it */ }
+  // Gated on a WON claim (this endpoint is unauthenticated) so a repeated POST in
+  // the pre-migration degraded window can't amplify into heavy service-role reads
+  // + AIOSELL calls. Idempotent + no-op until AIOSELL is connected.
+  if (claimWon) { try { await pushInventoryForProperty(propertyId); } catch (e) { /* periodic reconciliation will catch it */ } }
 
   {
     const who = (latest.guest_name || 'A guest').toString().slice(0, 40);
@@ -161,9 +165,10 @@ export default async function handler(req, res) {
   // redirect / phishing vector on an unauthenticated endpoint. Derive the app URL
   // from the deployment host instead (the legitimate callers all send their own
   // same-origin URL anyway).
-  const host = req.headers.host;
-  const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const appUrl = host ? `${proto}://${host}/` : './';
+  // Canonical app origin (server constant), never the request Host header — the
+  // service worker opens this url on click, so it must not be Host-influenceable
+  // on this unauthenticated endpoint.
+  const appUrl = 'https://www.atithibook.com/';
   const payload = JSON.stringify({ title, body, url: appUrl, tag: 'atithi-website-booking' });
 
   let sent = 0, pruned = 0;

@@ -20,9 +20,18 @@
 // Dormant until BOTH CRON_SECRET and the AIOSELL_* creds are set (it's a no-op
 // while AIOSELL partner onboarding is still in progress).
 
+import crypto from 'crypto';
 import { listConfiguredPropertyIds, pushInventoryForProperty, aiosellConfigured } from '../lib/aiosellServer.js';
 
 export const config = { maxDuration: 60 };
+
+// Constant-time bearer-token compare (matches api/aiosell-reservation.js).
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
@@ -30,7 +39,7 @@ export default async function handler(req, res) {
   if (!cronSecret || !serviceKey) {
     return res.status(503).json({ error: 'ota-inventory-sync is not configured yet.', code: 'no_cron' });
   }
-  if ((req.headers.authorization || '') !== `Bearer ${cronSecret}`) {
+  if (!safeEqual(req.headers.authorization || '', `Bearer ${cronSecret}`)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
   if (!aiosellConfigured()) {

@@ -42,7 +42,10 @@ export default async function handler(req, res) {
   catch (e) { return res.status(502).json({ error: 'property list failed', detail: String(e?.message || e) }); }
 
   const start = Date.now();
-  const BUDGET_MS = 50000;   // leave headroom under the 60s function cap
+  // Leave ~15s headroom under the 60s function cap: the budget is checked only
+  // between properties, and a single property can still run one ~8s AIOSELL call
+  // (+ reads) after passing the gate, so a 50s budget could overrun.
+  const BUDGET_MS = 45000;
   let processed = 0, pushed = 0, skipped = 0, failed = 0, deferred = 0;
   const errors = [];
   for (const id of ids) {

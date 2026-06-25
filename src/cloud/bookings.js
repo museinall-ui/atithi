@@ -345,6 +345,16 @@ export async function updateBookingCloud(bookingId, patch) {
   if (error) throw error;
 }
 
+// Best-effort: clear the hold-watch cron's once-per-booking reminder flag so an
+// EXTENDED hold's new deadline can be reminded again. Done as its OWN update,
+// swallowing errors, so a pre-20260629 deployment (column absent) never fails the
+// extend itself. No-op where the column doesn't exist.
+export async function clearHoldReminderFlag(bookingId) {
+  try {
+    await supabase.from('bookings').update({ hold_reminder_sent_at: null }).eq('id', bookingId);
+  } catch { /* column may not exist yet; harmless */ }
+}
+
 // Append a payment row and resync the booking's paid total + status in the
 // same call. The caller computes the new values locally (matching the
 // existing UI logic) and passes them in.

@@ -7,7 +7,7 @@ import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './clo
 import { migratePropertyImages } from './cloud/storage.js';
 import {
   loadBookings,
-  createBookingCloud, updateBookingCloud,
+  createBookingCloud, updateBookingCloud, clearHoldReminderFlag,
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
 import {
@@ -1687,6 +1687,11 @@ export default function App() {
       const patch = { releaseTs, releaseAt, holdHours, autoReleased: false };
       if (nextEvents) patch.events = nextEvents;
       syncFire('Extend hold', updateBookingCloud(bookingId, patch));
+      // Clear the cron's once-per-booking reminder flag so the EXTENDED hold's
+      // new deadline can earn a fresh "expiring" push (and, in reminder mode, an
+      // expiry notice at all). Best-effort + SEPARATE from the patch above so a
+      // pre-20260629 deployment (column absent) can't fail the extend itself.
+      clearHoldReminderFlag(bookingId);
     }
     logEvent('booking.hold_extended', 'booking', bookingId, { guest: booking.guest, hours, newReleaseAt: releaseAt });
   };

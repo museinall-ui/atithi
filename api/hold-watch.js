@@ -128,9 +128,15 @@ export default async function handler(req, res) {
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(b.id)}&status=eq.tentative`,
         { method: 'PATCH',
-          headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          // return=representation so we know a row ACTUALLY transitioned: a
+          // return=minimal PATCH responds 204 even when 0 rows matched (the hold
+          // was already confirmed/cancelled in the gap), which would falsely count
+          // a release + fire a "room reopened" push for a unit still held.
+          headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=representation' },
           body: JSON.stringify({ status: 'cancelled', auto_released: true, events }) });
-      return r.ok;
+      if (!r.ok) return false;
+      const rows = await r.json();
+      return Array.isArray(rows) && rows.length > 0;
     } catch { return false; }
   };
 
@@ -150,11 +156,16 @@ export default async function handler(req, res) {
     const n = b.nights || 1;
 
     if (expired && mode === 'auto') {
-      if (await releaseHold(b)) { cancelled++; releasedProps.add(b.property_id); }
-      // Tell them once that it self-released (so they know the unit reopened).
+      const released = await releaseHold(b);
+      if (released) { cancelled++; releasedProps.add(b.property_id); }
+      // Notify once — but only claim the "room reopened" message if it ACTUALLY
+      // reopened. If the release PATCH blipped (transient), send the honest
+      // "expired, open the app" nudge instead of a message that would mislead the
+      // hotelier into reselling a still-held unit.
       if (!b.hold_reminder_sent_at && await claimReminder(b.id)) {
-        jobs.push({ propertyId: b.property_id, tag: 'atithi-hold-' + b.id,
-          title: '⏱️ Hold released', body: `${who}'s unpaid hold expired and was released — the room is open again.` });
+        jobs.push(released
+          ? { propertyId: b.property_id, tag: 'atithi-hold-' + b.id, title: '⏱️ Hold released', body: `${who}'s unpaid hold expired and was released — the room is open again.` }
+          : { propertyId: b.property_id, tag: 'atithi-hold-' + b.id, title: '⏳ Hold expired', body: `${who} · ${n} night${n === 1 ? '' : 's'} hold has expired. Open the app to release it.` });
       }
       continue;
     }

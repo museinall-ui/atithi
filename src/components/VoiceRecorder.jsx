@@ -1,6 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
 import Icon from './Icon.jsx';
+import { uploadPropertyAudio, signedAudioUrl, deletePropertyAudio } from '../cloud/storage.js';
+
+// Resolves a note's playable <audio> source: a legacy base64 dataUrl plays
+// directly; a Storage note carries a storagePath that we sign on demand (the
+// private bucket has no public URL). Renders a small placeholder while signing.
+function VoiceNotePlayer({ note }) {
+  const [src, setSrc] = useState(note.dataUrl || '');
+  useEffect(() => {
+    let cancelled = false;
+    if (note.dataUrl) { setSrc(note.dataUrl); return; }
+    if (note.storagePath) {
+      signedAudioUrl(note.storagePath).then(u => { if (!cancelled && u) setSrc(u); });
+    }
+    return () => { cancelled = true; };
+  }, [note.dataUrl, note.storagePath]);
+  if (!src) {
+    return <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>…</span>;
+  }
+  return <audio src={src} controls preload="metadata" style={{ flex: 1, minWidth: 0, height: 32 }} />;
+}
 
 // Voice-note recorder + playback list. Lives inside BookingDetail as
 // a 'Voice notes' card. The hotelier taps Record, the browser asks
@@ -28,7 +48,7 @@ function fmtDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export default function VoiceRecorder({ notes = [], onAdd, onRemove, t = (k) => k }) {
+export default function VoiceRecorder({ notes = [], onAdd, onRemove, t = (k) => k, propertyId, bookingId }) {
   const [recording, setRecording] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState('');
@@ -73,24 +93,27 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove, t = (k) => 
       rec.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
-      rec.onstop = () => {
+      rec.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || 'audio/webm' });
         const durationSec = Math.min(MAX_DURATION_SEC, (Date.now() - startTsRef.current) / 1000);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const dataUrl = String(reader.result || '');
-          if (!dataUrl) return;
-          onAdd && onAdd({
-            id: 'vn_' + Date.now().toString(36),
-            dataUrl,
-            durationSec,
-            createdAt: new Date().toISOString(),
-          });
-        };
-        reader.readAsDataURL(blob);
+        const id = 'vn_' + Date.now().toString(36);
+        const createdAt = new Date().toISOString();
         cleanupStream();
         setRecording(false);
         setElapsedSec(0);
+        // Try the private property-audio bucket first; store just the PATH.
+        const path = await uploadPropertyAudio(propertyId, blob, `voice-${bookingId || 'b'}-${id}`);
+        if (path) {
+          onAdd && onAdd({ id, storagePath: path, durationSec, createdAt });
+          return;
+        }
+        // Fallback (demo / no session / upload failed): inline base64, as before.
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = String(reader.result || '');
+          if (dataUrl) onAdd && onAdd({ id, dataUrl, durationSec, createdAt });
+        };
+        reader.readAsDataURL(blob);
       };
       startTsRef.current = Date.now();
       rec.start();
@@ -135,12 +158,12 @@ export default function VoiceRecorder({ notes = [], onAdd, onRemove, t = (k) => 
           borderRadius: 8,
         }}>
           <Icon name="bell" size={14} color={T.primaryDk} stroke={2} />
-          <audio src={n.dataUrl} controls preload="metadata" style={{ flex: 1, minWidth: 0, height: 32 }} />
+          <VoiceNotePlayer note={n} />
           <span className="tnum" style={{ fontSize: 10, color: T.ink3, fontWeight: 700, flexShrink: 0 }}>
             {fmtDuration(n.durationSec)}
           </span>
           <button
-            onClick={() => { if (window.confirm(t('deleteVoiceNoteConfirm'))) onRemove && onRemove(n.id); }}
+            onClick={() => { if (window.confirm(t('deleteVoiceNoteConfirm'))) { if (n.storagePath) deletePropertyAudio(n.storagePath); onRemove && onRemove(n.id); } }}
             title={t('deleteVoiceNoteTitle')}
             style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', padding: 4 }}
           ><Icon name="x" size={13} /></button>

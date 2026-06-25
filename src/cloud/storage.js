@@ -17,6 +17,7 @@
 import { supabase } from '../supabase.js';
 
 const MEDIA_BUCKET = 'property-media';
+const AUDIO_BUCKET = 'property-audio';
 
 // File/Blob → base64 data URL (the legacy inline format). The universal fallback.
 export function fileToDataUrl(file) {
@@ -75,6 +76,49 @@ export async function uploadPropertyMedia(propertyId, file, name, { unique = fal
 // Handy for the backfill + for deciding whether a value still bloats the DB.
 export function isStorageUrl(v) {
   return typeof v === 'string' && /^https?:\/\//.test(v);
+}
+
+// ── Voice notes — PRIVATE bucket (internal notes, never guest-facing) ────────
+// Audio is stored under "<propertyId>/<name>.<ext>" and played via a short-lived
+// SIGNED URL (the bucket has no public URL). The note row keeps the PATH, not a
+// URL, so it never expires; we sign on demand at playback time.
+
+// Upload a voice-note Blob. Returns the storage PATH on success, or null with no
+// session (demo) / on error — the caller then falls back to base64 inline.
+export async function uploadPropertyAudio(propertyId, blob, name) {
+  if (!blob || !propertyId) return null;
+  let session = null;
+  try { session = (await supabase.auth.getSession()).data.session; } catch { /* no session */ }
+  if (!session) return null;
+  const ext = ((blob.type && blob.type.includes('/')) ? blob.type.split('/')[1] : 'webm').replace(/[^a-z0-9]/gi, '') || 'webm';
+  const path = `${propertyId}/${name}.${ext}`;
+  try {
+    const { data, error } = await supabase.storage.from(AUDIO_BUCKET).upload(path, blob, {
+      upsert: true,
+      contentType: blob.type || 'audio/webm',
+      cacheControl: '3600',
+    });
+    if (error) throw error;
+    return data.path;
+  } catch { return null; }
+}
+
+// Sign a private audio object for <audio src> playback. Short-lived (2h);
+// regenerated each time a player mounts. Returns null on error.
+export async function signedAudioUrl(path, expiresInSec = 7200) {
+  if (!path) return null;
+  try {
+    const { data, error } = await supabase.storage.from(AUDIO_BUCKET).createSignedUrl(path, expiresInSec);
+    if (error) throw error;
+    return data.signedUrl;
+  } catch { return null; }
+}
+
+// Best-effort delete of a private audio object when its note is removed (so we
+// don't leave orphan files). Never throws.
+export async function deletePropertyAudio(path) {
+  if (!path) return;
+  try { await supabase.storage.from(AUDIO_BUCKET).remove([path]); } catch { /* ignore */ }
 }
 
 const isB64 = (v) => typeof v === 'string' && v.startsWith('data:');

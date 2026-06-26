@@ -117,6 +117,19 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
     const expectedR = (closed.expected != null) ? closed.expected : (dayCloseExpected ? dayCloseExpected.total : 0);
     const hadMovementR = (closed.hadMovement != null) ? closed.hadMovement : !!(dayCloseExpected && dayCloseExpected.hasMovement);
     const gap = (closed.total || 0) - (expectedR || 0);
+    // Per-kind reconciliation (cash vs digital). Counted comes from the close
+    // record's stored cash/digital split; expected from the stored (or
+    // re-derived) per-kind net. Multiple digital accounts (owner UPI / manager
+    // UPI) reconcile against the combined digital expected — payments record a
+    // method, not a specific account, so cash-vs-digital is the exact granularity.
+    const expectedCashR = (closed.expectedCash != null) ? closed.expectedCash : (dayCloseExpected ? dayCloseExpected.cash : 0);
+    const expectedDigitalR = (closed.expectedDigital != null) ? closed.expectedDigital : (dayCloseExpected ? dayCloseExpected.digital : 0);
+    const countedCash = closed.cash || 0;
+    const countedDigital = closed.digital || 0;
+    const kindRows = [
+      { label: t('payCash'), counted: countedCash, expected: expectedCashR || 0 },
+      { label: t('digitalShort'), counted: countedDigital, expected: expectedDigitalR || 0 },
+    ].filter(r => r.counted !== 0 || r.expected !== 0).map(r => ({ ...r, gap: r.counted - r.expected }));
     // Only show the over/short reconciliation when there was real movement today;
     // old records with no expected at all just show the counted total.
     const showGap = Math.abs(gap) > 0 && hadMovementR;
@@ -157,6 +170,28 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 11 }}>
                   <span style={{ color: T.ink3, fontWeight: 600 }}>{a.label}</span>
                   <span className="tnum" style={{ color: T.ink, fontWeight: 700 }}>₹{(a.amount || 0).toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Per-kind reconciliation: counted vs expected for cash + digital,
+              with the over/short for each. Surfaces which side a discrepancy is
+              on (cash drawer vs digital), not just the blended total. */}
+          {hadMovementR && kindRows.length > 0 && (
+            <div style={{ padding: '8px 10px', background: T.bgSoft, borderRadius: 7, marginTop: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.4, marginBottom: 5, textTransform: 'uppercase' }}>{t('dcReconcile')}</div>
+              {kindRows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '2px 0', fontSize: 11 }}>
+                  <span style={{ color: T.ink3, fontWeight: 600 }}>{r.label}</span>
+                  <span className="tnum" style={{ fontWeight: 700 }}>
+                    <span style={{ color: T.ink }}>₹{r.counted.toLocaleString('en-IN')}</span>
+                    <span style={{ color: T.ink3, fontWeight: 600 }}> / ₹{r.expected.toLocaleString('en-IN')}</span>
+                    {Math.abs(r.gap) > 0 && (
+                      <span style={{ color: r.gap < 0 ? T.danger : T.indigo, marginLeft: 5 }}>
+                        {r.gap > 0 ? '+' : '−'}₹{Math.abs(r.gap).toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
 import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extrasCostFor } from '../data.js';
-import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
+import { bookingShareWaUrl } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
 // or "23 May 2026". Was previously hardcoded as `{4 + b.startIdx} May`
@@ -15,7 +15,7 @@ function fmtStayDay(startIdx, withYear) {
     : { day: 'numeric', month: 'short' };
   return d.toLocaleDateString('en-IN', opts);
 }
-import { generateVoucher, voucherHtmlString } from '../utils/voucher.js';
+import { generateVoucher } from '../utils/voucher.js';
 import Toggle from '../components/Toggle.jsx';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -512,14 +512,6 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
   // an optional invoice to render in tax-invoice mode.
   const [voucherLangSheet, setVoucherLangSheet] = useState(null);
   const openVoucherSheet = (invoice = null) => setVoucherLangSheet({ invoice });
-  // Share-booking flow snackbar. Set to true on the fallback path
-  // (Web Share API unsupported / no files); auto-dismisses after 5s.
-  const [shareHint, setShareHint] = useState(false);
-  useEffect(() => {
-    if (!shareHint) return;
-    const tid = setTimeout(() => setShareHint(false), 5000);
-    return () => clearTimeout(tid);
-  }, [shareHint]);
   const downloadVoucherIn = (voucherLang) => {
     if (!voucherLangSheet) return;
     generateVoucher(b, rt, property, voucherLangSheet.invoice || undefined, voucherLang);
@@ -644,7 +636,9 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
               // they actually open WhatsApp / dialer / email client. Phone
               // is stripped to digits for wa.me + tel: URIs.
               const digits = String(b.phone || '').replace(/\D/g, '');
-              const waUrl = digits ? `https://wa.me/${digits}` : null;
+              // Pre-fill the booking summary so the WhatsApp button opens a
+              // ready-to-send message instead of a blank chat (audit).
+              const waUrl = bookingShareWaUrl(b, property, lang);
               const telUrl = digits ? `tel:+${digits}` : null;
               const mailUrl = b.email ? `mailto:${b.email}?subject=${encodeURIComponent('Your booking at ' + (property?.profile?.name || ''))}&body=${encodeURIComponent('Hi ' + (b.guest || '') + ',\n\n')}` : null;
               const open = (url) => { if (url) window.open(url, '_blank', 'noopener'); };
@@ -879,27 +873,14 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                 icon="wa"
                 size="sm"
                 disabled={!b.phone}
-                onClick={async () => {
-                  const lang = t('home') === 'होम' ? 'hi' : 'en';
-                  const rt = ROOM_TYPES.find(r => r.id === b.roomTypeId);
-                  // Try the Web Share API first (mobile Chrome / Safari)
-                  // — that path attaches the voucher HTML as a file in
-                  // one tap. If unsupported or it fails, fall back to
-                  // opening the voucher in a new window + wa.me with
-                  // a small toast telling the hotelier to attach the
-                  // saved voucher manually.
-                  const html = voucherHtmlString(b, rt, property, undefined, lang);
-                  const shared = await shareBookingWithVoucher(b, property, lang, html);
-                  if (shared) return;
-                  // Fallback path. Open the voucher (which auto-prompts
-                  // print/save-as-PDF), then open WhatsApp with the
-                  // pre-filled message.
-                  generateVoucher(b, rt, property, undefined, lang);
+                onClick={() => {
+                  // Open the guest's WhatsApp chat with the booking summary
+                  // pre-filled (synchronous — never blocked as a popup). The
+                  // voucher PDF is a tap away via the header download icon; we
+                  // no longer route through the OS share sheet, which on iPhone
+                  // opened a generic picker with no recipient (audit #12).
                   const url = bookingShareWaUrl(b, property, lang);
-                  setTimeout(() => {
-                    if (url) window.open(url, '_blank', 'noopener');
-                    setShareHint(true);
-                  }, 600);
+                  if (url) window.open(url, '_blank', 'noopener');
                 }}
               >{t('shareBookingShort')}</Btn>
               {balance > 0 && (
@@ -930,26 +911,6 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             )}
           </Card>
         </div>
-
-        {shareHint && (
-          <div style={{
-            position: 'absolute', bottom: 90, left: 12, right: 12, zIndex: 60,
-            display: 'flex', justifyContent: 'center',
-            pointerEvents: 'none',
-          }}>
-            <div style={{
-              maxWidth: 360,
-              padding: '10px 14px', borderRadius: 10,
-              background: T.ink, color: '#fff',
-              fontSize: 12, fontWeight: 600, lineHeight: 1.4,
-              boxShadow: '0 6px 24px rgba(0,0,0,0.28)',
-              display: 'flex', alignItems: 'flex-start', gap: 8,
-            }}>
-              <Icon name="info" size={14} color="#fff" stroke={2.2} />
-              <span>{t('voucherOpenedHint')}</span>
-            </div>
-          </div>
-        )}
 
         {payOpen && (
           <PaymentSheet

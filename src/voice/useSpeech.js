@@ -48,13 +48,24 @@ export function useSpeech({ lang = 'en-IN', onFinal } = {}) {
     rec.continuous = true;     // keep a single segment open through short pauses
     rec.maxAlternatives = 1;
 
+    // Highest final-result index already emitted to onFinal (+1), scoped to
+    // THIS recognizer instance. In continuous mode several browsers re-report
+    // already-finalized results (e.resultIndex stuck at 0), so iterating from
+    // resultIndex and emitting every isFinal each time appended each spoken
+    // phrase 2-3× into the command box (audit #3). Tracking the index emits
+    // every phrase exactly once. A new instance (auto-restart) starts fresh at
+    // 0 — correct, since its results array is new.
+    let lastFinalIndex = 0;
     rec.onresult = (e) => {
       let finalT = '';
       let interimT = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) finalT += r[0].transcript;
-        else interimT += r[0].transcript;
+        if (r.isFinal) {
+          if (i >= lastFinalIndex) { finalT += r[0].transcript; lastFinalIndex = i + 1; }
+        } else {
+          interimT += r[0].transcript;
+        }
       }
       if (finalT && onFinalRef.current) onFinalRef.current(finalT.trim());
       setInterim(interimT);
@@ -77,8 +88,10 @@ export function useSpeech({ lang = 'en-IN', onFinal } = {}) {
     rec.onend = () => {
       if (wantRef.current) {
         // The browser ended the segment (pause / timeout) but the user hasn't
-        // tapped stop. Relaunch after a short gap so the previous instance has
-        // fully released — keeps it feeling like one continuous session.
+        // tapped stop. Clear the dying instance's interim (the next instance
+        // re-emits it) then relaunch after a short gap so the previous instance
+        // has fully released — keeps it feeling like one continuous session.
+        setInterim('');
         setTimeout(() => { if (wantRef.current && beginRef.current) beginRef.current(); }, 150);
       } else {
         setListening(false);

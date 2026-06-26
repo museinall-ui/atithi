@@ -10,7 +10,7 @@ Prior multi-agent audits optimised for **code correctness** and missed **product
 - [x] Audit complete (2026-06-26) — 23 agents, all 11 journeys + critique + synthesis.
 - [x] Batch 1 — Trust-breaking blockers (setup gate #1 + advance-vs-paid #6 + demo-phone #13 + extras-delete #2 + pinch-zoom #7)
 - [x] Batch 2 — Booking & money correctness (extras model #5, ₹0/NaN custom-extra, qty-0 cleanup, meal-plan floor, fresh-property EP-only meal seed, Step-4 confirm guard; GST-slab + half-split were verified NOT bugs)
-- [ ] Batch 3 — Phone & guest data
+- [x] Batch 3 — Phone & guest data (per-country phone length+digit-only #10, repeat-guest stronger match + carry email, country-switch re-clamp; legacy children-band = won't-fix/ambiguous)
 - [ ] Batch 4 — Past-date & inventory integrity
 - [ ] Batch 5 — Accessibility & share reliability
 - [ ] Batch 6 — Voucher copy & i18n polish
@@ -67,11 +67,10 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 - [ ] **[LOW]** Reset/clear affordance missing for custom extras. `NewBooking.jsx:992-994`.
 
 ### Phone / guest validation
-- [ ] **[HIGH]** Phone accepts unlimited digits AND non-numeric (`abcdef` passes `length>=6`); breaks wa.me/tel:. → strip non-digits; per-country length cap (IN=10). `NewBooking.jsx:927,:929,:1508`; `Settings.jsx:1040`.
-- [ ] **[LOW]** Repeat-guest auto-suggest matches last 5 digits and overwrites typed identity. `NewBooking.jsx:824,:839-849`.
-- [ ] **[LOW]** Repeat-guest "Use these details" never restores saved email (comment lies). `NewBooking.jsx:839-849`.
-- [ ] **[LOW]** Switching country keeps previously-typed digits with new dial prefix. `NewBooking.jsx:909-918`.
-- [ ] **[LOW]** Legacy "2A 1C" recovered children always land in half-rate band on edit. `NewBooking.jsx:1158-1165`.
+- [x] **[HIGH]** Phone accepted unlimited digits + letters. ✓ FIXED + verified live — `COUNTRIES` gained a per-country `len`; the mobile field strips non-digits + caps at `len` (maxLength), shows a "{n}-digit" hint, and `guestValid` requires exactly `len` digits. _Verified: "abc98765four43210999" → "9876543210"; 8 digits disables Continue + shows the hint; 10 enables._ Settings contact phone strips letters (keeps + / spaces) + 18-char cap. `data.js`, `components/Field.jsx`, `NewBooking.jsx`, `Settings.jsx`.
+- [x] **[LOW]** Repeat-guest matched on the last 5 digits + ignored email. ✓ FIXED — phone match now needs ≥7 typed digits as a FULL suffix of the saved number; "Use these details" now actually carries the saved email. (Prefill stays tap-only, so it never auto-overwrites.) _Verified live: name match still surfaces the banner._ `NewBooking.jsx`.
+- [x] **[LOW]** Switching country kept the old digits over the new (shorter) cap. ✓ FIXED — country change re-clamps the digits to the new `len`. _Verified live: 10-digit IN → Singapore (len 8) clamped to 8._ `NewBooking.jsx`.
+- [~] **[WON'T FIX]** Legacy "2A 1C" recovered children land in the half-rate band on edit. Inherent: a stored "1C" carries no age, so it can't be mapped to free/half/full — half-rate is the sane default. Not worth a guess that could mis-price. `NewBooking.jsx parseGuestsLabel`.
 
 ### Rates & inventory
 - [ ] **[HIGH]** Rates calendar editable for PAST dates (cells + all bulk apply). `Rates.jsx:295-344,:453-625`.
@@ -180,6 +179,11 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - Step-4 confirm guard: `paymentValid` requires `payCustom>0` + a method when recording a payment. _Verified live: Custom ₹0 / amount-without-method disable Confirm; method enables it._
   - **Verified NOT bugs (no change):** GST slab (NewBooking's `ROOM_TYPES` is a LOCAL `effectiveRoomTypes(property)`, taxes correctly); half-split (display + onCreate both `Math.round(total/2)`).
   - Files: `src/data.js` (none — EXTRAS_DEFAULT kept), `src/screens/NewBooking.jsx`, `src/App.jsx`, plus tracker.
-- **NEXT (resume here):** Batch 3 — phone & guest data: per-country phone length in `COUNTRIES` + digit-only filter + max-length on the New Booking mobile field & Settings contact (#10); repeat-guest match needs a stronger key before it overwrites typed identity + carry email + country-change reconciliation. Then Batch 4 (past-date/inventory integrity — Rates/Diary `idx>=0` guards #4, close-out override confirm #8), Batch 5 (a11y/share reliability — #12 wa.me primary, voice dedupe #3), Batch 6 (voucher copy + i18n — #9 cancellation policy, "2 Adults" parse).
+- **2026-06-27 — Batch 3 COMPLETE: phone & guest data shipped + verified live.**
+  - Per-country phone `len` on COUNTRIES; mobile field digit-only + maxLength cap + "{n}-digit" hint; `guestValid` requires exact length; Settings contact phone strips letters. _Verified: letters stripped + capped at 10; 8 digits disables Continue; country-switch re-clamps 10→8._
+  - Repeat-guest: phone match needs ≥7 full-suffix digits (was last-5); "Use these details" now carries email. _Verified: name-match banner still appears._
+  - Legacy "2A 1C" children-band = won't-fix (ambiguous — no age stored).
+  - Files: `src/data.js`, `src/components/Field.jsx`, `src/screens/NewBooking.jsx`, `src/screens/Settings.jsx`, `src/i18n.js`.
+- **NEXT (resume here):** Batch 4 — past-date & inventory integrity: `idx>=0` guards across Rates cells + all bulk `apply*` + range-select (#4); Diary day-header editor/empty-cell-create/drag clamp to today (#4); Diary close-out "override the set inventory?" confirm + maintenance re-open warning (#8). Then Batch 5 (a11y/share — #12 wa.me primary on iOS, AbortError→false, voice dedupe #3 + Hindi locale), Batch 6 (voucher copy + i18n — #9 cancellation policy only when a rate plan defines it, "2 Adults"/multi-room voucher parse, QR lightbox close, Dashboard reminder i18n + move-booking copy).
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._

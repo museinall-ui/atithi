@@ -814,14 +814,17 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
   const repeatMatch = (() => {
     const typedPhone = (data.phone || '').replace(/\D/g, '');
     const typedName = (data.name || '').trim().toLowerCase();
-    if (typedPhone.length < 5 && typedName.length < 3) return null;
+    if (typedPhone.length < 7 && typedName.length < 3) return null;
     // Search non-cancelled past stays. Exclude the current booking when editing.
     const candidates = bookings
       .filter(b => b.id !== editingId && b.status !== 'cancelled')
       .filter(b => {
         const pPhone = String(b.phone || '').replace(/\D/g, '');
         const pName = String(b.guest || '').trim().toLowerCase();
-        if (typedPhone.length >= 5 && pPhone && pPhone.endsWith(typedPhone.slice(-5))) return true;
+        // Phone match needs the FULL typed number (>=7 digits) as a suffix of
+        // the saved one — not just the last 5, which false-matched unrelated
+        // guests and then offered to overwrite the typed identity (audit).
+        if (typedPhone.length >= 7 && pPhone && pPhone.endsWith(typedPhone)) return true;
         if (typedName.length >= 3 && pName.startsWith(typedName)) return true;
         return false;
       });
@@ -842,9 +845,12 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
     // Strip the dial-code prefix from the saved phone so the form's phone
     // field (which sits next to a separate dial-code prefix) doesn't end
     // up with two prefixes.
-    const phoneLocal = String(b.phone || '').replace(/^\+\d+\s*/, '');
+    const phoneLocal = String(b.phone || '').replace(/^\+\d+\s*/, '').replace(/\D/g, '');
     if (phoneLocal) set('phone', phoneLocal);
     if (b.country) set('country', b.country);
+    // Actually carry the saved email across (the previous comment claimed it
+    // did, but it never set it). Only overwrite when the past stay has one.
+    if (b.email) set('email', b.email);
     setDismissedMatchKey(matchKey);
   };
 
@@ -917,7 +923,15 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
               <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{country.flag}</span>
               <select
                 value={data.country}
-                onChange={(e) => set('country', e.target.value)}
+                onChange={(e) => {
+                  // Re-clamp the typed digits to the NEW country's length so a
+                  // 10-digit number left over from a longer-cap country can't
+                  // sit there over the new (shorter) limit.
+                  const code = e.target.value;
+                  const nc = COUNTRIES.find(c => c.code === code) || COUNTRIES[0];
+                  set('country', code);
+                  set('phone', (data.phone || '').replace(/\D/g, '').slice(0, nc.len));
+                }}
                 style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, appearance: 'none', cursor: 'pointer' }}
               >
                 {COUNTRIES.map(c => (
@@ -933,9 +947,19 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
               </div>
             )}
           </div>
-          <Field label={t('mobile')} type="tel" inputMode="tel" autoComplete="tel" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder={t('mobilePlaceholder')} />
+          <Field
+            label={t('mobile')} type="tel" inputMode="numeric" autoComplete="tel"
+            maxLength={country.len}
+            value={data.phone}
+            // Digit-only + capped at the country's national length: blocks the
+            // "letters / 20 digits" input that broke wa.me / tel: links (audit #10).
+            onChange={(e) => set('phone', e.target.value.replace(/\D/g, '').slice(0, country.len))}
+            prefix={country.dial}
+            placeholder={t('mobilePlaceholder')}
+            hint={data.phone && data.phone.replace(/\D/g, '').length !== country.len ? t('phoneLenHint').replace('{n}', country.len) : undefined}
+          />
           <Field label={t('emailOptional')} type="email" inputMode="email" autoComplete="email" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder={t('emailPlaceholder')} />
-          {(!data.name.trim() || data.phone.trim().length < 6) && (
+          {(!data.name.trim() || (data.phone || '').replace(/\D/g, '').length !== country.len) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.warnLt, borderRadius: 8 }}>
               <Icon name="info" size={11} color="oklch(48% 0.14 75)" />
               <span style={{ fontSize: 11, color: 'oklch(40% 0.14 75)', fontWeight: 600 }}>{t('nameMobileRequired')}</span>
@@ -1549,7 +1573,13 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
   const titles = [t('stayDetails'), t('pickRoom'), t('guest'), t('payment')];
   const datesValid = !!data.checkIn && data.nights > 0;
-  const guestValid = data.name.trim().length > 0 && data.phone.trim().length >= 6;
+  // Phone must be exactly the selected country's national length (digits only).
+  // The input already strips non-digits + caps at this length, so a valid new
+  // booking naturally reaches it; editing a legacy odd-length number prompts a
+  // quick correction (the field shows a "{n}-digit" hint).
+  const guestCountry = COUNTRIES.find(c => c.code === data.country) || COUNTRIES[0];
+  const guestPhoneLen = (data.phone || '').replace(/\D/g, '').length;
+  const guestValid = data.name.trim().length > 0 && guestPhoneLen === guestCountry.len;
   // Step-4 payment sanity (new bookings only — editing never touches payment):
   // a "Custom" advance must be > ₹0, and any recorded payment must name a
   // method. "Not yet" (nothing received) needs neither. Without this the

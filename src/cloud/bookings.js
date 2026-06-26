@@ -345,6 +345,25 @@ export async function updateBookingCloud(bookingId, patch) {
   if (error) throw error;
 }
 
+// Auto-release a hold in the cloud — CONDITIONALLY. Only flips the row to
+// cancelled if it is STILL a tentative booking whose release time has already
+// passed (release_ts <= nowMs). This guards against a stale client (or a second
+// device) clobbering a hold that was paid/confirmed (status no longer tentative)
+// or extended (release_ts pushed into the future) elsewhere in the gap — the
+// client mirror of the server cron's `status=eq.tentative` guard in
+// api/hold-watch.js. A no-op (0 rows matched) is success, not an error.
+export async function releaseHoldCloud(bookingId, patch, nowMs) {
+  const cloudPatch = patchLocalToCloud(patch);
+  if (Object.keys(cloudPatch).length === 0) return;
+  const { error } = await supabase
+    .from('bookings')
+    .update(cloudPatch)
+    .eq('id', bookingId)
+    .eq('status', 'tentative')
+    .lte('release_ts', nowMs);
+  if (error) throw error;
+}
+
 // Best-effort: clear the hold-watch cron's once-per-booking reminder flag so an
 // EXTENDED hold's new deadline can be reminded again. Done as its OWN update,
 // swallowing errors, so a pre-20260629 deployment (column absent) never fails the

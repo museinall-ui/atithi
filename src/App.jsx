@@ -7,7 +7,7 @@ import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './clo
 import { migratePropertyImages } from './cloud/storage.js';
 import {
   loadBookings,
-  createBookingCloud, updateBookingCloud, clearHoldReminderFlag,
+  createBookingCloud, updateBookingCloud, clearHoldReminderFlag, releaseHoldCloud,
   addPaymentCloud, issueInvoiceCloud, voidInvoiceCloud,
 } from './cloud/bookings.js';
 import {
@@ -1356,25 +1356,22 @@ export default function App() {
       if (!changed.length) return;
       const eventsById = Object.fromEntries(changed.map(c => [c.id, c.events]));
       const changedIds = new Set(changed.map(c => c.id));
-      // Capture which holds were ACTUALLY flipped (still tentative at apply time).
-      // bookingsRef lags a render, so a hold paid-in-full in the gap before it
-      // caught up gets skipped here — and must ALSO be skipped by the cloud sync +
-      // undo below, else a stale cloud cancel could overwrite the just-confirmed
-      // booking (leaving cloud=cancelled while local=confirmed).
-      const appliedIds = [];
-      setBookings(a => a.map(b => {
-        if (changedIds.has(b.id) && b.status === 'tentative') {
-          appliedIds.push(b.id);
-          return { ...b, status: 'cancelled', autoReleased: true, events: eventsById[b.id] };
-        }
-        return b;
-      }));
-      const applied = changed.filter(c => appliedIds.includes(c.id));
-      if (!applied.length) return;
+      // Apply locally, re-guarding status==='tentative' against the freshest state
+      // so a hold paid-in-full in the bookingsRef-lag gap is left untouched. (Note:
+      // do NOT read a value pushed from inside this updater on the next line — a
+      // React functional updater is not guaranteed to run synchronously. `changed`
+      // is computed from the live bookingsRef above, which is what we use below.)
+      setBookings(a => a.map(b => (changedIds.has(b.id) && b.status === 'tentative')
+        ? { ...b, status: 'cancelled', autoReleased: true, events: eventsById[b.id] }
+        : b));
       if (cloudReadyRef.current && propertyIdRef.current) {
         const uid = sessionRef.current && sessionRef.current.user && sessionRef.current.user.id;
-        applied.forEach(c => {
-          syncFire('Auto-release booking', updateBookingCloud(c.id, { status: 'cancelled', autoReleased: true, events: c.events }));
+        changed.forEach(c => {
+          // CONDITIONAL cloud cancel (releaseHoldCloud): only flips the row if it is
+          // STILL a tentative hold past its release time in the CLOUD — so a payment
+          // or hold-extension made on another device (status→confirmed, or release_ts
+          // pushed out) is never clobbered into 'cancelled'. Mirrors hold-watch.js.
+          syncFire('Auto-release booking', releaseHoldCloud(c.id, { status: 'cancelled', autoReleased: true, events: c.events }, now));
           // Record on the property-wide Activity log too. This mount-once ticker's
           // captured logEvent closes over the initial null session/propertyId, so
           // call logActivity directly via refs. Reuses the booking.cancel key.
@@ -1385,7 +1382,7 @@ export default function App() {
       // in the same tick — rare). The hotelier seeing the snackbar
       // is the trigger to open the diary and review the rest.
       {
-        const c = applied[0];
+        const c = changed[0];
         setUndoState({
           kind: 'autoRelease',
           bookingId: c.id,
@@ -1397,7 +1394,7 @@ export default function App() {
           // R10-D5: carry EVERY hold released this tick so Undo restores all of
           // them, not just the first. A phone waking from sleep can expire
           // several holds at once; previously only changed[0] was recoverable.
-          items: applied.map(x => ({
+          items: changed.map(x => ({
             bookingId: x.id,
             previousStatus: x.previousStatus,
             previousReleaseTs: x.previousReleaseTs,
@@ -1407,7 +1404,7 @@ export default function App() {
           // 30s window — twice the manual cancel because the auto-
           // release surprised them.
           expiresAt: Date.now() + 30 * 1000,
-          extraCount: applied.length - 1,
+          extraCount: changed.length - 1,
         });
       }
     };

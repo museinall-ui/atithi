@@ -13,7 +13,7 @@ Prior multi-agent audits optimised for **code correctness** and missed **product
 - [x] Batch 3 — Phone & guest data (per-country phone length+digit-only #10, repeat-guest stronger match + carry email, country-switch re-clamp; legacy children-band = won't-fix/ambiguous)
 - [x] Batch 4 — Past-date & inventory integrity (Rates + Diary past dates read-only #4; Diary close-out override confirm + input clamp #8; extra-zero cap)
 - [x] Batch 5 — Accessibility & share reliability (wa.me guest-chat primary #12; voice dictation dedupe + Hindi recognizer locale #3)
-- [ ] Batch 6 — Voucher copy & i18n polish
+- [x] Batch 6 — Voucher copy & i18n polish (cancellation policy only when rate plans on #9; guests parse; terms "Reach us" when no phone; QR lightbox close; Dashboard WhatsApp msgs + move-booking copy bilingual; Settings i18n deferred)
 
 ---
 
@@ -86,26 +86,26 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 ### Diary (other)
 - [x] **[MEDIUM]** Drag-drop could move a booking's check-in into the PAST. ✓ FIXED — the drop clamp floors at `Math.max(0, viewDaysStart)` (today), not the visible-window start. `Diary.jsx`.
 - [x] **[MEDIUM]** Empty-cell tap on a PAST date opened New Booking. ✓ FIXED — `openQuickCreate` returns early for idx<0; past empty cells are faded + non-tappable. `Diary.jsx`.
-- [ ] **[MEDIUM]** Move-booking confirm copy promises "re-issue the voucher to the guest" but nothing is sent. `i18n.js:10,:469`; `Diary.jsx:1037-1054`.
+- [x] **[MEDIUM]** Move-booking confirm copy promised an auto re-issued voucher that's never sent. ✓ FIXED — `moveDesc` (en+hi) now says it updates the dates, the guest isn't notified automatically, and to re-send the voucher from the booking page if needed. `i18n.js`.
 - [ ] **[LOW]** Occupancy header can read >100% on overbook with no cap. `Diary.jsx:919-920`.
 - [ ] **[LOW]** Zoom/filter/collapsed Diary view state resets on every navigation. `Diary.jsx:488,:494,:497`.
 - [ ] **[LOW]** No empty-state copy on a zero-booking Diary. `Diary.jsx:881-952`.
 
 ### Voucher
-- [ ] **[MEDIUM]** Voucher asserts a cancellation policy never configured (default 48h flexible). `voucher.js:254-261,:535-538`.
-- [ ] **[MEDIUM]** Voucher fabricates "2 Adults" when guests string can't be parsed; multi-room parse only reads FIRST token. `voucher.js:399-401,:405`.
-- [ ] **[MEDIUM]** Voucher "Reach us" prints "WhatsApp <blank>" / hotel name when no phone set. `voucher.js:88`.
-- [ ] **[LOW]** Voucher QR lightbox closes on backdrop tap AND on tapping the QR; no close affordance. `voucher.js:523`.
+- [x] **[MEDIUM]** Voucher asserted a cancellation policy never configured. ✓ FIXED + verified live — the cancellation block only renders when `ratePlansActive(property)` AND the booking's plan defines a cancellation; a default property prints none (was a fabricated "free cancellation up to 48h"). _Verified: the demo voucher has no cancellation block._ `voucher.js`.
+- [x] **[MEDIUM]** Voucher fabricated "2 Adults" + read only the first guests token. ✓ FIXED — `parseGuests` sums every `<n>A`/`<n>C` token and falls back to the guaranteed minimum of 1 adult (only the legacy no-roomItems path uses it). _Verified: demo voucher shows the real "2 Adults"._ `voucher.js`.
+- [x] **[MEDIUM]** Voucher terms printed "WhatsApp &lt;blank&gt;" with no phone. ✓ FIXED — the "WhatsApp {phone} quoting {id}" clause is conditional on a phone being set; otherwise it just says "quote {id}". (en+hi) _Verified: with a phone set it includes it._ `voucher.js`.
+- [x] **[LOW]** Voucher QR lightbox had no close affordance + closed on tapping the QR. ✓ FIXED — added an ✕ close button + the enlarged QR `stopPropagation`s so tapping it (to scan) doesn't dismiss; the backdrop + ✕ close it. (Build-verified; the demo has no uploaded QR so the block wasn't exercised live.) `voucher.js`.
 
 ### Sharing / comms
 - [x] **[HIGH]** Share-to-guest opened a generic OS share sheet, not the guest's chat. ✓ FIXED + verified live — both the "Send to guest" (BookingConfirmed) and "Share booking" (BookingDetail) buttons now open `wa.me/<guest>?text=<summary>` synchronously, landing in the guest's WhatsApp chat. `navigator.share` can't target a recipient on any platform, so it's gone; the voucher file stays available via "Download voucher". _Verified: clicking both buttons opened `https://wa.me/919810021?text=Hi Aanya Sharma…`._ `share.js`, `BookingConfirmed.jsx`, `BookingDetail.jsx`.
 - [x] **[MEDIUM]** Cancelling the share sheet returned `true`. ✓ MOOT — the `shareBookingWithVoucher` Web-Share path was removed entirely (wa.me is primary), so there's no AbortError-as-success path left.
 - [x] **[MEDIUM]** BookingConfirmed fired a deferred second `window.open` (popup-blocked on mobile). ✓ FIXED — single synchronous `window.open(waUrl)` on tap.
-- [~] **[MEDIUM]** Dashboard arrival/reminder WhatsApp messages: ✓ number-accuracy FIXED (prints the real saved phone or omits the clause). STILL hardcoded English in Hindi mode → Batch 6 i18n. `Dashboard.jsx:707,:732`.
+- [x] **[MEDIUM]** Dashboard arrival/reminder WhatsApp messages. ✓ FIXED — number-accuracy (Batch 1) + now fully bilingual (Batch 6): the pre-arrival directions message + custom-reminder message + "our property" fallback all switch to Hindi in Hindi mode. `Dashboard.jsx`.
 - [x] **[MEDIUM]** BookingConfirmed showed no send button AND no hint when the phone was junk-but-not-empty. ✓ FIXED — the "add a phone" hint now shows whenever there's no sendable number (`!waUrl`), not only when the phone is exactly empty. `BookingConfirmed.jsx`.
 - [x] **[LOW]** Per-booking "WhatsApp" contact button opened an empty chat. ✓ FIXED + verified live — it now opens with the booking summary pre-filled (`bookingShareWaUrl`). `BookingDetail.jsx`.
 - [x] **[LOW]** Share/voucher language used fragile `t('home')==='होम'`. ✓ FIXED — BookingDetail already receives a `lang` prop; the hack is gone. `BookingDetail.jsx`.
-- [ ] **[LOW]** Saved-extras editor strings English-only in Hindi mode. `Settings.jsx:2032-2034`.
+- [~] **[DEFERRED]** Saved-extras editor strings English-only in Hindi mode. Part of a larger gap: the Settings property-config sheet is pervasively English (per CLAUDE.md M-10 the per-field config i18n was deliberately deferred). Translating only the saved-extras sub-section would be inconsistent with its accordion + the rest of Settings → deferred to a dedicated Settings i18n pass (flag for the fresh audit). `Settings.jsx`.
 
 ### Voice
 - [x] **[HIGH]** Dictation appended each phrase 2–3×. ✓ FIXED — `useSpeech` now tracks the highest final-result index already emitted PER recognizer instance, so a browser re-reporting finalized results (resultIndex stuck at 0) emits each phrase exactly once. (Logic + build verified; the preview has no mic for a live speech test.) `useSpeech.js`.
@@ -191,6 +191,11 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - Share: removed the `navigator.share` voucher-file path; "Send to guest" / "Share booking" / the contact WhatsApp button all open `wa.me/<guest>?text=<summary>` synchronously (guest's chat, no popup block); the no-phone hint shows whenever there's no sendable number; BookingDetail uses its `lang` prop (dropped the `t('home')==='होम'` hack); removed the now-dead share-hint snackbar. _Verified live: both share buttons opened `wa.me/919810021?text=Hi Aanya Sharma…`._
   - Voice: per-instance final-index dedupe in `useSpeech` (stops 2–3× phrase repeat); Hindi recognizer locale (`hi-IN`) when the app is Hindi; clear stale interim on auto-restart; `no_anthropic`→`no_ai` comment. (Build + logic verified; no mic in preview.)
   - Files: `src/utils/share.js`, `src/screens/BookingConfirmed.jsx`, `src/screens/BookingDetail.jsx`, `src/voice/useSpeech.js`, `src/components/VoiceBookingSheet.jsx`, `src/voice/parseBookingCommand.js`.
-- **NEXT (resume here):** Batch 6 — voucher copy & i18n polish: voucher cancellation policy only when a rate plan actually defines it (#9, stop asserting a fabricated 48h flexible default); voucher "2 Adults" fabrication + multi-room guests parse (only reads first token); voucher "Reach us" prints blank/hotel-name when no phone; voucher QR lightbox close affordance; Dashboard arrival/reminder WhatsApp messages still English in Hindi mode; move-booking confirm copy promises a re-issued voucher that isn't sent; saved-extras editor strings English-only in Hindi. Files: `voucher.js`, `Dashboard.jsx`, `Diary.jsx`/`i18n.js`, `Settings.jsx`. After Batch 6, all 6 batches done → start a FRESH hotelier audit to find anything missed.
+- **2026-06-27 — Batch 6 COMPLETE: voucher copy & i18n polish shipped + verified.**
+  - Voucher: cancellation block only when `ratePlansActive(property)` + a defined cancellation (no more fabricated 48h default); `parseGuests` sums all tokens + min-1-adult; terms WhatsApp clause conditional on a phone; QR lightbox gains an ✕ + the enlarged QR stops self-closing. _Verified live via captured voucher HTML: no cancellation block, real "2 Adults", terms phone present._
+  - i18n: Dashboard pre-arrival + reminder WhatsApp messages bilingual; move-booking `moveDesc` honest (no auto-voucher promise), en+hi.
+  - Deferred: a full Settings property-sheet i18n pass (saved-extras editor + siblings) — too inconsistent to do piecemeal; flagged for the fresh audit.
+  - Files: `src/utils/voucher.js`, `src/screens/Dashboard.jsx`, `src/i18n.js`.
+- **🎉 ALL 6 FIX BATCHES COMPLETE.** Branch `fix/audit-batch1-blockers` (6 commits) — one PR, pending owner merge. Owner queued "if done, start a FRESH complete hotelier audit to find what the previous audits missed." → NEXT: run a brand-new end-to-end hotelier journey audit (fresh eyes, the new post-fix surfaces incl. the setup gate / wa.me share / past-date locks themselves), plus the deferred Settings i18n. Capture findings + a new fix-order, then continue fixing.
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._

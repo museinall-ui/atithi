@@ -701,11 +701,14 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
       cta: arrivingTomorrow.length > 1 ? `${t('payWhatsapp')} ${first.guest.split(' ')[0]}` : t('payWhatsapp'),
       onClick: () => {
         if (!firstDigits) { go('diary'); return; }
-        const propName = property?.profile?.name || 'our property';
+        const propName = property?.profile?.name || (isHi ? 'हमारी प्रॉपर्टी' : 'our property');
         const mapUrl = property?.profile?.mapUrl || '';
         const checkInTime = property?.profile?.checkIn || '14:00';
         const propPhone = (property?.profile?.phone || '').trim();
-        const msg = `Hi ${first.guest},\n\nLooking forward to hosting you at ${propName} tomorrow.\n\n${mapUrl ? `📍 Directions: ${mapUrl}\n\n` : ''}Check-in opens at ${checkInTime}. Your booking ID is ${first.id}.${propPhone ? `\n\nReach us: ${propPhone}` : ''}`;
+        // Match the guest message to the hotelier's app language (audit i18n).
+        const msg = isHi
+          ? `नमस्ते ${first.guest},\n\nकल ${propName} में आपका स्वागत करने के लिए हम उत्सुक हैं।\n\n${mapUrl ? `📍 रास्ता: ${mapUrl}\n\n` : ''}चेक-इन ${checkInTime} से शुरू होता है। आपकी बुकिंग ID ${first.id} है।${propPhone ? `\n\nसंपर्क: ${propPhone}` : ''}`
+          : `Hi ${first.guest},\n\nLooking forward to hosting you at ${propName} tomorrow.\n\n${mapUrl ? `📍 Directions: ${mapUrl}\n\n` : ''}Check-in opens at ${checkInTime}. Your booking ID is ${first.id}.${propPhone ? `\n\nReach us: ${propPhone}` : ''}`;
         window.open(`https://wa.me/${firstDigits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
       },
     });
@@ -718,7 +721,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     // hotelier can still see the rest by tapping into individual
     // bookings.
     const customReminders = Array.isArray(property?.accountant?.customReminders) ? property.accountant.customReminders : [];
-    const propName = property?.profile?.name || 'our property';
+    const propName = property?.profile?.name || (isHi ? 'हमारी प्रॉपर्टी' : 'our property');
     let added = 0;
     outer: for (const reminder of customReminders) {
       for (const guest of arrivingTomorrow) {
@@ -731,7 +734,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           cta: t('nudgeSend'),
           onClick: () => {
             const propPhone = (property?.profile?.phone || '').trim();
-            const msg = `Hi ${guest.guest},\n\n${reminder.text}\n\n${propName}${propPhone ? ` · ${propPhone}` : ''}`;
+            const greeting = isHi ? `नमस्ते ${guest.guest},` : `Hi ${guest.guest},`;
+            const msg = `${greeting}\n\n${reminder.text}\n\n${propName}${propPhone ? ` · ${propPhone}` : ''}`;
             window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
           },
         });

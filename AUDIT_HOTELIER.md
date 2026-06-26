@@ -11,7 +11,7 @@ Prior multi-agent audits optimised for **code correctness** and missed **product
 - [x] Batch 1 — Trust-breaking blockers (setup gate #1 + advance-vs-paid #6 + demo-phone #13 + extras-delete #2 + pinch-zoom #7)
 - [x] Batch 2 — Booking & money correctness (extras model #5, ₹0/NaN custom-extra, qty-0 cleanup, meal-plan floor, fresh-property EP-only meal seed, Step-4 confirm guard; GST-slab + half-split were verified NOT bugs)
 - [x] Batch 3 — Phone & guest data (per-country phone length+digit-only #10, repeat-guest stronger match + carry email, country-switch re-clamp; legacy children-band = won't-fix/ambiguous)
-- [ ] Batch 4 — Past-date & inventory integrity
+- [x] Batch 4 — Past-date & inventory integrity (Rates + Diary past dates read-only #4; Diary close-out override confirm + input clamp #8; extra-zero cap)
 - [ ] Batch 5 — Accessibility & share reliability
 - [ ] Batch 6 — Voucher copy & i18n polish
 
@@ -73,19 +73,19 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 - [~] **[WON'T FIX]** Legacy "2A 1C" recovered children land in the half-rate band on edit. Inherent: a stored "1C" carries no age, so it can't be mapped to free/half/full — half-rate is the sane default. Not worth a guess that could mis-price. `NewBooking.jsx parseGuestsLabel`.
 
 ### Rates & inventory
-- [ ] **[HIGH]** Rates calendar editable for PAST dates (cells + all bulk apply). `Rates.jsx:295-344,:453-625`.
-- [ ] **[HIGH]** Diary day-header per-date editor opens & saves overrides for PAST dates. `Diary.jsx:514,:530,:892`.
+- [x] **[HIGH]** Rates calendar was editable for PAST dates. ✓ FIXED + verified live — past cells (idx<0) are faded + `cursor:not-allowed`, selection is blocked at `onCellDown`/`onCellEnter`, and the From→To range + Copy-from clamp their low end to today. So past dates never enter `selected` and every bulk-apply + undo count is past-safe. _Verified: clicking June 1 (past) doesn't select; June 28 (future) does._ `Rates.jsx`.
+- [x] **[HIGH]** Diary day-header editor opened for PAST dates. ✓ FIXED — `openDateEditor` returns early for idx<0; past headers are faded + non-tappable. `Diary.jsx`.
 - [x] **[HIGH]** Diary grid BODY rendered demo `ROOM_TYPES`. ✓ FIXED by the setup-gate change — `effectiveRoomTypes()` returns real categories when configured and `[]` (gated) when not, so the demo tents never reach the grid. `Diary.jsx:930`.
 - [x] **[HIGH]** Pinch-to-zoom dead on Rates grid. ✓ FIXED — Rates grid `touchAction` → `'pan-y pinch-zoom'` (custom month-swipe preserved; Diary grid already zooms — only the pill keeps `touchAction:none` for drag). `Rates.jsx:768`.
-- [ ] **[MEDIUM]** Diary close-out silently floors rooms-open to booked, no "override the set inventory?" prompt; can silently re-open maintenance close-outs. `Diary.jsx:530-558`.
-- [ ] **[LOW]** Set-rate "extra zero" confirm gated on `base>0`, so when base 0 any value applies; no absolute cap. `Rates.jsx:458-460`.
-- [ ] **[LOW]** Diary "Rooms open" input accepts impossible values while typing; live "free" label lies until save. `Diary.jsx:965,:970-973`.
-- [ ] **[LOW]** Past-date bulk confirm/undo labels count past dates in the selection. `Rates.jsx:478,:553`.
-- [ ] **[LOW]** Past-date Diary headers still show pointer cursor + tap target. `Diary.jsx:892-894`.
+- [x] **[MEDIUM]** Diary close-out silently floored rooms-open + no override prompt. ✓ FIXED + verified live — `saveDateEditor` now confirms ("This changes how many rooms are available… Apply anyway?") whenever the available-room count changes (close-out or re-open); rate-only / untouched saves don't prompt. _Verified: changing Deluxe 8→5 fired the confirm._ `Diary.jsx`, `i18n.js`.
+- [x] **[LOW]** Set-rate "extra zero" confirm only worked when base>0. ✓ FIXED — falls back to an absolute ₹50,000/night ceiling when base is 0. `Rates.jsx`.
+- [x] **[LOW]** Diary "Rooms open" input accepted impossible values. ✓ FIXED — onChange clamps to 0..units, so the live "free" label can't lie. `Diary.jsx`.
+- [x] **[LOW]** Past-date bulk confirm/undo labels counted past dates. ✓ FIXED — past dates never enter the selection now, so `selected.size` (and Copy-from's clamped `indexes.length`) only count today+future. `Rates.jsx`.
+- [x] **[LOW]** Past-date Diary headers showed pointer cursor + tap target. ✓ FIXED — past headers are `cursor:default`, faded, non-tappable. `Diary.jsx`.
 
 ### Diary (other)
-- [ ] **[MEDIUM]** Drag-drop can move a booking's check-in into the PAST (clamp floors at `viewDaysStart`, not today). `Diary.jsx:743-745`.
-- [ ] **[MEDIUM]** Empty-cell tap on a PAST date opens New Booking for a gone-by day. `Diary.jsx:328,:388`.
+- [x] **[MEDIUM]** Drag-drop could move a booking's check-in into the PAST. ✓ FIXED — the drop clamp floors at `Math.max(0, viewDaysStart)` (today), not the visible-window start. `Diary.jsx`.
+- [x] **[MEDIUM]** Empty-cell tap on a PAST date opened New Booking. ✓ FIXED — `openQuickCreate` returns early for idx<0; past empty cells are faded + non-tappable. `Diary.jsx`.
 - [ ] **[MEDIUM]** Move-booking confirm copy promises "re-issue the voucher to the guest" but nothing is sent. `i18n.js:10,:469`; `Diary.jsx:1037-1054`.
 - [ ] **[LOW]** Occupancy header can read >100% on overbook with no cap. `Diary.jsx:919-920`.
 - [ ] **[LOW]** Zoom/filter/collapsed Diary view state resets on every navigation. `Diary.jsx:488,:494,:497`.
@@ -184,6 +184,10 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - Repeat-guest: phone match needs ≥7 full-suffix digits (was last-5); "Use these details" now carries email. _Verified: name-match banner still appears._
   - Legacy "2A 1C" children-band = won't-fix (ambiguous — no age stored).
   - Files: `src/data.js`, `src/components/Field.jsx`, `src/screens/NewBooking.jsx`, `src/screens/Settings.jsx`, `src/i18n.js`.
-- **NEXT (resume here):** Batch 4 — past-date & inventory integrity: `idx>=0` guards across Rates cells + all bulk `apply*` + range-select (#4); Diary day-header editor/empty-cell-create/drag clamp to today (#4); Diary close-out "override the set inventory?" confirm + maintenance re-open warning (#8). Then Batch 5 (a11y/share — #12 wa.me primary on iOS, AbortError→false, voice dedupe #3 + Hindi locale), Batch 6 (voucher copy + i18n — #9 cancellation policy only when a rate plan defines it, "2 Adults"/multi-room voucher parse, QR lightbox close, Dashboard reminder i18n + move-booking copy).
+- **2026-06-27 — Batch 4 COMPLETE: past-date & inventory integrity shipped + verified live.**
+  - Rates: past cells faded + `not-allowed`, selection blocked at `onCellDown`/`onCellEnter`, From→To range + Copy-from clamped to today, extra-zero typo guard gets an absolute ₹50k ceiling when base 0. _Verified: past cell won't select, future does._
+  - Diary: `openDateEditor` + `openQuickCreate` guard idx<0; drag clamp floors at today; rooms-open input clamps 0..units; past headers + empty cells faded/non-tappable; **close-out override confirm** on any available-room change. _Verified: editor confirm fired on Deluxe 8→5._
+  - Files: `src/screens/Rates.jsx`, `src/screens/Diary.jsx`, `src/i18n.js`.
+- **NEXT (resume here):** Batch 5 — accessibility & share reliability: prefer the guest `wa.me` deeplink as the PRIMARY share path on iOS/desktop (file-share secondary), AbortError(share-sheet cancelled) → return false so the wa.me fallback fires, synchronous WhatsApp open (no popup block) — `BookingConfirmed.jsx`, `BookingDetail.jsx`, `share.js` (#12); voice dictation per-instance final-index dedupe + Hindi recognizer locale (#3) — `useSpeech.js`, `VoiceBookingSheet.jsx`. Then Batch 6 (voucher copy + i18n — #9 cancellation policy only when a rate plan defines it, "2 Adults"/multi-room voucher parse, QR lightbox close, Dashboard reminder i18n + move-booking copy). NOTE pinch-zoom #7 already done.
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._

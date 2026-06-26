@@ -765,7 +765,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: ix >= 5 ? T.primary : T.ink3, letterSpacing: 0.3 }}>{d}</div>
             ))}
           </div>
-          <div onTouchMove={onCalTouchMove} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, touchAction: 'none' }}>
+          <div onTouchMove={onCalTouchMove} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, touchAction: 'pan-y pinch-zoom' }}>
             {/* Leading blank cells so the first real date sits under its
                 weekday column. Without these the calendar always started
                 at Monday and the dates lied about their day-of-week. */}

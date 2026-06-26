@@ -978,8 +978,20 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                       <button onClick={() => setEditingPriceId(ex.id)} style={{ background: 'none', border: 'none', color: T.primary, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
                         <Icon name="edit" size={10} stroke={2.2} />
                       </button>
-                      {ex.custom && onRemoveSavedExtra && (
-                        <button onClick={() => onRemoveSavedExtra(ex.id)} title={t('forgetSavedExtra')} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
+                      {ex.custom && (
+                        <button onClick={() => {
+                          // Remove from the CURRENT booking — qty, any price
+                          // override, and the locally-added custom entry — not
+                          // just the global saved pool. Previously the trash
+                          // only called onRemoveSavedExtra (which filters the
+                          // saved pool), so a custom extra that also lived in
+                          // data.customExtras stayed on the row and kept being
+                          // billed: the button looked completely dead.
+                          set('customExtras', (data.customExtras || []).filter(x => x.id !== ex.id));
+                          const { [ex.id]: _q, ...restE } = data.extras; set('extras', restE);
+                          const { [ex.id]: _p, ...restP } = data.extraPrices; set('extraPrices', restP);
+                          if (onRemoveSavedExtra) onRemoveSavedExtra(ex.id);
+                        }} title={t('forgetSavedExtra')} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
                           <Icon name="trash" size={10} stroke={2.2} />
                         </button>
                       )}

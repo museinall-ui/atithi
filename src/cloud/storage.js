@@ -78,6 +78,30 @@ export function isStorageUrl(v) {
   return typeof v === 'string' && /^https?:\/\//.test(v);
 }
 
+// Extract the in-bucket object path ("<propertyId>/logo.png") from a public
+// property-media URL (strips the host, the /object/public/<bucket>/ prefix, and
+// any ?v= cache-bust query). Returns '' for a base64/blank value.
+export function mediaPathOf(url) {
+  if (!isStorageUrl(url)) return '';
+  const marker = `/object/public/${MEDIA_BUCKET}/`;
+  const i = url.indexOf(marker);
+  if (i < 0) return '';
+  let path = url.slice(i + marker.length);
+  const q = path.indexOf('?');
+  if (q >= 0) path = path.slice(0, q);
+  try { return decodeURIComponent(path); } catch { return path; }
+}
+
+// Best-effort delete of a property-media object when its image is removed (or
+// replaced with a different file extension, which lands at a new path). Stops
+// orphaned, publicly-readable images accumulating in the bucket. Never throws.
+// Accepts either a stored URL or an in-bucket path; a base64 value is ignored.
+export async function deletePropertyMedia(urlOrPath) {
+  const path = isStorageUrl(urlOrPath) ? mediaPathOf(urlOrPath) : (urlOrPath || '');
+  if (!path || path.startsWith('data:')) return;
+  try { await supabase.storage.from(MEDIA_BUCKET).remove([path]); } catch { /* ignore */ }
+}
+
 // ── Voice notes — PRIVATE bucket (internal notes, never guest-facing) ────────
 // Audio is stored under "<propertyId>/<name>.<ext>" and played via a short-lived
 // SIGNED URL (the bucket has no public URL). The note row keeps the PATH, not a

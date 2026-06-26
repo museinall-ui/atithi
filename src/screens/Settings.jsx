@@ -5,7 +5,7 @@ import TeamSection from '../components/TeamSection.jsx';
 import NumberInput from '../components/NumberInput.jsx';
 import { useInstallPrompt } from '../components/InstallPrompt.jsx';
 import { resetMyProperty } from '../cloud/resetProperty.js';
-import { uploadPropertyMedia } from '../cloud/storage.js';
+import { uploadPropertyMedia, deletePropertyMedia, mediaPathOf } from '../cloud/storage.js';
 import { useSyncState } from '../cloud/sync.js';
 import { isWidgetRlsLive } from '../cloud/widget.js';
 import { logActivity } from '../cloud/activity.js';
@@ -802,13 +802,18 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                         return;
                       }
                       // Upload to Storage (CDN URL) when signed in; base64 fallback in demo.
-                      uploadPropertyMedia(propertyId, file, 'logo').then(url => setProfile(p => ({ ...p, logoDataUrl: url })));
+                      const old = profile.logoDataUrl;
+                      uploadPropertyMedia(propertyId, file, 'logo').then(url => {
+                        // Delete the previous object if the replacement landed at a different path (ext change).
+                        if (url && mediaPathOf(old) && mediaPathOf(old) !== mediaPathOf(url)) deletePropertyMedia(old);
+                        setProfile(p => ({ ...p, logoDataUrl: url }));
+                      });
                     }}
                   />
                 </label>
                 {profile.logoDataUrl && (
                   <button
-                    onClick={() => setProfile({ ...profile, logoDataUrl: '' })}
+                    onClick={() => { deletePropertyMedia(profile.logoDataUrl); setProfile({ ...profile, logoDataUrl: '' }); }}
                     style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
                     Remove
@@ -928,7 +933,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               }}>
                 <img src={url} alt="Property" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 <button
-                  onClick={() => setProfile({ ...profile, photoGallery: (profile.photoGallery || []).filter((_, j) => j !== i) })}
+                  onClick={() => { deletePropertyMedia(url); setProfile({ ...profile, photoGallery: (profile.photoGallery || []).filter((_, j) => j !== i) }); }}
                   title="Remove this photo"
                   style={{
                     position: 'absolute', top: 4, right: 4,
@@ -1078,12 +1083,16 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           setUploadError('Image is too large. Please use a QR under 700 KB.');
                           return;
                         }
-                        uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => setProfile(p => ({ ...p, paymentQrDataUrl: url })));
+                        const old = profile.paymentQrDataUrl;
+                        uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => {
+                          if (url && mediaPathOf(old) && mediaPathOf(old) !== mediaPathOf(url)) deletePropertyMedia(old);
+                          setProfile(p => ({ ...p, paymentQrDataUrl: url }));
+                        });
                       }}
                     />
                   </label>
                   <button
-                    onClick={() => setProfile({ ...profile, paymentQrDataUrl: '', paymentQrLabel: '' })}
+                    onClick={() => { deletePropertyMedia(profile.paymentQrDataUrl); setProfile({ ...profile, paymentQrDataUrl: '', paymentQrLabel: '' }); }}
                     style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 7, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
                     Remove
@@ -1275,12 +1284,16 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                                 setUploadError('Photo is too large. Please use an image under 2 MB.');
                                 return;
                               }
-                              uploadPropertyMedia(propertyId, file, 'room-' + c.id).then(url => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: url } : x)));
+                              const old = c.photoDataUrl;
+                              uploadPropertyMedia(propertyId, file, 'room-' + c.id).then(url => {
+                                if (url && mediaPathOf(old) && mediaPathOf(old) !== mediaPathOf(url)) deletePropertyMedia(old);
+                                setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: url } : x));
+                              });
                             }}
                           />
                         </label>
                         <button
-                          onClick={() => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: null } : x))}
+                          onClick={() => { deletePropertyMedia(c.photoDataUrl); setCategories(arr => arr.map(x => x.id === c.id ? { ...x, photoDataUrl: null } : x)); }}
                           style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, color: T.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                         >Remove</button>
                       </div>

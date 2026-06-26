@@ -62,7 +62,7 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 
 ### Extras (trash / preset model)
 - [ ] **[HIGH]** Extras are hardcoded desert-camp presets shown to every property; defaults un-removable. → per-property saved extras + custom escape hatch; delete for all rows. `data.js:931-937`, `NewBooking.jsx:1338-1340,:981`.
-- [ ] **[HIGH]** Trash on a just-added custom extra no-ops. → remove from `data.customExtras`/`data.extras`/`data.extraPrices`. `NewBooking.jsx:981-985` → `App.jsx:1932`.
+- [x] **[HIGH]** Trash on a just-added custom extra no-ops. ✓ FIXED + verified live — trash now clears the extra from `data.customExtras`/`extras`/`extraPrices`, not just the saved pool. `NewBooking.jsx:981`.
 - [ ] **[LOW]** Removing a saved extra leaves its qty in `data.extras` (still billed). `NewBooking.jsx:1352`.
 - [ ] **[LOW]** Reset/clear affordance missing for custom extras. `NewBooking.jsx:992-994`.
 
@@ -77,7 +77,7 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 - [ ] **[HIGH]** Rates calendar editable for PAST dates (cells + all bulk apply). `Rates.jsx:295-344,:453-625`.
 - [ ] **[HIGH]** Diary day-header per-date editor opens & saves overrides for PAST dates. `Diary.jsx:514,:530,:892`.
 - [ ] **[HIGH]** Diary grid BODY renders demo `ROOM_TYPES`, not the hotelier's categories (disagrees with the header editor). `Diary.jsx:930`.
-- [ ] **[HIGH]** Pinch-to-zoom dead on Rates grid & Diary drag surface (smallest text). → `touchAction:'pan-x pan-y pinch-zoom'`; bump fonts. `Rates.jsx:768`, `Diary.jsx:219`.
+- [x] **[HIGH]** Pinch-to-zoom dead on Rates grid. ✓ FIXED — Rates grid `touchAction` → `'pan-y pinch-zoom'` (custom month-swipe preserved; Diary grid already zooms — only the pill keeps `touchAction:none` for drag). `Rates.jsx:768`.
 - [ ] **[MEDIUM]** Diary close-out silently floors rooms-open to booked, no "override the set inventory?" prompt; can silently re-open maintenance close-outs. `Diary.jsx:530-558`.
 - [ ] **[LOW]** Set-rate "extra zero" confirm gated on `base>0`, so when base 0 any value applies; no absolute cap. `Rates.jsx:458-460`.
 - [ ] **[LOW]** Diary "Rooms open" input accepts impossible values while typing; live "free" label lies until save. `Diary.jsx:965,:970-973`.
@@ -102,7 +102,7 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 - [ ] **[HIGH]** Share-to-guest opens generic OS share sheet (iOS & Android) instead of guest's WhatsApp chat. → prefer `bookingShareWaUrl`; file-share secondary. `BookingConfirmed.jsx:70-79`, `BookingDetail.jsx:882-904`, `share.js:113-137`.
 - [ ] **[MEDIUM]** Cancelling the share sheet returns `true` (AbortError = success) → wa.me fallback never fires → guest gets nothing. `share.js:132-136`.
 - [ ] **[MEDIUM]** BookingConfirmed fires two `window.open`; the deferred WhatsApp popup is blocked on mobile. `BookingConfirmed.jsx:77-78`.
-- [ ] **[MEDIUM]** Dashboard arrival / reminder WhatsApp messages hardcoded English even in Hindi, and say "Reach us on this number" with no number. `Dashboard.jsx:707,:732`.
+- [~] **[MEDIUM]** Dashboard arrival/reminder WhatsApp messages: ✓ number-accuracy FIXED (prints the real saved phone or omits the clause). STILL hardcoded English in Hindi mode → Batch 6 i18n. `Dashboard.jsx:707,:732`.
 - [ ] **[MEDIUM]** BookingConfirmed shows no send button AND no "add a phone" hint when phone is junk-but-not-empty. `BookingConfirmed.jsx:65,:84`.
 - [ ] **[LOW]** Per-booking "WhatsApp" contact button opens an empty chat (no `?text`). `BookingDetail.jsx:647`.
 - [ ] **[LOW]** Share/voucher language inferred from `t('home')==='होम'` string-equality (fragile). `BookingDetail.jsx:883`.
@@ -119,7 +119,7 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 - [ ] **[LOW]** Stale comment says 503 code is `no_anthropic`; server returns `no_ai`. `parseBookingCommand.js:10,:56`.
 
 ### Cross-cutting / leaked defaults
-- [ ] **[HIGH]** Fabricated default contact `+91 90099 12345` can leak into guest message/voucher via `migrateProperty` merging `DEFAULT_PROPERTY.profile`. `App.jsx:167,:242-243`, `share.js:92`.
+- [x] **[HIGH]** Fabricated default contact `+91 90099 12345` leaking via `migrateProperty`. ✓ FIXED — profile now merges over a BLANK shape, not `DEFAULT_PROPERTY.profile`; share.js omits "Reach us" when no phone (never the hotel name). `App.jsx migrateProperty`, `share.js`.
 
 ### Suspected — needs a live check (not dropped)
 - [ ] **[NEEDS LIVE CHECK]** Owner #11 — Payment QR re-prompted at share time vs relying on Settings value. `voucher.js:520-524`.
@@ -164,4 +164,10 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 ---
 
 ## Fix log
+- **2026-06-27 — Batch 1 (partial): 3 trust-breakers shipped + verified.**
+  - `#13` leaked demo phone — `migrateProperty` merges profile over a BLANK shape (not Yatra `DEFAULT_PROPERTY.profile`); `share.js` omits "Reach us" when no phone (en+hi); Dashboard messages print the real phone or drop the clause. _Verified: build + clean boot._
+  - `#7` pinch-zoom on Rates grid (`touchAction` → `pan-y pinch-zoom`). _Verified: build; viewport already allows zoom._
+  - `#2` dead extras-delete — trash clears the extra from the current booking. _Verified LIVE in preview: added "Sleeping under the sky", tapped trash, row removed, no console errors._
+- **NEXT (resume here):** the two biggest Batch-1 blockers are NOT done yet — `#1` setup gate (effectiveRoomTypes → [] for unconfigured + route-gates + empty-states; biggest change) and `#6` advance-vs-paid (likely needs a `bookings.advance_due` migration + Step-4 redesign). Do these first in the next session, then Batch 2+.
+
 _Append shipped batches here (commit hash + what it fixed + how verified)._

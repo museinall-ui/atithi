@@ -1147,7 +1147,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     const msg = inUse > 0
                       ? `${inUse} active booking${inUse > 1 ? 's' : ''} still use "${c.name || 'this room type'}". Deleting it leaves them without a room type (they'll show "—" and drop out of availability). Delete anyway?`
                       : `Delete room category "${c.name || 'this room type'}"?`;
-                    if (window.confirm(msg)) setCategories(arr => arr.filter(x => x.id !== c.id));
+                    if (window.confirm(msg)) { deletePropertyMedia(c.photoDataUrl); setCategories(arr => arr.filter(x => x.id !== c.id)); }
                   }} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

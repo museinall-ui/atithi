@@ -718,23 +718,32 @@ export default function App() {
       try {
         const { property: migrated, migrated: n } = await migratePropertyImages(propertyId, property);
         if (n > 0) {
-          // Merge ONLY the migrated image fields onto the LIVE property via the
-          // functional setter — so any field the hotelier edited during the
-          // multi-second upload window isn't clobbered by the pre-upload snapshot
-          // (the overwrite would otherwise be persisted by the debounced save).
-          setProperty(prev => ({
-            ...prev,
-            profile: {
-              ...(prev.profile || {}),
-              logoDataUrl: migrated.profile.logoDataUrl,
-              paymentQrDataUrl: migrated.profile.paymentQrDataUrl,
-              photoGallery: migrated.profile.photoGallery,
-            },
-            categories: (prev.categories || []).map(c => {
-              const m = (migrated.categories || []).find(x => x.id === c.id);
-              return m ? { ...c, photoDataUrl: m.photoDataUrl } : c;
-            }),
-          }));
+          // Merge the migrated URLs onto the LIVE property via the functional
+          // setter, but ONLY where the live value is STILL the base64 the
+          // migration started from — so an image the hotelier replaced/edited
+          // during the multi-second upload window isn't clobbered by the
+          // pre-upload snapshot (which the debounced save would then persist).
+          const isB64 = (v) => typeof v === 'string' && v.startsWith('data:');
+          setProperty(prev => {
+            const pp = prev.profile || {};
+            const liveGallery = pp.photoGallery || [];
+            const migGallery = (migrated.profile && migrated.profile.photoGallery) || [];
+            return {
+              ...prev,
+              profile: {
+                ...pp,
+                logoDataUrl: isB64(pp.logoDataUrl) ? migrated.profile.logoDataUrl : pp.logoDataUrl,
+                paymentQrDataUrl: isB64(pp.paymentQrDataUrl) ? migrated.profile.paymentQrDataUrl : pp.paymentQrDataUrl,
+                // Per-entry: replace a still-base64 gallery item with its migrated
+                // URL at the same index; keep live URLs + any newly-added entries.
+                photoGallery: liveGallery.map((v, i) => (isB64(v) && migGallery[i] != null) ? migGallery[i] : v),
+              },
+              categories: (prev.categories || []).map(c => {
+                const m = (migrated.categories || []).find(x => x.id === c.id);
+                return (m && isB64(c.photoDataUrl)) ? { ...c, photoDataUrl: m.photoDataUrl } : c;
+              }),
+            };
+          });
         }
       } catch { /* leave base64 in place; retried next load */ }
     })();

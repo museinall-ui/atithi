@@ -47,11 +47,12 @@ function StatTile({ label, value, icon, color, onClick, disabled }) {
 // is lifted to App.jsx so it can flow through the cloud sync path; we just
 // read/write through `cashCloses` + `onSetCashClose(date, value | null)`.
 function todayKey() {
-  // Local YYYY-MM-DD for today. Was previously hardwired to '2026-05-05'
-  // (the demo's fake "today"), which meant every close the hotelier
-  // recorded actually saved against May 5 and disappeared from the
-  // dashboard on next reload. Now keyed by the real calendar date.
-  return ymd(ANCHOR);
+  // Local YYYY-MM-DD for today, from the LIVE clock (not the module-load ANCHOR).
+  // Payments/expenses stamp their dateIso from new Date(); the day-close target +
+  // record key must use the same source, or a PWA left foregrounded across IST
+  // midnight (ANCHOR frozen on yesterday) would reconcile against / save under the
+  // wrong day.
+  return ymd(new Date());
 }
 
 function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashAccounts, dayCloseExpected, t }) {
@@ -114,16 +115,23 @@ function DailyCloseCard({ todayBookings, isHi, cashCloses, onSetCashClose, cashA
     // reload strips closed.expected / closed.hadMovement. The close record is
     // always for TODAY (dateKey), so re-derive them from the live dayCloseExpected
     // when missing — this keeps the over/short line alive after a refresh.
-    const expectedR = (closed.expected != null) ? closed.expected : (dayCloseExpected ? dayCloseExpected.total : 0);
+    // Derive the aggregate AND the per-kind split from ONE coherent source so the
+    // headline gap and the cash/digital rows can never disagree: a record either
+    // has the per-kind fields stored (new format → trust the stored values
+    // together) or it doesn't (legacy / cloud-stripped → re-derive everything from
+    // the live dayCloseExpected together, with the aggregate = cash + digital).
+    const hasStoredKinds = closed.expectedCash != null && closed.expectedDigital != null;
+    const expectedCashR = hasStoredKinds ? closed.expectedCash : (dayCloseExpected ? dayCloseExpected.cash : 0);
+    const expectedDigitalR = hasStoredKinds ? closed.expectedDigital : (dayCloseExpected ? dayCloseExpected.digital : 0);
+    const expectedR = hasStoredKinds
+      ? ((closed.expected != null) ? closed.expected : (expectedCashR + expectedDigitalR))
+      : (expectedCashR + expectedDigitalR);
     const hadMovementR = (closed.hadMovement != null) ? closed.hadMovement : !!(dayCloseExpected && dayCloseExpected.hasMovement);
     const gap = (closed.total || 0) - (expectedR || 0);
     // Per-kind reconciliation (cash vs digital). Counted comes from the close
-    // record's stored cash/digital split; expected from the stored (or
-    // re-derived) per-kind net. Multiple digital accounts (owner UPI / manager
-    // UPI) reconcile against the combined digital expected — payments record a
-    // method, not a specific account, so cash-vs-digital is the exact granularity.
-    const expectedCashR = (closed.expectedCash != null) ? closed.expectedCash : (dayCloseExpected ? dayCloseExpected.cash : 0);
-    const expectedDigitalR = (closed.expectedDigital != null) ? closed.expectedDigital : (dayCloseExpected ? dayCloseExpected.digital : 0);
+    // record's stored cash/digital split. Multiple digital accounts reconcile
+    // against the combined digital expected — payments record a method, not a
+    // specific account, so cash-vs-digital is the exact granularity.
     const countedCash = closed.cash || 0;
     const countedDigital = closed.digital || 0;
     const kindRows = [
@@ -485,7 +493,9 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   // only reliably distinguish cash from non-cash (there's no per-account tag
   // on a payment), so we reconcile at that granularity.
   const dayCloseExpected = (() => {
-    const todayIso = idxToDate(TODAY_IDX);
+    // Live clock (not idxToDate(TODAY_IDX)=ANCHOR) so it matches the dateIso
+    // stamped on payments/expenses even on a PWA left open across IST midnight.
+    const todayIso = ymd(new Date());
     const isCashMethod = (m) => (m || '').toLowerCase() === 'cash';
     let incomeCash = 0, incomeDigital = 0;
     for (const b of liveBookings) {

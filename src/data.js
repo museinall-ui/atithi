@@ -495,6 +495,29 @@ export function computeUnitUsage(bookings, roomTypes) {
     const startIdx = b.startIdx ?? 0;
     const endIdx = startIdx + (b.nights || 1);
     items.forEach((item, itemIndex) => {
+      // Per-night room-type switching (item.nightTypes[]): the guest occupies a
+      // unit of a possibly-DIFFERENT type each night, so attribute each night to
+      // its own type's first-free unit instead of blocking ONE type for the whole
+      // stay. Without this, availability + the OTA inventory push miscount —
+      // oversell on the night(s) the guest switched INTO another type, and a
+      // false close on the primary type for those nights.
+      if (Array.isArray(item.nightTypes) && item.nightTypes.length) {
+        for (let n = 0; n < (b.nights || 1); n++) {
+          const nStart = startIdx + n;
+          const nEnd = nStart + 1;
+          const nRt = item.nightTypes[n] || item.roomTypeId || b.roomTypeId;
+          if (!used[nRt]) continue;
+          let nUnit = null;
+          const cnt = Object.keys(used[nRt]).length;
+          for (let u = 0; u < cnt; u++) {
+            if (!used[nRt][u].some(r => !(nEnd <= r.startIdx || nStart >= r.endIdx))) { nUnit = u; break; }
+          }
+          if (nUnit == null) nUnit = 0;
+          if (used[nRt][nUnit] == null) used[nRt][nUnit] = [];
+          used[nRt][nUnit].push({ startIdx: nStart, endIdx: nEnd, id: b.id });
+        }
+        return;
+      }
       const rtId = item.roomTypeId || b.roomTypeId;
       if (!used[rtId]) return; // unknown room type — skip
       let unitIdx = item.unitIdx;

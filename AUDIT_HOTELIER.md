@@ -9,7 +9,7 @@ Prior multi-agent audits optimised for **code correctness** and missed **product
 ## Status
 - [x] Audit complete (2026-06-26) — 23 agents, all 11 journeys + critique + synthesis.
 - [x] Batch 1 — Trust-breaking blockers (setup gate #1 + advance-vs-paid #6 + demo-phone #13 + extras-delete #2 + pinch-zoom #7)
-- [ ] Batch 2 — Booking & money correctness
+- [x] Batch 2 — Booking & money correctness (extras model #5, ₹0/NaN custom-extra, qty-0 cleanup, meal-plan floor, fresh-property EP-only meal seed, Step-4 confirm guard; GST-slab + half-split were verified NOT bugs)
 - [ ] Batch 3 — Phone & guest data
 - [ ] Batch 4 — Past-date & inventory integrity
 - [ ] Batch 5 — Accessibility & share reliability
@@ -51,19 +51,19 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 ### Booking / money correctness
 - [x] **[BLOCKER]** "Collect now" recorded the advance as PAID, not DUE. ✓ FIXED + verified live. New bookings already defaulted to `'none'` (paid=0); the trust-breaker was the ambiguous "COLLECT NOW" picker reading as "amount due to confirm" while it actually set `paid`. The picker is relabelled **"PAYMENT RECEIVED NOW"** with a hint ("Only record money you've actually received now. The rest stays as balance due — add it later from the booking page.") and the default option renamed **"Not yet · Full amount due"**. So the default takes nothing as paid and the legit "guest paid an advance now" flow stays. _Verified live: creating a booking with the default writes `paid:0`, full balance due, no synthetic payment row._ No migration. `App.jsx onCreate`, `NewBooking.jsx StepPayment`, `i18n.js`.
 - [x] **[HIGH]** New-booking edit-seed defaulted `payAmount:'full'` (latent footgun). ✓ FIXED — edit-seed now `'none'`. `NewBooking.jsx`.
-- [ ] **[HIGH]** GST slab lookup uses `ROOM_TYPES` not `effectiveRoomTypes` → a renamed/custom ≥₹7,500 room taxed at 5% not 18%. `NewBooking.jsx:1394-1396`.
-- [ ] **[MEDIUM]** Step 4 confirms with payment method missing and ₹0 "Custom" advance. → require `payCustom>0` + method. `NewBooking.jsx:1595`.
-- [ ] **[MEDIUM]** Meal-plan downgrade can drive subtotal below room tariff (no floor). `NewBooking.jsx:1372-1387`.
-- [ ] **[MEDIUM]** Meal-plan prices seeded from demo (CP +₹500, MAP +₹1,200, AP +₹2,000) on every fresh property. `App.jsx:267-269`.
-- [ ] **[LOW]** "Half" advance is `Math.round(total/2)`; ₹1 mismatch on odd totals. `App.jsx:1951`.
-- [ ] **[LOW]** Custom extra priced ₹0 cannot be added (silent no-op). `NewBooking.jsx:851-852`.
-- [ ] **[LOW]** Custom-extra price accepts non-numeric → stores `NaN`. `NewBooking.jsx:851-854`.
-- [ ] **[LOW]** Default preset extras say "Per person/Per evening" but charge per-stay (no `unit`). `data.js:931-937`, `NewBooking.jsx:1356`.
+- [x] **[NOT A BUG]** GST slab lookup. ✓ VERIFIED current code is correct: NewBooking does NOT import `ROOM_TYPES`; line 1182 defines a local `const ROOM_TYPES = effectiveRoomTypes(property)`, so the GST loop (line ~1413) already uses the property's real categories. A renamed/custom ≥₹7,500 room IS taxed at 18%. (The audit's original line ref pre-dated a fix.)
+- [x] **[MEDIUM]** Step 4 could confirm with no payment method / ₹0 "Custom" advance. ✓ FIXED + verified live — `paymentValid` gates the Confirm button: 'Not yet' needs nothing; 'Custom' needs `payCustom>0` AND a method; Full/50% need a method. `NewBooking.jsx`.
+- [x] **[MEDIUM]** Meal-plan downgrade could drive subtotal below the room tariff. ✓ FIXED — `mealCost` floored at `-roomsSubtotal`. `NewBooking.jsx`.
+- [x] **[MEDIUM]** Meal-plan prices seeded from demo on every fresh property. ✓ FIXED + verified live — `migrateProperty` now tests the SAVED `p.mealPlans` (not `out`, which is always demo-seeded via `{...DEFAULT_PROPERTY, ...p}`) and seeds a clean EP-only ₹0 set for a fresh property; demo keeps its rich prices. `App.jsx`.
+- [x] **[NOT A BUG]** "Half" advance ₹1 mismatch. ✓ VERIFIED both the StepPayment "50%" sub-label and onCreate's `paid` use the same `Math.round(total/2)` — they always match. No change.
+- [x] **[LOW]** Custom extra priced ₹0 couldn't be added. ✓ FIXED — addCustom allows an explicit ₹0 (free add-on), rejects a blank price. `NewBooking.jsx`.
+- [x] **[LOW]** Custom-extra price could store `NaN`. ✓ FIXED — `Number.isFinite` guard (and the `type=number` input already blocks non-numeric entry). `NewBooking.jsx`.
+- [x] **[LOW]** Default preset extras claimed "Per person/Per evening" but billed per-stay. ✓ MOOT — the desert-camp presets are no longer shown to non-demo properties (see Extras section); the demo seeds them as per-stay saved extras.
 
 ### Extras (trash / preset model)
-- [ ] **[HIGH]** Extras are hardcoded desert-camp presets shown to every property; defaults un-removable. → per-property saved extras + custom escape hatch; delete for all rows. `data.js:931-937`, `NewBooking.jsx:1338-1340,:981`.
+- [x] **[HIGH]** Extras were hardcoded desert-camp presets shown to every property + un-removable. ✓ FIXED + verified live — the booking extras picker now lists ONLY the property's own saved/added extras (the `...EXTRAS_DEFAULT` prepend is gone), with the "+ Add custom" escape hatch; every row is removable. A fresh property starts with an empty list; the DEMO seeds its pool with the camp extras so the preview still looks complete. `extrasBreakdownFor` keeps EXTRAS_DEFAULT in its catalog so OLD bookings still itemise. `data.js`, `NewBooking.jsx`, `App.jsx`.
 - [x] **[HIGH]** Trash on a just-added custom extra no-ops. ✓ FIXED + verified live — trash now clears the extra from `data.customExtras`/`extras`/`extraPrices`, not just the saved pool. `NewBooking.jsx:981`.
-- [ ] **[LOW]** Removing a saved extra leaves its qty in `data.extras` (still billed). `NewBooking.jsx:1352`.
+- [x] **[LOW]** Removing/zeroing an extra left a stray qty in `data.extras`. ✓ FIXED — the "−" stepper now deletes the key when qty hits 0 (the trash already cleared qty + price). `NewBooking.jsx`.
 - [ ] **[LOW]** Reset/clear affordance missing for custom extras. `NewBooking.jsx:992-994`.
 
 ### Phone / guest validation
@@ -172,6 +172,14 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - `#1` setup gate — `effectiveRoomTypes()` → `[]` for an unconfigured property (was the demo Yatra rooms); new `isPropertyConfigured()` + a `setupGate` in `App.jsx` route `new`/`rates`/`diary` to a **SetupGate** "Finish setting up your hotel" screen; Dashboard occupancy shows an "Add your rooms" empty-state; Rates has a fail-safe empty-state; demo mode exempt. _Verified live in preview: gate fires on all 3 routes, Dashboard empty-state, "Go to Settings" nav, demo + every non-gated screen render with zero crashes, build passes._ No migration.
   - `#6` advance-vs-paid — picker relabelled "PAYMENT RECEIVED NOW" + hint; default "Not yet · Full amount due"; edit-seed default `'full'`→`'none'`. _Verified live: a booking created with the default writes `paid:0` / full balance / no payment row._ No migration.
   - Files: `src/data.js`, `src/App.jsx`, `src/screens/Dashboard.jsx`, `src/screens/Rates.jsx`, `src/screens/NewBooking.jsx`, `src/i18n.js`.
-- **NEXT (resume here):** Batch 2 — per-property preset extras + working trash on ALL rows (#5, remaining half of #2 presets); GST slab via `effectiveRoomTypes` not `ROOM_TYPES` (renamed ≥₹7,500 room taxed at 5% not 18%); meal-plan downgrade floor; seed only EP ₹0 on a fresh property; Step-4 confirm guard (amount>0 + method); ₹0/NaN custom-extra parse. Then Batch 3 (phone/guest), Batch 4 (past-date), Batch 5 (a11y/share), Batch 6 (voucher/i18n).
+- **2026-06-27 — Batch 2 COMPLETE: booking & money correctness shipped + verified live.**
+  - Extras model (#5): removed the universal `EXTRAS_DEFAULT` prepend — the picker shows only the property's own saved/added extras + "+ Add custom"; demo seeds its pool with the camp extras; `extrasBreakdownFor` keeps EXTRAS_DEFAULT in its catalog for old bookings. _Verified live: demo shows seeded deletable extras; a real fresh property shows an empty list._
+  - Custom-extra parse: allow explicit ₹0, reject blank/NaN. _Verified live: empty price no-ops, ₹0 adds, `type=number` blocks junk._
+  - qty→0 removes the key (no stray `{id:0}`). Meal-plan delta floored at `-roomsSubtotal`.
+  - Fresh-property meal seed: `migrateProperty` now tests the SAVED `p.mealPlans` (not `out`, which is always demo-seeded via the `{...DEFAULT_PROPERTY, ...p}` spread — the original check was dead) → seeds clean EP-only ₹0; demo keeps its prices. _Verified live: injected fresh property → only EP shown, no demo CP/MAP prices._ (Caught via live verify — first attempt checked the wrong variable.)
+  - Step-4 confirm guard: `paymentValid` requires `payCustom>0` + a method when recording a payment. _Verified live: Custom ₹0 / amount-without-method disable Confirm; method enables it._
+  - **Verified NOT bugs (no change):** GST slab (NewBooking's `ROOM_TYPES` is a LOCAL `effectiveRoomTypes(property)`, taxes correctly); half-split (display + onCreate both `Math.round(total/2)`).
+  - Files: `src/data.js` (none — EXTRAS_DEFAULT kept), `src/screens/NewBooking.jsx`, `src/App.jsx`, plus tracker.
+- **NEXT (resume here):** Batch 3 — phone & guest data: per-country phone length in `COUNTRIES` + digit-only filter + max-length on the New Booking mobile field & Settings contact (#10); repeat-guest match needs a stronger key before it overwrites typed identity + carry email + country-change reconciliation. Then Batch 4 (past-date/inventory integrity — Rates/Diary `idx>=0` guards #4, close-out override confirm #8), Batch 5 (a11y/share reliability — #12 wa.me primary, voice dedupe #3), Batch 6 (voucher copy + i18n — #9 cancellation policy, "2 Adults" parse).
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._

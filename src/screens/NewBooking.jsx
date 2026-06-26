@@ -1081,7 +1081,8 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
         </Card>
       ) : (
       <Card padding={16}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 12 }}>{t('collectNow')}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 6 }}>{t('collectNow')}</div>
+        <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 12 }}>{t('collectNowHint')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
           {[
             { id: 'full',   label: t('payFull'),   sub: `₹${total.toLocaleString('en-IN')}` },
@@ -1198,7 +1199,12 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         roomItems: seedItems,
         name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: editing.email || '', country: editing.country || 'IN', state: editing.state || '', gstin: '',
         notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: 4,
-        payMethod: null, payAmount: 'full', payCustom: 0,
+        // Edit path: seed 'none' (not 'full'). Editing never recomputes what's
+        // been paid (onCreate preserves existing.paid and StepPayment shows the
+        // "payments aren't changed here" card instead of the picker), so this is
+        // inert today — but a 'full' default here is a footgun if that ever
+        // changes: it would silently mark an edited booking paid-in-full.
+        payMethod: null, payAmount: 'none', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
         mealPlanId: editing.mealPlanId || startingMealPlanId(property),

@@ -8,7 +8,7 @@ Prior multi-agent audits optimised for **code correctness** and missed **product
 
 ## Status
 - [x] Audit complete (2026-06-26) — 23 agents, all 11 journeys + critique + synthesis.
-- [ ] Batch 1 — Trust-breaking blockers
+- [x] Batch 1 — Trust-breaking blockers (setup gate #1 + advance-vs-paid #6 + demo-phone #13 + extras-delete #2 + pinch-zoom #7)
 - [ ] Batch 2 — Booking & money correctness
 - [ ] Batch 3 — Phone & guest data
 - [ ] Batch 4 — Past-date & inventory integrity
@@ -42,15 +42,15 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 ## All findings by area
 
 ### Onboarding / setup gate
-- [ ] **[BLOCKER]** No setup gate — Booking/Diary/Rates/Dashboard usable before any room/price exists, invent the Yatra demo tents (Deluxe ₹4,500 … Pool ₹14,500), Dashboard shows "/21 rooms". → hard-block until name + one priced room saved; empty-state otherwise. `data.js:14-16`; consumed `NewBooking.jsx:1169`, `Diary.jsx:580,930`, `Rates.jsx:89`, `Dashboard.jsx:420,446`.
-- [ ] **[HIGH]** Onboarding "Skip" on step 1 leaves an empty property that then renders demo rooms. `Onboarding.jsx:284-291`.
+- [x] **[BLOCKER]** No setup gate. ✓ FIXED + verified live. `effectiveRoomTypes()` now returns `[]` (not the demo Yatra tents) for an unconfigured property (`data.js`), killing the demo-room/rate leak at the source across Diary/Rates/Dashboard/NewBooking/Voice/widget. New `isPropertyConfigured(property)` (name + ≥1 room) drives a `setupGate` in `App.jsx` that routes `new`/`rates`/`diary` to a friendly **SetupGate** "Finish setting up your hotel → Go to Settings" screen until setup is done. Dashboard occupancy shows an "Add your rooms" empty-state instead of "/21 rooms". Demo mode is exempt (seeds the full property). _Verified: gate fires on all 3 routes; Dashboard empty-state; "Go to Settings" works; demo + all non-gated screens render with no crash; build passes._
+- [~] **[PARTIAL]** Onboarding "Skip" still leaves an empty property — but it now lands on safely-gated screens (no demo rooms, SetupGate on the action screens) instead of a fake-data app. Making Skip itself create a first room is a smaller follow-up. `Onboarding.jsx:284-291`.
 - [ ] **[HIGH]** Saving against a demo room type writes a phantom `roomTypeId` that won't match real rooms later. `App.jsx:2154`. (validate `roomTypeId ∈ categories` on save.)
 - [ ] **[MEDIUM]** No mandatory-field enforcement in Settings Property Profile; Save accepts a blank hotel. `Settings.jsx:641-676`.
 - [ ] **[LOW]** New Booking always seeds 2 adults, ignoring `property.baseCapacityAdults`. `NewBooking.jsx:1209`.
 
 ### Booking / money correctness
-- [ ] **[BLOCKER]** "Collect now" records the advance as PAID, not DUE → ₹0 balance / inflated day-close for money never received. → advance = due; separate explicit "log payment received"; default `paid=0`. `App.jsx:1949-1953`, `NewBooking.jsx:1070-1112`.
-- [ ] **[HIGH]** New-booking edit-seed defaults `payAmount:'full'` (latent footgun). → seed `'none'`. `NewBooking.jsx:1189` vs `:1217`.
+- [x] **[BLOCKER]** "Collect now" recorded the advance as PAID, not DUE. ✓ FIXED + verified live. New bookings already defaulted to `'none'` (paid=0); the trust-breaker was the ambiguous "COLLECT NOW" picker reading as "amount due to confirm" while it actually set `paid`. The picker is relabelled **"PAYMENT RECEIVED NOW"** with a hint ("Only record money you've actually received now. The rest stays as balance due — add it later from the booking page.") and the default option renamed **"Not yet · Full amount due"**. So the default takes nothing as paid and the legit "guest paid an advance now" flow stays. _Verified live: creating a booking with the default writes `paid:0`, full balance due, no synthetic payment row._ No migration. `App.jsx onCreate`, `NewBooking.jsx StepPayment`, `i18n.js`.
+- [x] **[HIGH]** New-booking edit-seed defaulted `payAmount:'full'` (latent footgun). ✓ FIXED — edit-seed now `'none'`. `NewBooking.jsx`.
 - [ ] **[HIGH]** GST slab lookup uses `ROOM_TYPES` not `effectiveRoomTypes` → a renamed/custom ≥₹7,500 room taxed at 5% not 18%. `NewBooking.jsx:1394-1396`.
 - [ ] **[MEDIUM]** Step 4 confirms with payment method missing and ₹0 "Custom" advance. → require `payCustom>0` + method. `NewBooking.jsx:1595`.
 - [ ] **[MEDIUM]** Meal-plan downgrade can drive subtotal below room tariff (no floor). `NewBooking.jsx:1372-1387`.
@@ -76,7 +76,7 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 ### Rates & inventory
 - [ ] **[HIGH]** Rates calendar editable for PAST dates (cells + all bulk apply). `Rates.jsx:295-344,:453-625`.
 - [ ] **[HIGH]** Diary day-header per-date editor opens & saves overrides for PAST dates. `Diary.jsx:514,:530,:892`.
-- [ ] **[HIGH]** Diary grid BODY renders demo `ROOM_TYPES`, not the hotelier's categories (disagrees with the header editor). `Diary.jsx:930`.
+- [x] **[HIGH]** Diary grid BODY rendered demo `ROOM_TYPES`. ✓ FIXED by the setup-gate change — `effectiveRoomTypes()` returns real categories when configured and `[]` (gated) when not, so the demo tents never reach the grid. `Diary.jsx:930`.
 - [x] **[HIGH]** Pinch-to-zoom dead on Rates grid. ✓ FIXED — Rates grid `touchAction` → `'pan-y pinch-zoom'` (custom month-swipe preserved; Diary grid already zooms — only the pill keeps `touchAction:none` for drag). `Rates.jsx:768`.
 - [ ] **[MEDIUM]** Diary close-out silently floors rooms-open to booked, no "override the set inventory?" prompt; can silently re-open maintenance close-outs. `Diary.jsx:530-558`.
 - [ ] **[LOW]** Set-rate "extra zero" confirm gated on `base>0`, so when base 0 any value applies; no absolute cap. `Rates.jsx:458-460`.
@@ -168,6 +168,10 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - `#13` leaked demo phone — `migrateProperty` merges profile over a BLANK shape (not Yatra `DEFAULT_PROPERTY.profile`); `share.js` omits "Reach us" when no phone (en+hi); Dashboard messages print the real phone or drop the clause. _Verified: build + clean boot._
   - `#7` pinch-zoom on Rates grid (`touchAction` → `pan-y pinch-zoom`). _Verified: build; viewport already allows zoom._
   - `#2` dead extras-delete — trash clears the extra from the current booking. _Verified LIVE in preview: added "Sleeping under the sky", tapped trash, row removed, no console errors._
-- **NEXT (resume here):** the two biggest Batch-1 blockers are NOT done yet — `#1` setup gate (effectiveRoomTypes → [] for unconfigured + route-gates + empty-states; biggest change) and `#6` advance-vs-paid (likely needs a `bookings.advance_due` migration + Step-4 redesign). Do these first in the next session, then Batch 2+.
+- **2026-06-27 — Batch 1 COMPLETE: the two remaining blockers shipped + verified live.**
+  - `#1` setup gate — `effectiveRoomTypes()` → `[]` for an unconfigured property (was the demo Yatra rooms); new `isPropertyConfigured()` + a `setupGate` in `App.jsx` route `new`/`rates`/`diary` to a **SetupGate** "Finish setting up your hotel" screen; Dashboard occupancy shows an "Add your rooms" empty-state; Rates has a fail-safe empty-state; demo mode exempt. _Verified live in preview: gate fires on all 3 routes, Dashboard empty-state, "Go to Settings" nav, demo + every non-gated screen render with zero crashes, build passes._ No migration.
+  - `#6` advance-vs-paid — picker relabelled "PAYMENT RECEIVED NOW" + hint; default "Not yet · Full amount due"; edit-seed default `'full'`→`'none'`. _Verified live: a booking created with the default writes `paid:0` / full balance / no payment row._ No migration.
+  - Files: `src/data.js`, `src/App.jsx`, `src/screens/Dashboard.jsx`, `src/screens/Rates.jsx`, `src/screens/NewBooking.jsx`, `src/i18n.js`.
+- **NEXT (resume here):** Batch 2 — per-property preset extras + working trash on ALL rows (#5, remaining half of #2 presets); GST slab via `effectiveRoomTypes` not `ROOM_TYPES` (renamed ≥₹7,500 room taxed at 5% not 18%); meal-plan downgrade floor; seed only EP ₹0 on a fresh property; Step-4 confirm guard (amount>0 + method); ₹0/NaN custom-extra parse. Then Batch 3 (phone/guest), Batch 4 (past-date), Batch 5 (a11y/share), Batch 6 (voucher/i18n).
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._

@@ -646,6 +646,24 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
 
   const selCount = selected.size;
 
+  // Fail-safe: with no room categories (effectiveRoomTypes → []) there's
+  // nothing to price. The App.jsx setup gate normally keeps an unconfigured
+  // property off this screen, but guard here too so a future routing change
+  // can never white-screen the rate calendar (the grid below indexes into the
+  // room list and assumes at least one type).
+  if (!ROOM_TYPES.length) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
+        <ScreenHeader title={t('ratesTitle')} subtitle={t('ratesSub')} onBack={() => go('__back')} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('setupTitle')}</div>
+          <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, lineHeight: 1.5, maxWidth: 280 }}>{t('setupBody')}</div>
+          <button onClick={() => go('settings')} style={{ marginTop: 4, padding: '9px 18px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('setupCta')}</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }} onMouseUp={onCellUp} onTouchEnd={onCellUp}>
       <ScreenHeader title={t('ratesTitle')} subtitle={t('ratesSub')} onBack={() => go('__back')} />

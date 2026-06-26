@@ -13,7 +13,17 @@ export const ROOM_TYPES = [
 const TAG_PALETTE = ['tagSaffron', 'tagOlive', 'tagSky', 'tagPlum'];
 export function effectiveRoomTypes(property) {
   const cats = property && Array.isArray(property.categories) ? property.categories : null;
-  if (!cats || cats.length === 0) return ROOM_TYPES;
+  // A property with no room categories is UNCONFIGURED — return an empty list,
+  // never the demo Yatra rooms (Deluxe ₹4,500 … Pool ₹14,500). Falling back to
+  // ROOM_TYPES here was the root cause of the "demo rooms leak into a fresh
+  // hotelier's account" trust-breaker (audit #1): the phantom rooms surfaced
+  // across the Diary, Rates, Dashboard occupancy, New Booking and the public
+  // widget before the hotelier had set anything up. The action screens that
+  // consume this are route-gated until setup is done (see isPropertyConfigured
+  // + the setup gate in App.jsx); the rest now render honest empty-states.
+  // Demo mode is unaffected — it seeds the full DEFAULT_PROPERTY (categories
+  // populated), so it never hits this branch.
+  if (!cats || cats.length === 0) return [];
   return cats.map((c, i) => {
     const seed = ROOM_TYPES.find(r => r.id === c.id);
     // Spread the raw category FIRST so per-category fields the rest of the app
@@ -34,6 +44,19 @@ export function effectiveRoomTypes(property) {
       amenityIds: Array.isArray(c.amenityIds) ? c.amenityIds : [],
     };
   });
+}
+
+// A property is "configured" once the hotelier has named their hotel AND added
+// at least one room category. Until then the booking / diary / rates screens
+// would only show the empty room list from effectiveRoomTypes() above, so they
+// are route-gated behind a "finish setup" screen (App.jsx). Kept deliberately
+// in lock-step with effectiveRoomTypes()'s empty-check (categories.length) and
+// with the onboarding-needed test in App.jsx so the gate and the onboarding
+// wizard never disagree.
+export function isPropertyConfigured(property) {
+  const hasName = !!(property && property.profile && String(property.profile.name || '').trim());
+  const hasRoom = !!(property && Array.isArray(property.categories) && property.categories.length > 0);
+  return hasName && hasRoom;
 }
 
 // Anchor date for day-index math throughout the app. Pinned to local

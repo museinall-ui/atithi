@@ -704,7 +704,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         const propName = property?.profile?.name || 'our property';
         const mapUrl = property?.profile?.mapUrl || '';
         const checkInTime = property?.profile?.checkIn || '14:00';
-        const msg = `Hi ${first.guest},\n\nLooking forward to hosting you at ${propName} tomorrow.\n\n${mapUrl ? `📍 Directions: ${mapUrl}\n\n` : ''}Check-in opens at ${checkInTime}. Your booking ID is ${first.id}.\n\nReach us anytime on this number.`;
+        const propPhone = (property?.profile?.phone || '').trim();
+        const msg = `Hi ${first.guest},\n\nLooking forward to hosting you at ${propName} tomorrow.\n\n${mapUrl ? `📍 Directions: ${mapUrl}\n\n` : ''}Check-in opens at ${checkInTime}. Your booking ID is ${first.id}.${propPhone ? `\n\nReach us: ${propPhone}` : ''}`;
         window.open(`https://wa.me/${firstDigits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
       },
     });
@@ -729,7 +730,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           text: t('nudgeReminderArrive').replace('{text}', reminder.text).replace('{guest}', guest.guest),
           cta: t('nudgeSend'),
           onClick: () => {
-            const msg = `Hi ${guest.guest},\n\n${reminder.text}\n\nReach us anytime on this number — ${propName}.`;
+            const propPhone = (property?.profile?.phone || '').trim();
+            const msg = `Hi ${guest.guest},\n\n${reminder.text}\n\n${propName}${propPhone ? ` · ${propPhone}` : ''}`;
             window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
           },
         });

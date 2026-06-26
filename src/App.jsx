@@ -240,7 +240,20 @@ const DEFAULT_PROPERTY = {
 function migrateProperty(p) {
   if (!p || typeof p !== 'object') return DEFAULT_PROPERTY;
   const out = { ...DEFAULT_PROPERTY, ...p };
-  out.profile = { ...DEFAULT_PROPERTY.profile, ...(p.profile || {}) };
+  // Merge the saved profile over a BLANK profile shape (empty strings + the
+  // sensible check-in/out defaults) — NOT over DEFAULT_PROPERTY.profile, which
+  // carries the Yatra DEMO content (phone +91 90099 12345, email, city, map,
+  // etc.). Merging over the demo profile leaked that demo phone/address into
+  // real hoteliers' guest WhatsApp messages + vouchers whenever they hadn't
+  // filled their own in. The demo path passes the full DEFAULT_PROPERTY as `p`,
+  // so its real values still flow through `...p.profile`.
+  const BLANK_PROFILE = {
+    name: '', type: '', address: '', city: '', state: '', pincode: '',
+    landmark: '', mapUrl: '', checkIn: '14:00', checkOut: '11:00',
+    phone: '', email: '', website: '',
+    logoDataUrl: '', paymentQrDataUrl: '', paymentQrLabel: '', shortCode: '',
+  };
+  out.profile = { ...BLANK_PROFILE, ...(p.profile || {}) };
   if (!Array.isArray(out.amenityIds)) {
     out.amenityIds = p.amenities && typeof p.amenities === 'object'
       ? Object.keys(p.amenities).filter(k => p.amenities[k])

@@ -62,8 +62,10 @@ export function bookingShareMessage(booking, property, lang = 'en') {
       lines.push('');
       lines.push(`भुगतान प्राप्त हो गया है। धन्यवाद!`);
     }
-    lines.push('');
-    lines.push(`संपर्क: ${propPhone || propName}`);
+    if (propPhone) {
+      lines.push('');
+      lines.push(`संपर्क: ${propPhone}`);
+    }
     return lines.join('\n');
   }
 
@@ -88,8 +90,10 @@ export function bookingShareMessage(booking, property, lang = 'en') {
     lines.push('');
     lines.push(`Payment received in full. Thank you!`);
   }
-  lines.push('');
-  lines.push(`Reach us: ${propPhone || propName}`);
+  if (propPhone) {
+    lines.push('');
+    lines.push(`Reach us: ${propPhone}`);
+  }
   return lines.join('\n');
 }
 

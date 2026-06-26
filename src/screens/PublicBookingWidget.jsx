@@ -432,7 +432,15 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
         children: childrenPerRoom[i] || 0,
         childrenFree: childrenFreePerRoom[i] || 0,
         childrenFull: childrenFullPerRoom[i] || 0,
-        rate: perNight,
+        // Store rate=null (NOT the multiplier-baked, averaged perNight) so a later
+        // edit in NewBooking re-derives the price from the calendar + ratePlanId +
+        // single-occupancy exactly ONCE — same as a hotelier-created booking.
+        // Storing perNight (= round(avg of rawRate × ratePlanMult)) caused the
+        // rate-plan multiplier to be applied a SECOND time on edit, dropped the
+        // single-occ rate, and flattened weekend/season night-to-night variation —
+        // inflating the total (and Reports revenue) on a no-op re-save. The booking
+        // still carries ratePlanId + startIdx, which drive the recompute.
+        rate: null,
       })),
       total, paid: 0,
       guests: guestsStr,

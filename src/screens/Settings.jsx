@@ -1078,8 +1078,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Field label={t('checkInTime')} value={profile.checkIn} onChange={e => setProfile({ ...profile, checkIn: e.target.value })} />
-              <Field label={t('checkOutTime')} value={profile.checkOut} onChange={e => setProfile({ ...profile, checkOut: e.target.value })} />
+              <Field label={t('checkInTime')} type="time" value={profile.checkIn} onChange={e => setProfile({ ...profile, checkIn: e.target.value })} />
+              <Field label={t('checkOutTime')} type="time" value={profile.checkOut} onChange={e => setProfile({ ...profile, checkOut: e.target.value })} />
             </div>
           </div>
         </Card>
@@ -1090,7 +1090,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             <Field label={t('address')} value={profile.address} onChange={e => setProfile({ ...profile, address: e.target.value })} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <Field label={t('city')} value={profile.city} onChange={e => setProfile({ ...profile, city: e.target.value })} />
-              <Field label={t('pincode')} value={profile.pincode} onChange={e => setProfile({ ...profile, pincode: e.target.value })} />
+              <Field label={t('pincode')} inputMode="numeric" value={profile.pincode} onChange={e => setProfile({ ...profile, pincode: e.target.value })} />
             </div>
             <Field label={t('state')} value={profile.state} onChange={e => setProfile({ ...profile, state: e.target.value })} />
             <Field
@@ -1115,7 +1115,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <Card padding={14}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Field label={t('contactPhone')} type="tel" inputMode="tel" maxLength={18} value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value.replace(/[^\d+\-() ]/g, '').slice(0, 18) })} />
-            <Field label={t('contactEmail')} value={profile.email} onChange={e => setProfile({ ...profile, email: e.target.value })} />
+            <Field label={t('contactEmail')} type="email" value={profile.email} onChange={e => setProfile({ ...profile, email: e.target.value })} />
             <Field label={t('website')} value={profile.website} onChange={e => setProfile({ ...profile, website: e.target.value })} prefix="https://" />
           </div>
         </Card>
@@ -2291,9 +2291,10 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Field
               label="CA email"
+              type="email"
               value={accountant.email}
               onChange={e => setAccountant({ ...accountant, email: e.target.value })}
-              placeholder="ca@firm.in (required for export)"
+              placeholder="ca@firm.in (used for the monthly invoice export)"
               prefix={<Icon name="mail" size={12} color={T.ink3} />}
             />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

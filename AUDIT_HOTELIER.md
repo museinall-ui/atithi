@@ -239,3 +239,44 @@ _Append shipped batches here (commit hash + what it fixed + how verified)._
 Invoice range filter keeps unparseable dates in range CSV (`Reports.jsx:449`); duplicate saved-extra names allowed; custom meal-plan label saved but never shown to guests; QR "Uploaded" hint optimistic before async save; season-overlap warning only after both dates; extra-guest ₹0 vs "not set" ambiguity.
 
 **Proposed fix order:** R2-1 money/cross-surface (the 5 HIGH money items) → R2-2 date/logic + quick validation (Diary year, copy count, empty name, team phone, all-meal-plans-disabled) → R2-3 widget phone + GST override + child-age bounds → R2-4 the Settings/units i18n pass. RBAC handler guards + lows folded in where they fit.
+
+---
+
+## ROUND 2 — FIXES SHIPPED (2026-06-27)
+
+Re-pinned every open finding in current code via a 12-agent workflow (line numbers
+had drifted across the child-bands work), then fixed in 5 reviewable batches on
+`fix/audit-batch1-blockers`. All builds pass; behavioural fixes verified live.
+
+- **Batch A `ab4fa53`** — R2-meal-floor (mealCostFor gains an optional roomsSubtotal
+  floor + new roomsSubtotalFor helper; folio + voucher + widget now floor a meal
+  downgrade the same way NewBooking does) · R2-occ-csv (occupancy CSV startIdx/nights
+  guard). _Verified: demo folio renders clean, no NaN._
+- **Batch B `217d9d1`** — R2-diary-year (header year from viewDays[0].iso, not ANCHOR)
+  · R2-copy-count (copy-from label matches the clamped count) · SearchOverlay rows
+  keyed by id+index (demo seed has a duplicate BK-2854). _Verified: header reads the
+  visible column's year; dup-key warning gone._
+- **Batch C `5210ea3`** — R2-all-meals-off (block disabling the last enabled meal
+  plan) · R2-gst-override (typed value = slab no longer reverts to auto; only Reset
+  clears) · R2-empty-catname (block blank category name on save) · R2-child-age-bounds
+  (band names + ascending ages required on save; legacy free<half clamp) · R2-team-phone
+  (recipient phone filter). _Verified live: cleared a category name → save BLOCKED
+  (nothing persisted)._
+- **Batch D `592dc65`** — R2-widget-phone (digit-only + maxLength 10 + exact-10
+  validation + hint, India-only widget). _Verified live: junk → "9876543210"; Confirm
+  enabled at 10, disabled at 9._
+- **Batch E `3683cdf`** — R2-rbac-guards (defense-in-depth can() guards on 14 action
+  handlers; onCreate left to its route gate; auto-release ticker unaffected).
+  _Verified live: extendHold ran in demo (can() wildcard) — hold extended, no errors._
+
+**Lows — verified, no code change:**
+- Invoice range CSV "keeps unparseable dates" is INTENTIONAL (documented at
+  Reports.jsx:446 — the CA register must stay gap-free), NOT a bug.
+- Custom meal-plan label "not shown to guest" is already handled — the widget
+  (effectiveMealPlans → mp.code/mp.label) AND the voucher both display it.
+- Remaining (duplicate saved-extra names, optimistic QR "Uploaded" hint, season-overlap
+  warning timing, extra-guest ₹0-vs-not-set) are cosmetic; left as-is to avoid churn.
+
+**Still DEFERRED (owner's call):** the full Settings/units i18n pass (R2 cross-cutting)
+— pervasive English in Hindi mode + hardcoded "per night/stay/guest" unit strings.
+Too large + inconsistent to do piecemeal; per CLAUDE.md M-10 it's deliberately deferred.

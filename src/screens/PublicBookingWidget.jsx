@@ -278,7 +278,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     // folio recompute (bookingGuestCount in data.js, which sums all bands). Keeps
     // the widget total equal to what the folio + voucher recompute (price parity).
     const totalGuests = (data.adults || 0) + totalChildren;
-    return Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
+    const raw = Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
+    // Floor a downgrade at -roomCost (same floor NewBooking + the folio apply)
+    // so a big meal discount can't push rooms+meal below zero.
+    return Math.max(-roomCost, raw);
   })();
 
   // Sum of selected extras. Each extra has a unit that determines the

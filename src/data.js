@@ -903,14 +903,48 @@ export function extraGuestBreakdownFor(booking, property) {
   return out;
 }
 
+// Best-effort room-only subtotal (rate × nights, summed over roomItems). Used
+// as the floor bound for a meal-plan DOWNGRADE so the meal discount can never
+// drag the rooms+meal portion below zero on any surface. NewBooking computes a
+// rate-plan/single-occ-aware room subtotal at creation; this recomputes a close
+// equivalent from the stored roomItems so the BookingDetail folio + voucher
+// apply the SAME floor NewBooking did (was un-floored, so a big MAP→EP downgrade
+// showed a different rooms/meal split there than at booking time). The displayed
+// total is always derived by subtraction, so an approximate bound only affects
+// that rare split, never the total.
+export function roomsSubtotalFor(booking, property) {
+  if (!booking) return 0;
+  const cats = effectiveRoomTypes(property);
+  const nights = booking.nights || 1;
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId, rate: null }];
+  let total = 0;
+  for (const it of items) {
+    if (it.perNight && Array.isArray(it.nightRates) && it.nightRates.length) {
+      total += it.nightRates.reduce((s, r) => s + (+r || 0), 0);
+    } else {
+      let rate = (it.rate != null) ? +it.rate : null;
+      if (rate == null || rate === 0) {
+        const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+        rate = (cat && cat.base) || 0;
+      }
+      total += rate * nights;
+    }
+  }
+  return Math.round(total);
+}
+
 // Cost of the meal plan add-on for this booking. Returns the delta from
 // the property's default plan × guests × nights. Returns 0 when:
 //   - booking has no mealPlanId
 //   - the picked plan doesn't exist on the property anymore
 //   - the picked plan IS the default (already in the room rate)
-// Negative deltas (e.g. EP on a property whose default is MAP) flow
-// through unchanged — the booking summary shows them as a discount.
-export function mealCostFor(booking, property) {
+// Negative deltas (e.g. EP on a property whose default is MAP) are a discount;
+// when a `roomsSubtotal` is passed they're floored at -roomsSubtotal so a big
+// downgrade can't push rooms+meal negative (same floor NewBooking applies at
+// creation — keeps the folio/voucher/widget split consistent with it).
+export function mealCostFor(booking, property, roomsSubtotal) {
   if (!booking || !booking.mealPlanId) return 0;
   const selected = mealPlanById(property, booking.mealPlanId);
   if (!selected) return 0;
@@ -921,7 +955,11 @@ export function mealCostFor(booking, property) {
   if (delta === 0) return 0;
   const guests = bookingGuestCount(booking);
   const nights = booking.nights || 1;
-  return delta * guests * nights;
+  const raw = delta * guests * nights;
+  if (typeof roomsSubtotal === 'number' && Number.isFinite(roomsSubtotal)) {
+    return Math.max(-roomsSubtotal, raw);
+  }
+  return raw;
 }
 
 // Add-on extras cost for a booking, honouring each extra's UNIT — the same

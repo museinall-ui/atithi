@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extraGuestBreakdownFor, extrasCostFor } from '../data.js';
+import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, roomsSubtotalFor, mealPlanById, extraGuestCostFor, extraGuestBreakdownFor, extrasCostFor } from '../data.js';
 import { bookingShareWaUrl } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -734,7 +734,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           } />
           <Card>
             {(() => {
-              const mealCost = mealCostFor(b, property);
+              const mealCost = mealCostFor(b, property, roomsSubtotalFor(b, property));
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);

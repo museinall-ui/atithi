@@ -1,4 +1,4 @@
-import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor, safeUrl, ratePlansActive, childTotalForItem, effectiveChildBands } from '../data.js';
+import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, roomsSubtotalFor, mealPlanById, extraGuestCostFor, safeUrl, ratePlansActive, childTotalForItem, effectiveChildBands } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 // Empty fallback used when the caller passes no property at all. We
@@ -236,7 +236,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   const preTax = baseAmount - gstAmt;
   const extrasSum = isInvoice ? 0 : extrasList.reduce((s, e) => s + e.total, 0);
   const mealPlan = mealPlanById(prop, b.mealPlanId);
-  const mealCost = isInvoice ? 0 : mealCostFor(b, prop);
+  const mealCost = isInvoice ? 0 : mealCostFor(b, prop, roomsSubtotalFor(b, prop));
   // Extra-adult / extra-child surcharge — surfaced as a separate folio
   // row so the guest sees why their bill exceeded the published rate.
   const extraGuests = isInvoice ? 0 : extraGuestCostFor(b, prop);

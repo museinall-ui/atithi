@@ -907,7 +907,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
         <div style={{ minWidth: labelW + colW * viewDays.length + 16, position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${new Date(ANCHOR).getFullYear()}` : ''}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${viewDays[0].iso.slice(0, 4)}` : ''}</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} {lang === 'hi' ? (visibleBookings.length === 1 ? 'ठहराव' : 'ठहराव') : (visibleBookings.length === 1 ? 'stay' : 'stays')}</div>
             </div>
             {viewDays.map((d) => {

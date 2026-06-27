@@ -1301,8 +1301,10 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               // current selection, or fallback today→+90 days.
               const a = isoToIdx(copyState.fromIso);
               const b = isoToIdx(copyState.toIso);
+              // Match applyCopyFromSource's clamp (past dates are read-only, low
+              // end floored to today) so the label never over-counts (audit R2).
               const daysCount = a != null && b != null
-                ? Math.abs(b - a) + 1
+                ? Math.max(0, Math.max(a, b) - Math.max(0, Math.min(a, b)) + 1)
                 : selected.size > 0
                   ? selected.size
                   : 91;

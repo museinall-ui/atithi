@@ -405,7 +405,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // cover the requested room count for every night.
   const roomValid = !!data.roomTypeId && availUnitsFor(data.roomTypeId) >= rooms;
   // Submit gate.
-  const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length >= 7;
+  const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length === 10;
 
   // Hold window: how many hours an unpaid website booking stays tentative
   // before it's eligible for release. The hotelier sets the length in
@@ -1031,8 +1031,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <Field label="Mobile number (WhatsApp)">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 13, color: T.ink2, fontWeight: 700, flexShrink: 0 }}>+91</span>
-                  <input value={data.phone} onChange={(e) => set('phone', e.target.value)} placeholder="98100 00000" inputMode="numeric" style={{ ...inputStyle, flex: 1 }} />
+                  <input value={data.phone} onChange={(e) => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="98100 00000" inputMode="numeric" maxLength={10} style={{ ...inputStyle, flex: 1 }} />
                 </div>
+                {data.phone.replace(/\D/g, '').length > 0 && data.phone.replace(/\D/g, '').length !== 10 && (
+                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, marginTop: 4 }}>Enter a 10-digit mobile number</div>
+                )}
               </Field>
               <Field label="Email (optional)">
                 <input type="email" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="you@email.com" style={inputStyle} />

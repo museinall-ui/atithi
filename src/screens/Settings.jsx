@@ -665,11 +665,56 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         return;
       }
     }
+    // Seasons: each must have a name + a complete, non-inverted date range.
+    // A half-filled season is a silent no-op (Rates skips it) + shows blank in
+    // the calendar/list — block so the hotelier finishes or removes it.
+    if (Array.isArray(seasons) && seasons.some(s =>
+      !String(s.name || '').trim() || !s.startIso || !s.endIso || s.startIso > s.endIso)) {
+      setChip('needSeason');
+      setTimeout(() => setChip(c => (c === 'needSeason' ? null : c)), 3600);
+      return;
+    }
+    // Custom meal plans (not the EP/CP/MAP/AP defaults) that are ENABLED need a
+    // code + label — the code input strips non-alphanumerics (can filter to '')
+    // and new plans seed a blank label, so a guest could see "Meal plan · ()".
+    const STD_MEAL = ['ep', 'cp', 'map', 'ap'];
+    if (Array.isArray(mealPlans) && mealPlans.some(mp =>
+      mp.enabled && !STD_MEAL.includes(mp.id) && (!String(mp.code || '').trim() || !String(mp.label || '').trim()))) {
+      setChip('needMealPlan');
+      setTimeout(() => setChip(c => (c === 'needMealPlan' ? null : c)), 3600);
+      return;
+    }
+    // Coupons: an enabled coupon needs a non-empty UNIQUE code + a discount > 0,
+    // else it's unusable, silently shadowed by a duplicate, or does nothing.
+    const enaCoupons = (Array.isArray(coupons) ? coupons : []).filter(c => c.enabled !== false);
+    const couponCodes = enaCoupons.map(c => String(c.code || '').trim().toUpperCase()).filter(Boolean);
+    if (enaCoupons.some(c => !String(c.code || '').trim() || !((c.discount && +c.discount.value) > 0))
+      || new Set(couponCodes).size !== couponCodes.length) {
+      setChip('needCoupon');
+      setTimeout(() => setChip(c => (c === 'needCoupon' ? null : c)), 3600);
+      return;
+    }
+    // Website: the field shows an "https://" prefix but doesn't prepend it, so a
+    // bare "example.com" fails safeUrl() and renders as plain text on the voucher
+    // + widget. Prepend a scheme on save so the link actually works. Also drop
+    // fully-empty team-alert recipient rows (a stray phone-less row is useless).
+    const normWebsite = (w) => {
+      const s = String(w || '').trim();
+      if (!s) return s;
+      return /^(https?:|mailto:|tel:)/i.test(s) ? s : 'https://' + s;
+    };
+    const profileToSave = {
+      ...profile,
+      website: normWebsite(profile.website),
+      arrivalsRecipients: Array.isArray(profile.arrivalsRecipients)
+        ? profile.arrivalsRecipients.filter(r => String(r.label || '').trim() || String(r.phone || '').trim())
+        : profile.arrivalsRecipients,
+    };
     // Functional update so we don't accidentally clobber any property fields
     // we don't know about (the partial here only enumerates the editable ones).
     onSave(prev => ({
       ...prev,
-      profile, categories, rules, amenityIds, customAmenities,
+      profile: profileToSave, categories, rules, amenityIds, customAmenities,
       gstin: gstin.trim(),
       // Merge customReminders into accountant jsonb (round-trips to
       // properties.accountant column without a migration).
@@ -777,6 +822,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             {chip === 'needMeal' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Keep at least one meal plan enabled</>}
             {chip === 'needName' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Give every room category a name first</>}
             {chip === 'needBands' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Name each age band; ages must go youngest → oldest</>}
+            {chip === 'needSeason' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Give every season a name + start/end dates</>}
+            {chip === 'needMealPlan' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Give every custom meal plan a code + name</>}
+            {chip === 'needCoupon' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Each coupon needs a unique code + a discount above 0</>}
             {chip === 'err' && (
               <>
                 <Icon name="info" size={13} color="#fff" stroke={2.4} />
@@ -1113,10 +1161,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           return;
                         }
                         const old = profile.paymentQrDataUrl;
+                        setUploadError('');
                         uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => {
                           if (url && mediaPathOf(old) && mediaPathOf(old) !== mediaPathOf(url)) deletePropertyMedia(old);
                           setProfile(p => ({ ...p, paymentQrDataUrl: url }));
-                        });
+                        }).catch(() => setUploadError('Upload failed. Please try again.'));
                       }}
                     />
                   </label>
@@ -1146,7 +1195,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     setUploadError('Image is too large. Please use a QR under 700 KB.');
                     return;
                   }
-                  uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => setProfile(p => ({ ...p, paymentQrDataUrl: url })));
+                  setUploadError('');
+                  uploadPropertyMedia(propertyId, file, 'payment-qr').then(url => setProfile(p => ({ ...p, paymentQrDataUrl: url }))).catch(() => setUploadError('Upload failed. Please try again.'));
                 }}
               />
             </label>
@@ -1167,7 +1217,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
             return (
               <div key={c.id} style={{ padding: 12, borderBottom: i < arr.length - 1 ? `1px solid ${T.borderSoft}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input value={c.name} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, name: e.target.value } : x))} style={{ flex: 1, border: `1px solid ${T.borderSoft}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: T.ink, background: T.card }} />
+                  <input value={c.name || ''} onChange={e => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, name: e.target.value } : x))} style={{ flex: 1, border: `1px solid ${T.borderSoft}`, outline: 'none', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: T.ink, background: T.card }} />
                   <button onClick={() => {
                     // R10-D2: deleting a category that still has live bookings
                     // orphans them (they lose their room type → show "—" and
@@ -1176,7 +1226,28 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     const msg = inUse > 0
                       ? `${inUse} active booking${inUse > 1 ? 's' : ''} still use "${c.name || 'this room type'}". Deleting it leaves them without a room type (they'll show "—" and drop out of availability). Delete anyway?`
                       : `Delete room category "${c.name || 'this room type'}"?`;
-                    if (window.confirm(msg)) { deletePropertyMedia(c.photoDataUrl); setCategories(arr => arr.filter(x => x.id !== c.id)); }
+                    if (window.confirm(msg)) {
+                      deletePropertyMedia(c.photoDataUrl);
+                      setCategories(arr => arr.filter(x => x.id !== c.id));
+                      // Clean up this category's per-band child rates (and any
+                      // per-season-per-category overrides) so deleted categories
+                      // don't leave orphaned pricing in the accountant blob.
+                      setAccountant(a => {
+                        const nextCat = { ...(a.childRatesByCategory || {}) };
+                        delete nextCat[c.id];
+                        let nextSeason = a.childRatesBySeason;
+                        if (nextSeason && typeof nextSeason === 'object') {
+                          nextSeason = Object.fromEntries(Object.entries(nextSeason).map(([sid, node]) => {
+                            if (node && node.byCategory && node.byCategory[c.id]) {
+                              const bc = { ...node.byCategory }; delete bc[c.id];
+                              return [sid, { ...node, byCategory: bc }];
+                            }
+                            return [sid, node];
+                          }));
+                        }
+                        return { ...a, childRatesByCategory: nextCat, ...(nextSeason ? { childRatesBySeason: nextSeason } : {}) };
+                      });
+                    }
                   }} style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer' }}><Icon name="x" size={13} /></button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -1905,7 +1976,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     const displayedValue = unit === 'days' ? Math.round(totalHrs / 24) : totalHrs;
                     const setValue = (v) => {
                       const num = Math.max(0, parseInt(v, 10) || 0);
-                      const asHours = unit === 'days' ? num * 24 : Math.min(720, num);
+                      const asHours = Math.min(720, unit === 'days' ? num * 24 : num);
                       setRatePlans(arr => arr.map((x, j) => j === i ? { ...x, refundHours: asHours, refundUnit: unit } : x));
                     };
                     const setUnit = (newUnit) => {
@@ -2254,7 +2325,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 <Field
                   label="Invoice number prefix"
                   value={accountant.invoicePrefix || ''}
-                  onChange={e => setAccountant({ ...accountant, invoicePrefix: e.target.value.toUpperCase() })}
+                  onChange={e => setAccountant({ ...accountant, invoicePrefix: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase() })}
                   placeholder="INV"
                   hint={`Default is INV. The prefix combines with the FY and a running number — e.g. ${effectivePrefix}-${fy}-001.`}
                   prefix={<Icon name="tag" size={12} color={T.ink3} />}
@@ -2347,7 +2418,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 {GST_SLABS.map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: T.bgSoft, borderRadius: 7 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: T.ink, minWidth: 150 }}>{s.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: s.rate === 0 ? T.ok : s.rate === 12 ? T.indigo : T.danger }}>{s.note}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: s.rate === 0 ? T.ok : s.rate === 5 ? T.indigo : T.danger }}>{s.note}</span>
                   </div>
                 ))}
               </div>
@@ -2406,7 +2477,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 {unsaved && (
                   <div style={{ padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 11, color: T.ink2, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Icon name="info" size={12} color={T.ink3} stroke={2.2} />
-                    Tap <strong>Save</strong> (top-right) before copying — your link reflects unsaved edits.
+                    Tap <strong>Save</strong> (top-right) before copying or opening — your link reflects unsaved edits.
                   </div>
                 )}
                 {/* HONEST status: surfaces only when the runtime check
@@ -2475,8 +2546,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   <Btn
                     size="sm"
                     variant="ghost"
+                    disabled={unsaved}
                     onClick={() => window.open(widgetUrl, '_blank', 'noopener')}
-                  >Open</Btn>
+                  >{unsaved ? 'Save first' : 'Open'}</Btn>
                 </div>
 
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>

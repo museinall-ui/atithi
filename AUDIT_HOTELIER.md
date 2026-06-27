@@ -200,4 +200,8 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
 
 - **2026-06-27 — Owner request: require each child's age on every booking path.** The New Booking form already forces children into explicit age bands (Free <5y / 5–11y / 12+), so a reception booking always records the age. The public website widget showed a single "Children (total)" stepper when the property didn't charge differently by age — letting a guest book children with no age. Now the widget ALWAYS collects the three age bands (age-only labels when no age-based charge applies; rate labels when it does). _Verified live: widget guest step shows "Children under 5 / 5–11 / 12+" + no single total stepper._ `PublicBookingWidget.jsx`.
 
+- **2026-06-27 — Owner corrections to Batch 4 + 5.**
+  - Voice: REVERTED the recognizer-locale tie to app language (Batch 5 broke spoken English in Hindi mode). It's back to `en-IN` always — the tolerant choice for the mixed English+Hindi/Hinglish Indian hoteliers speak (the AI parser is hardened for both). The per-instance dedupe fix stays. `VoiceBookingSheet.jsx`.
+  - Past-date bookings: reception CAN now create a back-dated booking from the Diary again (Batch 4 had blocked it). Tapping a past empty cell asks "This date has already passed. Create a back-dated booking anyway?" then opens New Booking with the past date prefilled; future/today cells skip the confirm. Past-date RATE/INVENTORY editing stays locked. _Verified live: tapped a past cell → confirm → New Booking seeded with 2026-06-22._ `Diary.jsx`, `i18n.js`.
+
 _Append shipped batches here (commit hash + what it fixed + how verified)._

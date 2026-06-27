@@ -299,7 +299,7 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   );
 }
 
-function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart, canCreate = true, canEdit = true }) {
+function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart, canCreate = true, canEdit = true, t = (k) => k }) {
   const tagColor = T[rt.tag];
   // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
   // pill instance. Used to decide whether to make the cell clickable for
@@ -332,7 +332,11 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
     // the cell is rendered without a hover affordance for the same
     // reason (see cellOnClick below).
     if (!canCreate) return;
-    if (dateToIdx(date) < 0) return;  // can't take a booking for a date that's already gone (audit #4)
+    // Past dates ARE allowed for back-dated bookings — reception sometimes
+    // records a stay that already happened. Confirm first so a mis-tap on an old
+    // column doesn't silently start a gone-by booking. (Rates / inventory for a
+    // past day stay locked — there's no reason to re-price a day that's gone.)
+    if (dateToIdx(date) < 0 && typeof window !== 'undefined' && !window.confirm(t('pastDateBookingConfirm'))) return;
     if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
   };
   // Gate drag-move on edit_bookings — same reason. A reception
@@ -383,9 +387,10 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
             {days.map(d => {
               const occupied = isOccupied(ui, d.idx);
               const isToday = d.iso === todayIso;
-              // Past empty cells can't be booked (audit #4) — no tap, no hover,
-              // faded so they read as locked.
-              const inactive = occupied || d.idx < 0;
+              // Past empty cells stay tappable (faded as a cue) so reception can
+              // make a back-dated booking; openQuickCreate confirms first. Only
+              // occupied cells are inactive.
+              const inactive = occupied;
               return (
                 <div
                   key={d.iso}
@@ -964,6 +969,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               viewDaysStart={viewDaysStart}
               canCreate={canCreate}
               canEdit={canEdit}
+              t={t}
             />
           ))}
         </div>

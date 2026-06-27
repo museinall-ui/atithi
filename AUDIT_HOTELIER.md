@@ -198,4 +198,6 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - Files: `src/utils/voucher.js`, `src/screens/Dashboard.jsx`, `src/i18n.js`.
 - **🎉 ALL 6 FIX BATCHES COMPLETE.** Branch `fix/audit-batch1-blockers` (6 commits) — one PR, pending owner merge. Owner queued "if done, start a FRESH complete hotelier audit to find what the previous audits missed." → NEXT: run a brand-new end-to-end hotelier journey audit (fresh eyes, the new post-fix surfaces incl. the setup gate / wa.me share / past-date locks themselves), plus the deferred Settings i18n. Capture findings + a new fix-order, then continue fixing.
 
+- **2026-06-27 — Owner request: require each child's age on every booking path.** The New Booking form already forces children into explicit age bands (Free <5y / 5–11y / 12+), so a reception booking always records the age. The public website widget showed a single "Children (total)" stepper when the property didn't charge differently by age — letting a guest book children with no age. Now the widget ALWAYS collects the three age bands (age-only labels when no age-based charge applies; rate labels when it does). _Verified live: widget guest step shows "Children under 5 / 5–11 / 12+" + no single total stepper._ `PublicBookingWidget.jsx`.
+
 _Append shipped batches here (commit hash + what it fixed + how verified)._

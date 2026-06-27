@@ -667,28 +667,28 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <Field label="Adults (total)">
                 <Stepper value={data.adults} onChange={(v) => set('adults', Math.max(1, Math.min(20, v)))} />
               </Field>
-              {chargesForChildren ? (
-                <>
-                  {/* Three age bands so the guest self-classifies their kids and
-                      gets quoted exactly what reception would charge. Ages come
-                      from the hotelier's House-rules settings. Shown only when a
-                      room category (or season) actually charges for extra
-                      children — otherwise the single stepper below appears. */}
-                  <Field label={`Children under ${childFreeAge} (free)`}>
-                    <Stepper value={data.childrenFree} onChange={(v) => set('childrenFree', Math.max(0, Math.min(15, v)))} />
-                  </Field>
-                  <Field label={`Children ${childFreeAge}–${childHalfAge - 1} (half rate)`}>
-                    <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
-                  </Field>
-                  <Field label={`Children ${childHalfAge}+ (full rate)`}>
-                    <Stepper value={data.childrenFull} onChange={(v) => set('childrenFull', Math.max(0, Math.min(15, v)))} />
-                  </Field>
-                </>
-              ) : (
-                <Field label="Children (total)">
-                  <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
-                </Field>
-              )}
+              {/* ALWAYS collect children by age band — a booking must never be
+                  created without each child's age (the rate depends on it, and
+                  reception needs it for capacity/meals either way). When the
+                  property charges differently by age, the label calls out the
+                  rate; otherwise the labels are age-only so they don't imply a
+                  charge that isn't applied. */}
+              {(() => {
+                const rate = (txt) => (chargesForChildren ? ` (${txt})` : '');
+                return (
+                  <>
+                    <Field label={`Children under ${childFreeAge}${rate('free')}`}>
+                      <Stepper value={data.childrenFree} onChange={(v) => set('childrenFree', Math.max(0, Math.min(15, v)))} />
+                    </Field>
+                    <Field label={`Children ${childFreeAge}–${childHalfAge - 1}${rate('half rate')}`}>
+                      <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
+                    </Field>
+                    <Field label={`Children ${childHalfAge}+${rate('full rate')}`}>
+                      <Stepper value={data.childrenFull} onChange={(v) => set('childrenFull', Math.max(0, Math.min(15, v)))} />
+                    </Field>
+                  </>
+                );
+              })()}
               {data.rooms > 1 && (
                 <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
                   Guests will be split across {data.rooms} rooms: {adultsPerRoom.map((a, i) => {

@@ -445,7 +445,7 @@ function IssueInvoiceSheet({ booking, property, defaultAmount, kind, onClose, on
   );
 }
 
-export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, propertyId, onChangeProperty, onEdit, onPayment, onSetStatus, onMarkNoShow, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice, can = () => true }) {
+export default function BookingDetail({ go, bookingId, bookings, plan = 'engine', t, lang = 'en', property, propertyId, rateOverrides = {}, onChangeProperty, onEdit, onPayment, onSetStatus, onMarkNoShow, onExtendHold, onSetGst, onSetVip, onAddVoiceNote, onRemoveVoiceNote, onIssueInvoice, onVoidInvoice, can = () => true }) {
   // RBAC gates. New-staff role typically has create_bookings only —
   // they can take phone reservations but can't edit, cancel, or change
   // status on anyone's booking. Manage_payments + manage_invoices are
@@ -734,7 +734,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           } />
           <Card>
             {(() => {
-              const mealCost = mealCostFor(b, property, roomsSubtotalFor(b, property));
+              const mealCost = mealCostFor(b, property, roomsSubtotalFor(b, property, rateOverrides));
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);

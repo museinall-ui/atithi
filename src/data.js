@@ -929,36 +929,59 @@ export function extraGuestBreakdownFor(booking, property) {
   return out;
 }
 
-// Best-effort room-only subtotal (rate × nights, summed over roomItems). Used
-// as the floor bound for a meal-plan DOWNGRADE so the meal discount can never
-// drag the rooms+meal portion below zero on any surface. NewBooking computes a
-// rate-plan/single-occ-aware room subtotal at creation; this recomputes a close
-// equivalent from the stored roomItems so the BookingDetail folio + voucher
-// apply the SAME floor NewBooking did (was un-floored, so a big MAP→EP downgrade
-// showed a different rooms/meal split there than at booking time). The displayed
-// total is always derived by subtraction, so an approximate bound only affects
-// that rare split, never the total.
-export function roomsSubtotalFor(booking, property) {
+// Room-only subtotal — the SAME figure NewBooking computes at creation (its
+// roomsSubtotal), used as the floor bound for a meal-plan DOWNGRADE so the meal
+// discount can't drag the rooms+meal portion below zero. Mirrors NewBooking
+// exactly: each room priced night-by-night via ratePerNight (weekend + season +
+// per-day overrides when rateOverrides is passed), single-occupancy rooms are a
+// FINAL flat rate that the rate-plan multiplier does NOT stack on, every other
+// room takes the multiplier, rounded once at the end.
+//
+// It previously fell back to category.base for the common rate:null rooms —
+// ignoring weekend / season / single-occ / rate-plan — so on a big MAP→EP
+// downgrade the folio/voucher meal-floor differed from NewBooking and showed a
+// different rooms/meal split (R3). The displayed total is always derived by
+// subtraction, so this only ever affected that rare split, never the total.
+// rateOverrides is optional: the folio passes it (full per-day accuracy); the
+// voucher omits it (weekend/season — a per-day override on a downgraded-meal
+// voucher floor is a vanishingly rare sub-case).
+export function roomsSubtotalFor(booking, property, rateOverrides) {
   if (!booking) return 0;
   const cats = effectiveRoomTypes(property);
   const nights = booking.nights || 1;
+  const startIdx = booking.startIdx || 0;
+  const ov = rateOverrides || {};
+  const mult = ratePlanMultiplier(property, booking.ratePlanId);
   const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
     ? booking.roomItems
     : [{ roomTypeId: booking.roomTypeId, rate: null }];
-  let total = 0;
+  let soloRaw = 0, planRaw = 0;
   for (const it of items) {
+    const typeId = it.roomTypeId || booking.roomTypeId;
+    const type = cats.find(c => c.id === typeId);
+    const sr = type ? singleOccRateFor(it, type, property) : null;
+    // itemSubtotal logic (mirrors NewBooking): per-night custom rates → sum them;
+    // an explicit uniform rate the hotelier typed → rate × nights; a solo auto-
+    // rate → solo × nights; otherwise sum each night's computed rate.
+    let sub;
     if (it.perNight && Array.isArray(it.nightRates) && it.nightRates.length) {
-      total += it.nightRates.reduce((s, r) => s + (+r || 0), 0);
+      sub = it.nightRates.reduce((s, v) => s + (+v || 0), 0);
+    } else if (it.rate != null) {
+      sub = (+it.rate) * nights;
+    } else if (sr != null) {
+      sub = sr * nights;
+    } else if (type) {
+      let s = 0;
+      for (let n = 0; n < nights; n++) s += ratePerNight(property, ov, typeId, startIdx + n);
+      sub = s;
     } else {
-      let rate = (it.rate != null) ? +it.rate : null;
-      if (rate == null || rate === 0) {
-        const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
-        rate = (cat && cat.base) || 0;
-      }
-      total += rate * nights;
+      sub = 0; // category deleted + no stored rate — can't recompute
     }
+    // Only the AUTO solo rate is final (no rate-plan stack); a manual rate takes it.
+    if (sr != null && it.rate == null) soloRaw += sub;
+    else planRaw += sub;
   }
-  return Math.round(total);
+  return Math.round(planRaw * mult + soloRaw);
 }
 
 // Cost of the meal plan add-on for this booking. Returns the delta from

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, childTotalForItem, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import { migratePropertyImages } from './cloud/storage.js';
@@ -2076,7 +2076,9 @@ export default function App() {
       const newStartIdx = data.checkIn
         ? parseCheckInIdx(data.checkIn)
         : (existing ? (existing.startIdx || 0) : 0);
-      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
+      const _adultsTot = data.roomItems.reduce((s, r) => s + (r.adults || 0), 0);
+      const _childTot = data.roomItems.reduce((s, r) => s + childTotalForItem(r), 0);
+      const guestsStr = `${_adultsTot}A${_childTot > 0 ? ` ${_childTot}C` : ''}`;
       const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
       // Build a brief diff summary for the activity feed — only the
       // fields that actually changed. Keeps the changelog auditable
@@ -2203,7 +2205,9 @@ export default function App() {
         if (!proceed) return;
         unitIdx = 0;
       }
-      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
+      const _adultsTot = data.roomItems.reduce((s, r) => s + (r.adults || 0), 0);
+      const _childTot = data.roomItems.reduce((s, r) => s + childTotalForItem(r), 0);
+      const guestsStr = `${_adultsTot}A${_childTot > 0 ? ` ${_childTot}C` : ''}`;
       const newBk = {
         roomTypeId: data.roomTypeId,
         unitIdx,

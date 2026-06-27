@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor, childTotalForItem } from '../data.js';
+import { COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor, childTotalForItem, effectiveChildBands, childCountsForItem } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -83,7 +83,27 @@ function PayMethod({ icon, label, sub, selected, onClick }) {
   );
 }
 
+// Display label for a child age band. Until the hotelier defines custom bands,
+// keep the translated free/half/full labels so Hindi stays clean; once they've
+// set their own bands, trust their label (with an age-range fallback).
+function childBandLabel(band, bands, property, t) {
+  const customized = Array.isArray(property?.accountant?.childBands) && property.accountant.childBands.length;
+  if (!customized) {
+    const free = bands.find(b => b.id === 'free');
+    const half = bands.find(b => b.id === 'half');
+    if (band.id === 'free') return t('freeUnder').replace('{age}', band.maxAge);
+    if (band.id === 'half') return t('childrenBand').replace('{a}', free ? free.maxAge : '').replace('{b}', (band.maxAge || 1) - 1);
+    if (band.id === 'full') return t('fullAgeOver').replace('{age}', half ? half.maxAge : '');
+  }
+  if (band.label) return band.label;
+  const idx = bands.findIndex(b => b.id === band.id);
+  const lo = idx > 0 ? bands[idx - 1].maxAge : 0;
+  if (band.maxAge == null) return `${lo}+`;
+  return lo > 0 ? `${lo}–${band.maxAge - 1}` : `<${band.maxAge}`;
+}
+
 function StepDates({ data, set, t, property, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
+  const childBands = effectiveChildBands(property);
   const dateRef = useRef(null);
   // Minimum-night reminder (Advanced settings → Minimum-night stays).
   // Non-blocking: the hotelier can always take the booking — this is a
@@ -228,18 +248,25 @@ function StepDates({ data, set, t, property, childAgeBelow, childFreeAge = 5, ch
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <MiniStep label={t('adults')} value={r.adults} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, adults: Math.max(1, v) } : x))} />
-                {/* Both children buckets are ALWAYS visible side-by-side so
-                    a guest travelling with only an under-5 kid can put 1 in
-                    'Free' without having to first add a 5+ kid. Previously
-                    the Free bucket only appeared once children > 0, which
-                    silently broke this case. */}
-                <MiniStep label={t('freeUnder').replace('{age}', childFreeAge)} value={r.childrenFree || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFree: Math.max(0, v) } : x))} />
-                <MiniStep label={t('childrenBand').replace('{a}', childFreeAge).replace('{b}', childHalfAge - 1)} value={r.children} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, children: Math.max(0, v) } : x))} />
-                {/* Full-rate children (≥ the half-rate cut-off, e.g. ≥12y)
-                    are charged the full extra-child rate. Without this
-                    stepper the bucket was unreachable, so the full-rate
-                    branch in the cost math (childrenFull) never fired. */}
-                <MiniStep label={t('fullAgeOver').replace('{age}', childHalfAge)} value={r.childrenFull || 0} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => i === idx ? { ...x, childrenFull: Math.max(0, v) } : x))} />
+                {/* One stepper per hotelier-defined child age band (Settings →
+                    Child rate bands). Until they customise, these are the
+                    default Free / Half / Full bands. Counts are stored in
+                    childBands; the legacy childrenFree/children/childrenFull
+                    fields are kept in sync for the default ids so the per-room
+                    charge breakdown + voucher keep working during the rollout. */}
+                {childBands.map(b => {
+                  const legacyKey = ({ free: 'childrenFree', half: 'children', full: 'childrenFull' })[b.id];
+                  const cur = (r.childBands && r.childBands[b.id] != null) ? r.childBands[b.id] : (legacyKey ? (r[legacyKey] || 0) : 0);
+                  return (
+                    <MiniStep key={b.id} label={childBandLabel(b, childBands, property, t)} value={cur} onChange={(v) => set('roomItems', data.roomItems.map((x, i) => {
+                      if (i !== idx) return x;
+                      const nv = Math.max(0, v);
+                      const patch = { childBands: { ...(x.childBands || {}), [b.id]: nv } };
+                      if (legacyKey) patch[legacyKey] = nv;
+                      return { ...x, ...patch };
+                    }))} />
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -1227,8 +1254,8 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
       // copy it onto each item for the edit form.
       const seedGuests = parseGuestsLabel(editing.guests);
       const seedItems = (editing.roomItems && editing.roomItems.length > 0)
-        ? editing.roomItems.map(r => ({ ...r, roomTypeId: r.roomTypeId || editing.roomTypeId }))
-        : [{ roomTypeId: editing.roomTypeId, adults: seedGuests.adults, children: seedGuests.children, rate: null }];
+        ? editing.roomItems.map(r => ({ ...r, roomTypeId: r.roomTypeId || editing.roomTypeId, childBands: childCountsForItem(r) }))
+        : [{ roomTypeId: editing.roomTypeId, adults: seedGuests.adults, children: seedGuests.children, rate: null, childBands: childCountsForItem({ children: seedGuests.children }) }];
       return {
         // Editing path: seed check-in from the existing booking's startIdx.
         checkIn: idxToDate(editing.startIdx || 0),
@@ -1266,6 +1293,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         children: numOr(pf.children, 0),
         childrenFree: numOr(pf.childrenFree, 0),
         childrenFull: numOr(pf.childrenFull, 0),
+        childBands: childCountsForItem({ childrenFree: numOr(pf.childrenFree, 0), children: numOr(pf.children, 0), childrenFull: numOr(pf.childrenFull, 0) }),
         rate: Number.isFinite(pf.rate) ? pf.rate : null,
       }],
       name: pf.name || '', phone: pf.phone || '', email: pf.email || '', country: pf.country || 'IN', state: '', gstin: '',

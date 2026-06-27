@@ -402,6 +402,128 @@ function AccordionGroup({ title, hint, open, onToggle, children }) {
   );
 }
 
+// ── Custom brand-colour picker ─────────────────────────────────────────────
+// A hex input + a drag-anywhere spectrum rectangle (hue across × light→dark
+// down), replacing the clunky OS-native colour input. The pure helpers convert
+// between a position on the rectangle, HSL, and a #rrggbb hex.
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+  }
+  return [h, s, l];
+}
+const _hx2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+const rgbToHex = (r, g, b) => '#' + _hx2(r) + _hx2(g) + _hx2(b);
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+// Rectangle position → hex. x = hue; y = white (top) → pure hue (middle) → black
+// (bottom), matching the CSS gradient layers on the strip below.
+function hexFromSpectrum(hx, hy) {
+  const [r, g, b] = hslToRgb(hx * 360, 1, 0.5);
+  if (hy <= 0.5) { const t = hy * 2; return rgbToHex(255 + (r - 255) * t, 255 + (g - 255) * t, 255 + (b - 255) * t); }
+  const t = (hy - 0.5) * 2;
+  return rgbToHex(r * (1 - t), g * (1 - t), b * (1 - t));
+}
+// Hex → approximate position (places the cursor when a hex is typed/loaded).
+function spectrumPosFromHex(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const [h, , l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+  return { hx: h / 360, hy: Math.max(0, Math.min(1, 1 - l)) };
+}
+
+function BrandColorPicker({ value, onPick }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(() => (value && spectrumPosFromHex(value)) || { hx: 0.06, hy: 0.4 });
+  const [hexBody, setHexBody] = useState((value || '').replace('#', ''));
+  useEffect(() => {
+    if (value) { setHexBody(value.replace('#', '')); const p = spectrumPosFromHex(value); if (p) setPos(p); }
+  }, [value]);
+  const pickAt = (clientX, clientY) => {
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const hx = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    const hy = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
+    setPos({ hx, hy });
+    const hex = hexFromSpectrum(hx, hy);
+    setHexBody(hex.replace('#', ''));
+    onPick(hex);
+  };
+  const onDown = (e) => {
+    e.preventDefault();
+    pickAt(e.clientX, e.clientY);
+    const move = (ev) => pickAt(ev.clientX, ev.clientY);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const onHexChange = (e) => {
+    const body = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+    setHexBody(body);
+    if (body.length === 6) { const hex = '#' + body.toLowerCase(); const p = spectrumPosFromHex(hex); if (p) setPos(p); onPick(hex); }
+  };
+  const swatch = value || hexFromSpectrum(pos.hx, pos.hy);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div
+        ref={ref}
+        onPointerDown={onDown}
+        style={{
+          position: 'relative', width: '100%', height: 132, borderRadius: 10, cursor: 'crosshair',
+          border: `1px solid ${T.border}`, touchAction: 'none', userSelect: 'none',
+          background: 'linear-gradient(to bottom, #fff 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0) 50%, #000 100%), linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))',
+        }}
+      >
+        <div style={{
+          position: 'absolute', left: `${pos.hx * 100}%`, top: `${pos.hy * 100}%`,
+          transform: 'translate(-50%, -50%)', width: 18, height: 18, borderRadius: '50%',
+          border: '2px solid #fff', boxShadow: '0 0 0 1.5px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.3)',
+          background: swatch, pointerEvents: 'none',
+        }} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 8, background: swatch, border: `1px solid ${T.border}`, flexShrink: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 9, padding: '0 12px', height: 42 }}>
+          <span style={{ fontSize: 14, color: T.ink3, fontWeight: 600 }}>#</span>
+          <input
+            value={hexBody}
+            onChange={onHexChange}
+            placeholder="RRGGBB"
+            maxLength={6}
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 600, color: T.ink, letterSpacing: 1, textTransform: 'uppercase', minWidth: 0, fontFamily: 'JetBrains Mono, monospace' }}
+          />
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>
+        Drag anywhere on the strip, or type a 6-digit hex code. Tap a preset above to switch back.
+      </div>
+    </div>
+  );
+}
+
 function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [], onChangeSavedExtras, bookings = [], session, propertyId, canManageTeam = true }) {
   const [profile, setProfile] = useState(property.profile);
   const [categories, setCategories] = useState(property.categories);
@@ -498,6 +620,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
     if (property.theme?.color) return { color: property.theme.color };
     return { hue: property.theme?.hue ?? 38 };
   });
+  // Reveal the inline custom-colour picker (hex input + spectrum strip). Opens
+  // automatically when a custom colour is already in use.
+  const [showCustom, setShowCustom] = useState(!!(property.theme && property.theme.color));
   // Accordion open/closed state for the 9 grouped sections of this sheet.
   // Branding + Basics start expanded (most-edited on first setup); the
   // rest stay collapsed so the sheet fits on roughly 1 phone screen.
@@ -937,27 +1062,23 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               );
             })}
 
-            {/* Custom colour — opens the OS-native colour picker. Live-updates
-                theme.color as the user moves through the picker. */}
-            <label
+            {/* Custom colour — toggles the inline hex + spectrum picker below
+                (replaces the clunky OS-native colour input). */}
+            <button
+              type="button"
+              onClick={() => setShowCustom(s => !s)}
               className="atithi-tap"
-              aria-label="Pick any custom colour"
+              aria-label="Custom colour"
+              aria-expanded={showCustom}
               style={{
-                position: 'relative',
                 display: 'inline-flex', alignItems: 'center', gap: 7,
                 padding: '6px 10px 6px 6px', borderRadius: 999,
-                border: `1.5px solid ${theme.color ? theme.color : T.border}`,
+                border: `1.5px solid ${theme.color ? theme.color : (showCustom ? T.primary : T.border)}`,
                 background: theme.color ? `color-mix(in oklch, ${theme.color} 10%, white)` : T.card,
                 color: theme.color ? theme.color : T.ink2,
                 fontSize: 11, fontWeight: 700, cursor: 'pointer',
               }}
             >
-              <input
-                type="color"
-                value={theme.color || '#c8553d'}
-                onChange={(e) => setThemeState({ color: e.target.value })}
-                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer', border: 'none', padding: 0 }}
-              />
               <span style={{
                 width: 20, height: 20, borderRadius: '50%',
                 background: theme.color || 'conic-gradient(from 0deg, #ff5e62, #ffd93d, #6bcf7f, #4ecdc4, #5f7adb, #c44edb, #ff5e62)',
@@ -968,8 +1089,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                 {theme.color && <Icon name="check" size={11} color="#fff" stroke={3} />}
               </span>
               {theme.color ? `Custom ${theme.color.toUpperCase()}` : 'Custom colour'}
-            </label>
+            </button>
           </div>
+          {showCustom && (
+            <BrandColorPicker value={theme.color || null} onPick={(hex) => setThemeState({ color: hex })} />
+          )}
         </Card>
 
         <SectionHead title="Property tagline" style={{ marginTop: 16 }} />

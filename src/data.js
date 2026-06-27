@@ -858,6 +858,51 @@ export function extraGuestCostFor(booking, property) {
   return total;
 }
 
+// Itemised extra-guest breakdown for the folio. Mirrors extraGuestCostFor
+// exactly (same season / per-category / per-band resolution) but returns the
+// split: { extraAdults, adultAmount, bands: [{id,label,count,amount}], total }.
+// The pieces sum to extraGuestCostFor(booking, property).
+export function extraGuestBreakdownFor(booking, property) {
+  const out = { extraAdults: 0, adultAmount: 0, bands: [], total: 0 };
+  if (!booking) return out;
+  const cats = effectiveRoomTypes(property);
+  const parseGuests = (g) => {
+    const s = String(g || '');
+    const a = s.match(/(\d+)\s*A/i);
+    return { adults: a ? parseInt(a[1], 10) : 2 };
+  };
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId, ...parseGuests(booking.guests), rate: null }];
+  const nights = booking.nights || 1;
+  const cap = baseCapacityAdults(property);
+  const season = seasonOverrideFor(property, booking);
+  const bands = effectiveChildBands(property);
+  const agg = {};
+  for (const band of bands) agg[band.id] = { id: band.id, label: band.label || '', count: 0, amount: 0 };
+  for (const it of items) {
+    const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+    if (!cat) continue;
+    const baseRate = cat.base || 0;
+    const adultRule = (season && season.extraAdult) ? season.extraAdult : cat.extraAdult;
+    const autoAdultPer = resolveExtraRate(adultRule, baseRate);
+    const adultPer = (typeof it.extraAdultRate === 'number') ? Math.max(0, it.extraAdultRate) : autoAdultPer;
+    const extraAdults = Math.max(0, (+it.adults || 0) - cap);
+    out.extraAdults += extraAdults;
+    out.adultAmount += extraAdults * adultPer * nights;
+    const counts = childCountsForItem(it);
+    for (const band of bands) {
+      const n = counts[band.id] || 0;
+      if (!n) continue;
+      agg[band.id].count += n;
+      agg[band.id].amount += n * childBandRate(property, cat, band, booking) * nights;
+    }
+  }
+  out.bands = bands.map(b => agg[b.id]).filter(x => x.count > 0);
+  out.total = out.adultAmount + out.bands.reduce((s, x) => s + x.amount, 0);
+  return out;
+}
+
 // Cost of the meal plan add-on for this booking. Returns the delta from
 // the property's default plan × guests × nights. Returns 0 when:
 //   - booking has no mealPlanId

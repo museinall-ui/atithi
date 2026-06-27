@@ -332,6 +332,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
     // the cell is rendered without a hover affordance for the same
     // reason (see cellOnClick below).
     if (!canCreate) return;
+    if (dateToIdx(date) < 0) return;  // can't take a booking for a date that's already gone (audit #4)
     if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
   };
   // Gate drag-move on edit_bookings — same reason. A reception
@@ -382,20 +383,24 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
             {days.map(d => {
               const occupied = isOccupied(ui, d.idx);
               const isToday = d.iso === todayIso;
+              // Past empty cells can't be booked (audit #4) — no tap, no hover,
+              // faded so they read as locked.
+              const inactive = occupied || d.idx < 0;
               return (
                 <div
                   key={d.iso}
-                  onClick={occupied ? undefined : () => openQuickCreate(d.iso)}
-                  title={occupied ? undefined : `New booking · ${rt.name} #${ui + 1} · ${d.dow} ${d.dom} ${d.month}`}
+                  onClick={inactive ? undefined : () => openQuickCreate(d.iso)}
+                  title={inactive ? undefined : `New booking · ${rt.name} #${ui + 1} · ${d.dow} ${d.dom} ${d.month}`}
                   style={{
                     width: colW, flexShrink: 0,
                     borderRight: `1px solid ${T.borderSoft}`,
                     background: isToday ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent',
-                    cursor: occupied ? 'default' : 'pointer',
+                    cursor: inactive ? 'default' : 'pointer',
+                    opacity: d.idx < 0 ? 0.5 : 1,
                     transition: 'background .15s',
                   }}
-                  onMouseEnter={occupied ? undefined : (e) => { e.currentTarget.style.background = `color-mix(in oklch, ${T.primary} 8%, white)`; }}
-                  onMouseLeave={occupied ? undefined : (e) => { e.currentTarget.style.background = isToday ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent'; }}
+                  onMouseEnter={inactive ? undefined : (e) => { e.currentTarget.style.background = `color-mix(in oklch, ${T.primary} 8%, white)`; }}
+                  onMouseLeave={inactive ? undefined : (e) => { e.currentTarget.style.background = isToday ? T.primaryLt : d.isWknd ? 'oklch(95% 0.030 65)' : 'transparent'; }}
                 />
               );
             })}
@@ -513,6 +518,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   }, 0);
   const openDateEditor = (idx) => {
     if (!canManageRates) return;
+    if (idx < 0) return;  // past dates are read-only (audit #4)
     const rows = effectiveRoomTypes(property).map(rt => {
       const ov = rateOverrides[`${rt.id}:${idx}`] || {};
       const units = rt.units || 0;
@@ -530,6 +536,19 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   const saveDateEditor = () => {
     if (!dateEditor || !setRateOverrides) { setDateEditor(null); return; }
     const idx = dateEditor.idx;
+    // Close-out override confirm (audit #8): if the hotelier changed how many
+    // rooms are AVAILABLE for this date (closing units for maintenance, or
+    // re-opening a previous close-out), confirm once before overwriting the set
+    // inventory — instead of silently flooring/changing it. Rate-only edits and
+    // untouched rows don't prompt.
+    const invChanged = dateEditor.rows.some(r => {
+      const ov = rateOverrides[`${r.catId}:${idx}`] || {};
+      const curClosed = ov.closed ? r.units : (Array.isArray(ov.closedUnits) ? ov.closedUnits.length : 0);
+      const curOpen = Math.max(0, r.units - curClosed);
+      const newOpen = Math.min(r.units, Math.max(r.booked || 0, Math.round(+r.open || 0)));
+      return newOpen !== curOpen;
+    });
+    if (invChanged && typeof window !== 'undefined' && !window.confirm(t('overrideInventoryConfirm'))) return;
     setRateOverrides(o => {
       const next = { ...o };
       dateEditor.rows.forEach(r => {
@@ -737,10 +756,11 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
         go('booking', b.id);
         return;
       }
-      // Clamp newStart to within the visible window. viewDaysStart is
-      // typically negative (we show past context), so the lower bound has
-      // to be `viewDaysStart`, not 0.
-      const minIdx = viewDaysStart;
+      // Clamp newStart to within the visible window, but never earlier than
+      // today (idx 0): a booking's check-in can't be dragged into the past
+      // (audit #4). viewDaysStart can be negative when past context is shown,
+      // so floor the lower bound at 0.
+      const minIdx = Math.max(0, viewDaysStart);
       const maxIdx = viewDaysStart + viewDays.length - b.nights;
       const newStart = Math.max(minIdx, Math.min(maxIdx, origStart + dx));
       setConfirmDrop({ id: b.id, origStart, newStart, b, newSlot: slotChanged ? target : null });
@@ -887,11 +907,13 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
             </div>
             {viewDays.map((d) => {
               const isToday = d.iso === todayIso;
+              const past = d.idx < 0;  // past day headers are read-only (audit #4)
+              const headerTappable = canManageRates && !past;
               return (
                 <div key={d.iso}
-                  onClick={canManageRates ? () => openDateEditor(d.idx) : undefined}
-                  title={canManageRates ? t('editDayRates') : undefined}
-                  style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}`, cursor: canManageRates ? 'pointer' : 'default' }}>
+                  onClick={headerTappable ? () => openDateEditor(d.idx) : undefined}
+                  title={headerTappable ? t('editDayRates') : undefined}
+                  style={{ width: colW, flexShrink: 0, padding: '8px 0', textAlign: 'center', background: isToday ? T.primaryLt : 'transparent', borderRight: `1px solid ${T.borderSoft}`, cursor: headerTappable ? 'pointer' : 'default', opacity: past ? 0.5 : 1 }}>
                   {isToday ? (
                     <div style={{
                       display: 'inline-block',
@@ -969,7 +991,10 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
                       <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginBottom: 3 }}>{t('roomsOpen')} / {r.units}</div>
                       <input type="number" inputMode="numeric" min={r.booked} max={r.units} value={r.open}
                         onFocus={e => e.target.select()}
-                        onChange={e => setEditorRow(r.catId, { open: e.target.value })}
+                        // Clamp to 0..units as you type so the live "free" label
+                        // can't show negative/impossible counts; the booked-floor
+                        // + override confirm are applied on save.
+                        onChange={e => setEditorRow(r.catId, { open: Math.max(0, Math.min(r.units, Math.round(+e.target.value || 0))) })}
                         className="tnum" style={dayEdInput} />
                     </label>
                     <label style={{ flex: 1 }}>

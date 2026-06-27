@@ -7,7 +7,7 @@ import { effectiveRoomTypes, effectiveMealPlans, ymd } from '../data.js';
 //     holds the key). Only works on the deployed Vercel site.
 //   • Rule-based fallback: a small regex parser that runs in the browser.
 //     Used when the AI endpoint is unreachable — local `npm run dev` (no
-//     /api/* functions), the key isn't set yet (503 no_anthropic), or any
+//     /api/* functions), the key isn't set yet (503 no_ai), or any
 //     network error. Keeps the whole flow demoable offline and acts as a
 //     safety net in production.
 //
@@ -53,7 +53,7 @@ export async function parseBookingCommand(transcript, property, propertyId, sess
         const json = await resp.json();
         if (json && json.draft) return { draft: json.draft, source: 'ai' };
       }
-      // 404 (local dev) / 503 (no_anthropic) / other → fall through to rules.
+      // 404 (local dev) / 503 (no_ai) / other → fall through to rules.
     } catch {
       // network / unreachable → fall through to rules.
     }

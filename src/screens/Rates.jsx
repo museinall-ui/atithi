@@ -292,7 +292,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   };
   const tierColor = (tier) => tier === 'soldOut' ? T.danger : tier === 'tight' ? 'oklch(60% 0.16 65)' : T.ink3;
 
-  const onCellDown = (i) => { setDragStart(i); setDragEnd(i); setDragMoved(false); };
+  // Past dates (idx < 0) are read-only — you can't change a rate or close out a
+  // room for a day that's already gone (audit #4). Block selection at the source
+  // so `selected` never holds a past index; every bulk-apply then iterates a
+  // clean set and the undo counts stay honest.
+  const onCellDown = (i) => { if (i < 0) return; setDragStart(i); setDragEnd(i); setDragMoved(false); };
 
   // Touch drag-select: as the finger moves across the grid, find the cell
   // under it (via data-cell-idx) and extend the selection. Desktop uses
@@ -316,7 +320,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     }
   };
   const onCellEnter = (i) => {
-    if (dragStart != null) {
+    if (dragStart != null && i >= 0) {  // don't let a drag extend back into past dates
       if (i !== dragStart) setDragMoved(true);
       setDragEnd(i);
     }
@@ -370,7 +374,10 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const a = isoToIdx(startIso);
     const b = isoToIdx(endIso);
     if (a == null || b == null) return;
-    const lo = Math.min(a, b), hi = Math.max(a, b);
+    // Clamp the low end to today (idx 0) — past dates are read-only (audit #4),
+    // so they're never added to the selection and the toast count is honest.
+    const lo = Math.max(0, Math.min(a, b)), hi = Math.max(a, b);
+    if (hi < lo) return;  // entire range is in the past
     const count = hi - lo + 1;
     setSelected(prev => {
       const next = new Set(prev);
@@ -455,9 +462,12 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const v = bulkVal === '' ? NaN : Number(bulkVal);
     if (!Number.isFinite(v) || v < 0) return;
     // Typo guard: a rate several times the base is almost always an extra zero.
+    // Falls back to an absolute ₹50,000/night ceiling when the base is 0 (so an
+    // unconfigured / ₹0-base room still catches a "999999" fat-finger).
     const base = rt?.base || 0;
-    if (base > 0 && v > base * 5 &&
-        !window.confirm(`₹${v.toLocaleString('en-IN')} is much higher than the base of ₹${base.toLocaleString('en-IN')}. Set it anyway?`)) return;
+    const typoCeil = base > 0 ? base * 5 : 50000;
+    if (v > typoCeil &&
+        !window.confirm(`₹${v.toLocaleString('en-IN')} is much higher than usual${base > 0 ? ` (base ₹${base.toLocaleString('en-IN')})` : ''}. Set it anyway?`)) return;
     captureUndo(`Set rate ₹${v.toLocaleString('en-IN')} on ${selected.size} ${selected.size === 1 ? 'date' : 'dates'}`);
     setOverrides(o => {
       const next = { ...o };
@@ -614,13 +624,15 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
     const a = isoToIdx(copyState.fromIso);
     const b = isoToIdx(copyState.toIso);
     if (a != null && b != null) {
-      const lo = Math.min(a, b), hi = Math.max(a, b);
+      // Past dates are read-only — clamp the low end to today (audit #4).
+      const lo = Math.max(0, Math.min(a, b)), hi = Math.max(a, b);
       for (let i = lo; i <= hi; i++) indexes.push(i);
     } else if (selected.size > 0) {
-      indexes = Array.from(selected);
+      indexes = Array.from(selected).filter(i => i >= 0);
     } else {
       for (let i = 0; i <= 90; i++) indexes.push(i);
     }
+    if (indexes.length === 0) return;
     captureUndo(`Copied ${indexes.length} ${indexes.length === 1 ? 'day' : 'days'} of rates from ${ROOM_TYPES.find(r => r.id === copyState.sourceId)?.name || 'source'}`);
     setOverrides(o => {
       const next = { ...o };
@@ -645,6 +657,24 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
   };
 
   const selCount = selected.size;
+
+  // Fail-safe: with no room categories (effectiveRoomTypes → []) there's
+  // nothing to price. The App.jsx setup gate normally keeps an unconfigured
+  // property off this screen, but guard here too so a future routing change
+  // can never white-screen the rate calendar (the grid below indexes into the
+  // room list and assumes at least one type).
+  if (!ROOM_TYPES.length) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
+        <ScreenHeader title={t('ratesTitle')} subtitle={t('ratesSub')} onBack={() => go('__back')} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>{t('setupTitle')}</div>
+          <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, lineHeight: 1.5, maxWidth: 280 }}>{t('setupBody')}</div>
+          <button onClick={() => go('settings')} style={{ marginTop: 4, padding: '9px 18px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{t('setupCta')}</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }} onMouseUp={onCellUp} onTouchEnd={onCellUp}>
@@ -774,6 +804,7 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
             ))}
             {visibleDays.map(d => {
               const i = d.idx;
+              const past = i < 0;  // read-only: can't edit a day that's already gone (audit #4)
               const rate = getRate(i);
               const closed = isClosed(i);
               const partialClosed = closedUnitsFor(i);
@@ -803,7 +834,8 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                     aspectRatio: '1 / 1.1', borderRadius: 7, padding: 3,
                     background: closed ? 'oklch(94% 0.04 25)' : (isSel || inDrag) ? T.primaryLt : d.isToday ? `color-mix(in oklch, ${T.primary} 7%, white)` : T.card,
                     border: `1.5px solid ${(isSel || inDrag) ? T.primary : closed ? T.danger : isOverride ? T.indigo : d.isToday ? T.primary : T.borderSoft}`,
-                    cursor: 'pointer', position: 'relative', userSelect: 'none',
+                    cursor: past ? 'not-allowed' : 'pointer', opacity: past ? 0.45 : 1,
+                    position: 'relative', userSelect: 'none',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
                   }}
                 >

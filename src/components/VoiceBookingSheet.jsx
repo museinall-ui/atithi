@@ -41,7 +41,9 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
   // Each finalized phrase is appended to the command box (the single source
   // of truth), so pauses/restarts accumulate and manual edits stick.
   const sp = useSpeech({
-    lang: 'en-IN',
+    // Match the recognizer to the app language so a Hindi hotelier dictating in
+    // Hindi is transcribed in Devanagari instead of mangled as English (#3).
+    lang: isHi ? 'hi-IN' : 'en-IN',
     onFinal: (chunk) => setCommand(prev => (prev ? prev.trimEnd() + ' ' : '') + chunk),
   });
 

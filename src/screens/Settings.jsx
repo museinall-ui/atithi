@@ -1037,7 +1037,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
         <SectionHead title="Contact" style={{ marginTop: 16 }} />
         <Card padding={14}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Field label={t('contactPhone')} value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value })} />
+            <Field label={t('contactPhone')} type="tel" inputMode="tel" maxLength={18} value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value.replace(/[^\d+\-() ]/g, '').slice(0, 18) })} />
             <Field label={t('contactEmail')} value={profile.email} onChange={e => setProfile({ ...profile, email: e.target.value })} />
             <Field label={t('website')} value={profile.website} onChange={e => setProfile({ ...profile, website: e.target.value })} prefix="https://" />
           </div>

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { T } from '../tokens.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
-import { bookingShareWaUrl, shareBookingWithVoucher } from '../utils/share.js';
-import { generateVoucher, voucherHtmlString } from '../utils/voucher.js';
+import { bookingShareWaUrl } from '../utils/share.js';
+import { generateVoucher } from '../utils/voucher.js';
 import { effectiveRoomTypes } from '../data.js';
 
 export default function BookingConfirmed({ go, t, bookingId, bookings = [], property, lang = 'en' }) {
@@ -67,21 +67,15 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
               variant="wa"
               icon="wa"
               style={{ width: '100%' }}
-              onClick={async () => {
-                // Attach the voucher via the Web Share sheet (the guest's
-                // WhatsApp appears as a target) where supported; otherwise
-                // open the voucher to save + wa.me with the summary text.
-                const html = voucherHtmlString(b, rt, property, undefined, lang);
-                const shared = await shareBookingWithVoucher(b, property, lang, html);
-                if (shared) return;
-                generateVoucher(b, rt, property, undefined, lang);
-                setTimeout(() => { if (waUrl) window.open(waUrl, '_blank', 'noopener'); }, 600);
-              }}
+              // Open the guest's WhatsApp chat directly with the summary
+              // pre-filled (synchronous so mobile never blocks it as a popup).
+              // The voucher file is a tap away via "Download voucher" below.
+              onClick={() => { if (waUrl) window.open(waUrl, '_blank', 'noopener'); }}
             >
               {t('sendToGuestWa')}
             </Btn>
           )}
-          {b && !waUrl && b.phone === '' && (
+          {b && !waUrl && (
             <div style={{ fontSize: 11, color: T.ink3, fontStyle: 'italic' }}>
               {t('noPhoneAddOne')}
             </div>

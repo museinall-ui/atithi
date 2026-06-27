@@ -1,6 +1,6 @@
 import { T } from '../tokens.js';
 
-export default function Field({ label, value, onChange, placeholder, type = 'text', inputMode, autoComplete, suffix, prefix, style, hint, error }) {
+export default function Field({ label, value, onChange, placeholder, type = 'text', inputMode, autoComplete, suffix, prefix, style, hint, error, maxLength }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
       {label && <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2, letterSpacing: 0.1 }}>{label}</label>}
@@ -10,7 +10,7 @@ export default function Field({ label, value, onChange, placeholder, type = 'tex
         borderRadius: 10, padding: '0 12px', height: 44,
       }}>
         {prefix && <span style={{ fontSize: 13, color: T.ink3, fontWeight: 500, flexShrink: 0 }}>{prefix}</span>}
-        <input type={type} inputMode={inputMode} autoComplete={autoComplete} value={value} onChange={onChange} placeholder={placeholder} style={{
+        <input type={type} inputMode={inputMode} autoComplete={autoComplete} maxLength={maxLength} value={value} onChange={onChange} placeholder={placeholder} style={{
           flex: 1, border: 'none', outline: 'none', background: 'transparent',
           fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0,
         }} />

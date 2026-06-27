@@ -13,7 +13,17 @@ export const ROOM_TYPES = [
 const TAG_PALETTE = ['tagSaffron', 'tagOlive', 'tagSky', 'tagPlum'];
 export function effectiveRoomTypes(property) {
   const cats = property && Array.isArray(property.categories) ? property.categories : null;
-  if (!cats || cats.length === 0) return ROOM_TYPES;
+  // A property with no room categories is UNCONFIGURED — return an empty list,
+  // never the demo Yatra rooms (Deluxe ₹4,500 … Pool ₹14,500). Falling back to
+  // ROOM_TYPES here was the root cause of the "demo rooms leak into a fresh
+  // hotelier's account" trust-breaker (audit #1): the phantom rooms surfaced
+  // across the Diary, Rates, Dashboard occupancy, New Booking and the public
+  // widget before the hotelier had set anything up. The action screens that
+  // consume this are route-gated until setup is done (see isPropertyConfigured
+  // + the setup gate in App.jsx); the rest now render honest empty-states.
+  // Demo mode is unaffected — it seeds the full DEFAULT_PROPERTY (categories
+  // populated), so it never hits this branch.
+  if (!cats || cats.length === 0) return [];
   return cats.map((c, i) => {
     const seed = ROOM_TYPES.find(r => r.id === c.id);
     // Spread the raw category FIRST so per-category fields the rest of the app
@@ -34,6 +44,19 @@ export function effectiveRoomTypes(property) {
       amenityIds: Array.isArray(c.amenityIds) ? c.amenityIds : [],
     };
   });
+}
+
+// A property is "configured" once the hotelier has named their hotel AND added
+// at least one room category. Until then the booking / diary / rates screens
+// would only show the empty room list from effectiveRoomTypes() above, so they
+// are route-gated behind a "finish setup" screen (App.jsx). Kept deliberately
+// in lock-step with effectiveRoomTypes()'s empty-check (categories.length) and
+// with the onboarding-needed test in App.jsx so the gate and the onboarding
+// wizard never disagree.
+export function isPropertyConfigured(property) {
+  const hasName = !!(property && property.profile && String(property.profile.name || '').trim());
+  const hasRoom = !!(property && Array.isArray(property.categories) && property.categories.length > 0);
+  return hasName && hasRoom;
 }
 
 // Anchor date for day-index math throughout the app. Pinned to local
@@ -839,35 +862,41 @@ export function listCreditNotes(bookings, property) {
   return out;
 }
 
+// `len` = the national significant number length (digits AFTER the dial code),
+// used to cap the mobile input (maxLength) and validate it. Picked as the most
+// common MOBILE length per country; India is exactly 10. A few countries vary
+// by a digit in real life, but capping the max + an exact check on the common
+// length fixes the "accepts 20 digits / letters" bug (audit #10) and is right
+// for the overwhelmingly Indian guest mix here.
 export const COUNTRIES = [
-  { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91' },
-  { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1'  },
-  { code: 'GB', name: 'United Kingdom',flag: '🇬🇧', dial: '+44' },
-  { code: 'AU', name: 'Australia',     flag: '🇦🇺', dial: '+61' },
-  { code: 'CA', name: 'Canada',        flag: '🇨🇦', dial: '+1'  },
-  { code: 'DE', name: 'Germany',       flag: '🇩🇪', dial: '+49' },
-  { code: 'FR', name: 'France',        flag: '🇫🇷', dial: '+33' },
-  { code: 'IT', name: 'Italy',         flag: '🇮🇹', dial: '+39' },
-  { code: 'ES', name: 'Spain',         flag: '🇪🇸', dial: '+34' },
-  { code: 'NL', name: 'Netherlands',   flag: '🇳🇱', dial: '+31' },
-  { code: 'IE', name: 'Ireland',       flag: '🇮🇪', dial: '+353'},
-  { code: 'CH', name: 'Switzerland',   flag: '🇨🇭', dial: '+41' },
-  { code: 'SE', name: 'Sweden',        flag: '🇸🇪', dial: '+46' },
-  { code: 'NO', name: 'Norway',        flag: '🇳🇴', dial: '+47' },
-  { code: 'JP', name: 'Japan',         flag: '🇯🇵', dial: '+81' },
-  { code: 'KR', name: 'South Korea',   flag: '🇰🇷', dial: '+82' },
-  { code: 'SG', name: 'Singapore',     flag: '🇸🇬', dial: '+65' },
-  { code: 'AE', name: 'UAE',           flag: '🇦🇪', dial: '+971'},
-  { code: 'IL', name: 'Israel',        flag: '🇮🇱', dial: '+972'},
-  { code: 'RU', name: 'Russia',        flag: '🇷🇺', dial: '+7'  },
-  { code: 'CN', name: 'China',         flag: '🇨🇳', dial: '+86' },
-  { code: 'TH', name: 'Thailand',      flag: '🇹🇭', dial: '+66' },
-  { code: 'NZ', name: 'New Zealand',   flag: '🇳🇿', dial: '+64' },
-  { code: 'BR', name: 'Brazil',        flag: '🇧🇷', dial: '+55' },
-  { code: 'ZA', name: 'South Africa',  flag: '🇿🇦', dial: '+27' },
-  { code: 'NP', name: 'Nepal',         flag: '🇳🇵', dial: '+977'},
-  { code: 'BT', name: 'Bhutan',        flag: '🇧🇹', dial: '+975'},
-  { code: 'LK', name: 'Sri Lanka',     flag: '🇱🇰', dial: '+94' },
+  { code: 'IN', name: 'India',         flag: '🇮🇳', dial: '+91',  len: 10 },
+  { code: 'US', name: 'United States', flag: '🇺🇸', dial: '+1',   len: 10 },
+  { code: 'GB', name: 'United Kingdom',flag: '🇬🇧', dial: '+44',  len: 10 },
+  { code: 'AU', name: 'Australia',     flag: '🇦🇺', dial: '+61',  len: 9  },
+  { code: 'CA', name: 'Canada',        flag: '🇨🇦', dial: '+1',   len: 10 },
+  { code: 'DE', name: 'Germany',       flag: '🇩🇪', dial: '+49',  len: 11 },
+  { code: 'FR', name: 'France',        flag: '🇫🇷', dial: '+33',  len: 9  },
+  { code: 'IT', name: 'Italy',         flag: '🇮🇹', dial: '+39',  len: 10 },
+  { code: 'ES', name: 'Spain',         flag: '🇪🇸', dial: '+34',  len: 9  },
+  { code: 'NL', name: 'Netherlands',   flag: '🇳🇱', dial: '+31',  len: 9  },
+  { code: 'IE', name: 'Ireland',       flag: '🇮🇪', dial: '+353', len: 9  },
+  { code: 'CH', name: 'Switzerland',   flag: '🇨🇭', dial: '+41',  len: 9  },
+  { code: 'SE', name: 'Sweden',        flag: '🇸🇪', dial: '+46',  len: 9  },
+  { code: 'NO', name: 'Norway',        flag: '🇳🇴', dial: '+47',  len: 8  },
+  { code: 'JP', name: 'Japan',         flag: '🇯🇵', dial: '+81',  len: 10 },
+  { code: 'KR', name: 'South Korea',   flag: '🇰🇷', dial: '+82',  len: 10 },
+  { code: 'SG', name: 'Singapore',     flag: '🇸🇬', dial: '+65',  len: 8  },
+  { code: 'AE', name: 'UAE',           flag: '🇦🇪', dial: '+971', len: 9  },
+  { code: 'IL', name: 'Israel',        flag: '🇮🇱', dial: '+972', len: 9  },
+  { code: 'RU', name: 'Russia',        flag: '🇷🇺', dial: '+7',   len: 10 },
+  { code: 'CN', name: 'China',         flag: '🇨🇳', dial: '+86',  len: 11 },
+  { code: 'TH', name: 'Thailand',      flag: '🇹🇭', dial: '+66',  len: 9  },
+  { code: 'NZ', name: 'New Zealand',   flag: '🇳🇿', dial: '+64',  len: 9  },
+  { code: 'BR', name: 'Brazil',        flag: '🇧🇷', dial: '+55',  len: 11 },
+  { code: 'ZA', name: 'South Africa',  flag: '🇿🇦', dial: '+27',  len: 9  },
+  { code: 'NP', name: 'Nepal',         flag: '🇳🇵', dial: '+977', len: 10 },
+  { code: 'BT', name: 'Bhutan',        flag: '🇧🇹', dial: '+975', len: 8  },
+  { code: 'LK', name: 'Sri Lanka',     flag: '🇱🇰', dial: '+94',  len: 9  },
 ];
 
 // Master list of amenities, grouped for browsability. Used by both the

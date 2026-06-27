@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import { migratePropertyImages } from './cloud/storage.js';
@@ -275,10 +275,18 @@ function migrateProperty(p) {
   if (!validHue && !validColor) {
     out.theme = { ...DEFAULT_PROPERTY.theme };
   }
-  // Meal plans: seed from defaults if missing. Existing properties created
-  // before this field was added don't have it.
-  if (!Array.isArray(out.mealPlans) || out.mealPlans.length === 0) {
-    out.mealPlans = DEFAULT_PROPERTY.mealPlans.map(p => ({ ...p }));
+  // Meal plans: seed a CLEAN default when the SAVED property (`p`) carries none
+  // of its own. NOTE: we must test `p.mealPlans`, NOT `out.mealPlans` — `out`
+  // is `{ ...DEFAULT_PROPERTY, ...p }`, so out.mealPlans is ALWAYS the demo
+  // array (CP +₹500 / MAP +₹1,200 / AP +₹2,000) whenever `p` lacks its own.
+  // Testing `out` here made both this branch and the original dead, leaking the
+  // demo meal PRICES into every fresh real property's bookings (audit Batch-2).
+  // We take the standard EP/CP/MAP/AP labels + codes but zero the prices and
+  // enable ONLY EP, so the hotelier sets their own in Settings → Meal plans.
+  // The demo passes the full DEFAULT_PROPERTY as `p`, so p.mealPlans is present
+  // → this is skipped and the demo keeps its rich prices.
+  if (!Array.isArray(p.mealPlans) || p.mealPlans.length === 0) {
+    out.mealPlans = DEFAULT_PROPERTY.mealPlans.map(mp => ({ ...mp, price: 0, enabled: mp.id === 'ep' }));
   }
   // Default meal plan must point at an ENABLED plan; if it dangles (e.g. the
   // referenced plan was later disabled in Settings), reset it so the picker and
@@ -536,6 +544,31 @@ function PermissionDenied({ go, t = (k) => k, action }) {
   );
 }
 
+// Shown in place of the booking / diary / rates screens until the hotelier has
+// finished basic setup (hotel name + at least one room category). Before this
+// gate existed, a brand-new account saw the demo "Yatra Desert Camp" rooms +
+// rates and could even take a booking against rooms that don't exist (audit
+// blocker #1). The friendly empty-state sends them to Settings to finish setup.
+function SetupGate({ go, t = (k) => k }) {
+  return (
+    <div style={{ height: '100%', background: T.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 }}>
+      <div style={{ width: 56, height: 56, borderRadius: 14, background: T.primaryLt, color: T.primaryDk, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="home" size={24} />
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, textAlign: 'center' }}>
+        {t('setupTitle')}
+      </div>
+      <div style={{ fontSize: 12, color: T.ink3, fontWeight: 600, textAlign: 'center', lineHeight: 1.5, maxWidth: 290 }}>
+        {t('setupBody')}
+      </div>
+      <button
+        onClick={() => go('settings')}
+        style={{ marginTop: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: T.primary, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+      >{t('setupCta')}</button>
+    </div>
+  );
+}
+
 export default function App() {
   const [plan, setPlan] = useState(() => {
     // Default tier is 'engine' — the core booking package: create / store /
@@ -575,7 +608,15 @@ export default function App() {
     theme: { hue: 38 },
   };
   const [bookings, setBookings] = useState(() => loadLS(LS_KEYS.bookings, DEMO_MODE ? BOOKINGS_SEED.map(b => ({ ...b })) : []));
-  const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(LS_KEYS.customExtras, []));
+  // Real properties start with an EMPTY add-on pool (they build their own via
+  // Settings / the "+ Add extra" button) — the desert-camp presets are no
+  // longer forced on everyone. The DEMO seeds its pool with those camp extras
+  // (mapped to the saved-extra shape) so the preview's New Booking still shows
+  // a populated, deletable add-on list.
+  const [savedCustomExtras, setSavedCustomExtras] = useState(() => loadLS(
+    LS_KEYS.customExtras,
+    DEMO_MODE ? EXTRAS_DEFAULT.map(e => ({ ...e, name: e.label, unit: 'per stay' })) : []
+  ));
   const [rateOverrides, setRateOverrides] = useState(() => loadLS(LS_KEYS.overrides, {}));
   const [cashCloses, setCashCloses] = useState(() => loadLS(LS_KEYS.cashCloses, {}));
   const [expenses, setExpenses] = useState(() => loadLS(LS_KEYS.expenses, []));
@@ -2256,10 +2297,18 @@ export default function App() {
   const showTabs = ['home', 'diary', 'guests', 'more'].includes(route.name);
   const editingBooking = editing ? bookings.find(b => b.id === editing) : null;
 
+  // Setup gate (audit blocker #1): until a real signed-in hotelier has named
+  // their hotel + added one room category, the booking / diary / rates screens
+  // have nothing real to show — block them behind a "finish setup" screen so
+  // the hotelier can never book against the (now removed) demo rooms or edit
+  // rates for a property that has none. Demo mode is exempt: it seeds the full
+  // Yatra property, so isPropertyConfigured() is always true there.
+  const setupGate = !DEMO_MODE && !isPropertyConfigured(property);
+
   let screen;
   switch (route.name) {
     case 'home':              screen = <Dashboard go={go} bookings={bookings} property={property} plan={plan} t={t} lang={lang} onAddPayment={addPayment} onExtendHold={extendHold} cashCloses={cashCloses} onSetCashClose={setCashClose} expenses={expenses} can={can} onVoiceBooking={() => setVoiceOpen(true)} />; break;
-    case 'diary':             screen = <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} rateOverrides={rateOverrides} setRateOverrides={setRateOverrides} can={can} />; break;
+    case 'diary':             screen = setupGate ? <SetupGate go={go} t={t} /> : <Diary go={go} bookings={bookings} setBookings={setBookings} moveBooking={moveBooking} t={t} lang={lang} property={property} rateOverrides={rateOverrides} setRateOverrides={setRateOverrides} can={can} />; break;
     case 'new': {
       // route.arg is either a booking id string (edit path) or an object
       // { prefill: { date, roomTypeId } } from a Diary cell quick-create.
@@ -2270,7 +2319,10 @@ export default function App() {
       // Edit path needs edit_bookings; create path needs create_bookings.
       const isEditPath = !!editingBooking;
       const allowed = isEditPath ? can('edit_bookings') : can('create_bookings');
-      if (!allowed) {
+      if (setupGate) {
+        // No real rooms yet → can't take a booking. Send them to finish setup.
+        screen = <SetupGate go={go} t={t} />;
+      } else if (!allowed) {
         screen = <PermissionDenied go={go} t={t} action={isEditPath ? 'edit bookings' : 'create new bookings'} />;
       } else {
         screen = <NewBooking key={'nb-' + (route.seq || 0)} go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} onVoiceBooking={() => setVoiceOpen(true)} />;
@@ -2279,7 +2331,7 @@ export default function App() {
     }
     case 'booking':           screen = <BookingDetail go={go} bookingId={route.arg} bookings={bookings} plan={plan} t={t} lang={lang} property={property} propertyId={propertyId} onChangeProperty={setProperty} onEdit={startEdit} onPayment={addPayment} onSetStatus={setStatus} onMarkNoShow={markNoShow} onExtendHold={extendHold} onSetGst={setBookingGst} onSetVip={setBookingVip} onAddVoiceNote={addVoiceNote} onRemoveVoiceNote={removeVoiceNote} onIssueInvoice={issueInvoice} onVoidInvoice={voidInvoice} can={can} />; break;
     case 'booking-confirmed': screen = <BookingConfirmed go={go} t={t} bookingId={route.arg} bookings={bookings} property={property} lang={lang} />; break;
-    case 'rates':             screen = can('manage_rates')    ? <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} /> : <PermissionDenied go={go} t={t} action="edit the rate calendar" />; break;
+    case 'rates':             screen = setupGate ? <SetupGate go={go} t={t} /> : (can('manage_rates') ? <Rates go={go} t={t} lang={lang} overrides={rateOverrides} setOverrides={setRateOverrides} property={property} plan={plan} bookings={bookings} /> : <PermissionDenied go={go} t={t} action="edit the rate calendar" />); break;
     case 'guests':            screen = <Guests go={go} bookings={bookings} t={t} can={can} />; break;
     case 'channels':          screen = <Channels go={go} t={t} property={property} plan={plan} session={session} propertyId={propertyId} can={can} bookings={bookings} overrides={rateOverrides} />; break;
     case 'reports':           screen = can('view_reports')    ? <Reports go={go} t={t} bookings={bookings} plan={plan} property={property} expenses={expenses} session={session} propertyId={propertyId} /> : <PermissionDenied go={go} t={t} action="see reports" />; break;

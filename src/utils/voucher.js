@@ -1,4 +1,4 @@
-import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor, safeUrl } from '../data.js';
+import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor, safeUrl, ratePlansActive } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 // Empty fallback used when the caller passes no property at all. We
@@ -85,7 +85,7 @@ const VSTR = {
     houseRulesHeader: 'House rules',
     termsLabel: 'Terms:',
     termsBody: (p, id, withTax) =>
-      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in.${withTax ? ' GST will be charged as applicable.' : ''} For any change, WhatsApp ${esc(p.phone || '')} quoting <strong>${esc(id)}</strong>.`,
+      `Check-in from ${esc(p.checkIn || '14:00')}, check-out by ${esc(p.checkOut || '11:00')}. Valid photo ID required at check-in.${withTax ? ' GST will be charged as applicable.' : ''} ${p.phone ? `For any change, WhatsApp ${esc(p.phone)} quoting <strong>${esc(id)}</strong>.` : `For any change, quote <strong>${esc(id)}</strong>.`}`,
     cancelLabel: 'Cancellation policy',
     cancelFlexible: (h) => `Free cancellation up to ${h}h before check-in. Cancellations after that may be charged; no-show forfeits the advance.`,
     cancelModerate: (h) => `Free cancellation up to ${h}h before check-in. After that, 50% of the booking is charged; no-show forfeits the advance.`,
@@ -155,7 +155,7 @@ const VSTR = {
     houseRulesHeader: 'घर के नियम',
     termsLabel: 'शर्तें:',
     termsBody: (p, id, withTax) =>
-      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} किसी भी बदलाव के लिए WhatsApp ${esc(p.phone || '')} पर <strong>${esc(id)}</strong> का उल्लेख करें।`,
+      `चेक-इन ${esc(p.checkIn || '14:00')} से, चेक-आउट ${esc(p.checkOut || '11:00')} तक। चेक-इन पर वैध फोटो आईडी ज़रूरी।${withTax ? ' GST लागू होने पर लिया जाएगा।' : ''} ${p.phone ? `किसी भी बदलाव के लिए WhatsApp ${esc(p.phone)} पर <strong>${esc(id)}</strong> का उल्लेख करें।` : `किसी भी बदलाव के लिए <strong>${esc(id)}</strong> का उल्लेख करें।`}`,
     cancelLabel: 'कैंसलेशन पॉलिसी',
     cancelFlexible: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद कैंसल करने पर चार्ज लग सकता है; नो-शो पर एडवांस ज़ब्त।`,
     cancelModerate: (h) => `चेक-इन से ${h} घंटे पहले तक फ्री कैंसलेशन। उसके बाद बुकिंग का 50% चार्ज होगा; नो-शो पर एडवांस ज़ब्त।`,
@@ -249,12 +249,17 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   // back so the room rate prints in full + render an explicit Credit note row
   // below — same treatment as the discount row, so the rows still sum to the total.
   const credits = isInvoice ? 0 : (Array.isArray(b.payments) ? b.payments : []).reduce((s, p) => s + ((p.kind === 'credit' || p.kind === 'credit_note') ? (+p.amount || 0) : 0), 0);
-  // Cancellation policy from the booking's rate plan (dedicated block below).
-  // Falls back to a flexible 48h default for the Standard plan / legacy rows.
+  // Cancellation policy from the booking's rate plan. ONLY shown when the
+  // hotelier has actually turned on rate plans (ratePlansActive) AND the
+  // booking's plan defines a cancellation — otherwise we'd assert a "free
+  // cancellation up to 48h" policy the hotelier never set (audit #9). The
+  // seeded Standard plan carries a flexible/48h default, but that's a seed, not
+  // a deliberate choice, so a default property prints no cancellation block.
   const _rpList = Array.isArray(prop.ratePlans) ? prop.ratePlans : [];
   const _bookingRp = _rpList.find(x => x.id === (b.ratePlanId || 'standard'));
   const _cxn = _bookingRp && _bookingRp.cancellation;
   const _refH = _bookingRp && _bookingRp.refundHours ? _bookingRp.refundHours : 48;
+  const showCancelPolicy = ratePlansActive(prop) && !!_cxn;
   const cancelText = _cxn === 'non-refundable' ? L.cancelNonRefundable
     : _cxn === 'moderate' ? L.cancelModerate(_refH)
     : _cxn === 'strict' ? L.cancelStrict(_refH)
@@ -395,10 +400,14 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     // the booking has two rooms of different types). This card makes
     // it unambiguous + sums totals for the front-desk pre-check.
     const parseGuests = (g) => {
+      // Sum EVERY "<n>A" / "<n>C" token (not just the first), and never
+      // fabricate "2 Adults" when nothing parses — fall back to the guaranteed
+      // minimum of 1 adult (audit). Only the legacy no-roomItems path uses this.
       const s = String(g || '');
-      const a = s.match(/(\d+)\s*A/i);
-      const c = s.match(/(\d+)\s*C/i);
-      return { adults: a ? parseInt(a[1], 10) : 2, children: c ? parseInt(c[1], 10) : 0 };
+      let adults = 0, children = 0;
+      for (const m of s.matchAll(/(\d+)\s*A/gi)) adults += parseInt(m[1], 10) || 0;
+      for (const m of s.matchAll(/(\d+)\s*C/gi)) children += parseInt(m[1], 10) || 0;
+      return { adults: adults || 1, children };
     };
     const items = Array.isArray(b.roomItems) && b.roomItems.length > 0
       ? b.roomItems
@@ -520,7 +529,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   ${!isInvoice && p.paymentQrDataUrl ? `
   <div style="margin: 20px 0 22px; padding: 16px 18px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 12px; display: flex; gap: 18px; align-items: center;">
     <img src="${esc(p.paymentQrDataUrl)}" alt="Payment QR" title="Tap to enlarge"
-      onclick="(function(img){var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out';o.onclick=function(){o.remove()};var b=new Image();b.src=img.src;b.style.cssText='max-width:92vw;max-height:92vh;background:#fff;padding:18px;border-radius:14px';o.appendChild(b);document.body.appendChild(o);})(this)"
+      onclick="(function(img){var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out';o.onclick=function(){o.remove()};var b=new Image();b.src=img.src;b.style.cssText='max-width:92vw;max-height:92vh;background:#fff;padding:18px;border-radius:14px;cursor:default';b.onclick=function(e){e.stopPropagation()};var x=document.createElement('div');x.textContent='✕';x.setAttribute('aria-label','Close');x.style.cssText='position:fixed;top:14px;right:20px;color:#fff;font-size:32px;font-weight:700;line-height:1;cursor:pointer';o.appendChild(b);o.appendChild(x);document.body.appendChild(o);})(this)"
       style="width: 200px; height: 200px; border-radius: 8px; background: #fff; padding: 8px; object-fit: contain; flex-shrink: 0; cursor: zoom-in;" />
     <div style="flex: 1; min-width: 0;">
       <div style="font-size: 9pt; font-weight: 700; color: ${BRAND}; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">${L.scanToPay}</div>
@@ -532,7 +541,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     </div>
   </div>` : ''}
 
-  ${!isInvoice ? `<div style="margin: 6px 0 14px; padding: 11px 14px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 10px;">
+  ${(!isInvoice && showCancelPolicy) ? `<div style="margin: 6px 0 14px; padding: 11px 14px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 10px;">
     <div style="font-size: 8.5pt; font-weight: 700; color: ${BRAND}; letter-spacing: 0.8px; text-transform: uppercase;">${L.cancelLabel}</div>
     <div style="font-size: 10pt; color: #333; line-height: 1.5; margin-top: 3px;">${cancelText}</div>
   </div>` : ''}

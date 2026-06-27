@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { EXTRAS_DEFAULT, COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor } from '../data.js';
+import { COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -814,14 +814,17 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
   const repeatMatch = (() => {
     const typedPhone = (data.phone || '').replace(/\D/g, '');
     const typedName = (data.name || '').trim().toLowerCase();
-    if (typedPhone.length < 5 && typedName.length < 3) return null;
+    if (typedPhone.length < 7 && typedName.length < 3) return null;
     // Search non-cancelled past stays. Exclude the current booking when editing.
     const candidates = bookings
       .filter(b => b.id !== editingId && b.status !== 'cancelled')
       .filter(b => {
         const pPhone = String(b.phone || '').replace(/\D/g, '');
         const pName = String(b.guest || '').trim().toLowerCase();
-        if (typedPhone.length >= 5 && pPhone && pPhone.endsWith(typedPhone.slice(-5))) return true;
+        // Phone match needs the FULL typed number (>=7 digits) as a suffix of
+        // the saved one — not just the last 5, which false-matched unrelated
+        // guests and then offered to overwrite the typed identity (audit).
+        if (typedPhone.length >= 7 && pPhone && pPhone.endsWith(typedPhone)) return true;
         if (typedName.length >= 3 && pName.startsWith(typedName)) return true;
         return false;
       });
@@ -842,16 +845,28 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
     // Strip the dial-code prefix from the saved phone so the form's phone
     // field (which sits next to a separate dial-code prefix) doesn't end
     // up with two prefixes.
-    const phoneLocal = String(b.phone || '').replace(/^\+\d+\s*/, '');
+    const phoneLocal = String(b.phone || '').replace(/^\+\d+\s*/, '').replace(/\D/g, '');
     if (phoneLocal) set('phone', phoneLocal);
     if (b.country) set('country', b.country);
+    // Actually carry the saved email across (the previous comment claimed it
+    // did, but it never set it). Only overwrite when the past stay has one.
+    if (b.email) set('email', b.email);
     setDismissedMatchKey(matchKey);
   };
 
   const addCustom = () => {
-    if (!newEx.label.trim() || !newEx.price) return;
+    const label = newEx.label.trim();
+    const raw = String(newEx.price).trim();
+    // Require a name + an explicitly-entered price. ₹0 IS allowed (a
+    // complimentary / free add-on you still want itemised), but a blank
+    // price or junk like "abc" is rejected — the old check used `!newEx.price`
+    // which both blocked a legit ₹0 extra AND let a non-numeric value through
+    // as NaN, corrupting the folio's cost math.
+    if (!label || raw === '') return;
+    const price = Number(raw);
+    if (!Number.isFinite(price) || price < 0) return;
     const id = 'cx_' + Date.now();
-    const ex = { id, label: newEx.label.trim(), sub: 'Custom', price: +newEx.price, icon: 'plus', custom: true };
+    const ex = { id, label, sub: 'Custom', price, icon: 'plus', custom: true };
     set('customExtras', [...(data.customExtras || []), ex]);
     set('extras', { ...data.extras, [id]: 1 });
     setNewEx({ label: '', price: '' }); setShowAdd(false);
@@ -908,7 +923,15 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
               <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{country.flag}</span>
               <select
                 value={data.country}
-                onChange={(e) => set('country', e.target.value)}
+                onChange={(e) => {
+                  // Re-clamp the typed digits to the NEW country's length so a
+                  // 10-digit number left over from a longer-cap country can't
+                  // sit there over the new (shorter) limit.
+                  const code = e.target.value;
+                  const nc = COUNTRIES.find(c => c.code === code) || COUNTRIES[0];
+                  set('country', code);
+                  set('phone', (data.phone || '').replace(/\D/g, '').slice(0, nc.len));
+                }}
                 style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, appearance: 'none', cursor: 'pointer' }}
               >
                 {COUNTRIES.map(c => (
@@ -924,9 +947,19 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
               </div>
             )}
           </div>
-          <Field label={t('mobile')} type="tel" inputMode="tel" autoComplete="tel" value={data.phone} onChange={(e) => set('phone', e.target.value)} prefix={country.dial} placeholder={t('mobilePlaceholder')} />
+          <Field
+            label={t('mobile')} type="tel" inputMode="numeric" autoComplete="tel"
+            maxLength={country.len}
+            value={data.phone}
+            // Digit-only + capped at the country's national length: blocks the
+            // "letters / 20 digits" input that broke wa.me / tel: links (audit #10).
+            onChange={(e) => set('phone', e.target.value.replace(/\D/g, '').slice(0, country.len))}
+            prefix={country.dial}
+            placeholder={t('mobilePlaceholder')}
+            hint={data.phone && data.phone.replace(/\D/g, '').length !== country.len ? t('phoneLenHint').replace('{n}', country.len) : undefined}
+          />
           <Field label={t('emailOptional')} type="email" inputMode="email" autoComplete="email" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder={t('emailPlaceholder')} />
-          {(!data.name.trim() || data.phone.trim().length < 6) && (
+          {(!data.name.trim() || (data.phone || '').replace(/\D/g, '').length !== country.len) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: T.warnLt, borderRadius: 8 }}>
               <Icon name="info" size={11} color="oklch(48% 0.14 75)" />
               <span style={{ fontSize: 11, color: 'oklch(40% 0.14 75)', fontWeight: 600 }}>{t('nameMobileRequired')}</span>
@@ -1008,7 +1041,12 @@ function StepGuest({ data, set, t, allExtras, onRemoveSavedExtra, bookings = [],
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {qty > 0 && <button onClick={() => set('extras', { ...data.extras, [ex.id]: Math.max(0, qty - 1) })} style={miniStepBtn}>−</button>}
+                  {qty > 0 && <button onClick={() => {
+                    // Drop to 0 → remove the key entirely instead of leaving a
+                    // `{ [id]: 0 }` entry that lingers in the saved booking JSON.
+                    if (qty - 1 <= 0) { const { [ex.id]: _q, ...rest } = data.extras; set('extras', rest); }
+                    else set('extras', { ...data.extras, [ex.id]: qty - 1 });
+                  }} style={miniStepBtn}>−</button>}
                   {qty > 0 && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, minWidth: 16, textAlign: 'center', color: T.ink }}>{qty}</span>}
                   <button onClick={() => set('extras', { ...data.extras, [ex.id]: qty + 1 })} style={qty > 0 ? miniStepBtn : { ...miniStepBtn, background: T.primary, color: '#fff' }}>+</button>
                 </div>
@@ -1081,7 +1119,8 @@ function StepPayment({ data, set, subtotal, gst, total, withTax, roomsSubtotal, 
         </Card>
       ) : (
       <Card padding={16}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 12 }}>{t('collectNow')}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.ink2, letterSpacing: 0.2, marginBottom: 6 }}>{t('collectNow')}</div>
+        <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginBottom: 12 }}>{t('collectNowHint')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
           {[
             { id: 'full',   label: t('payFull'),   sub: `₹${total.toLocaleString('en-IN')}` },
@@ -1198,7 +1237,12 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         roomItems: seedItems,
         name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: editing.email || '', country: editing.country || 'IN', state: editing.state || '', gstin: '',
         notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: 4,
-        payMethod: null, payAmount: 'full', payCustom: 0,
+        // Edit path: seed 'none' (not 'full'). Editing never recomputes what's
+        // been paid (onCreate preserves existing.paid and StepPayment shows the
+        // "payments aren't changed here" card instead of the picker), so this is
+        // inert today — but a 'full' default here is a footgun if that ever
+        // changes: it would silently mark an edited booking paid-in-full.
+        payMethod: null, payAmount: 'none', payCustom: 0,
         extras: editing.extras || {}, customExtras: editing.customExtras || [], extraPrices: editing.extraPrices || {},
         gstApplies: typeof editing.gstApplies === 'boolean' ? editing.gstApplies : (!!editing.channel && editing.channel !== 'direct'),
         mealPlanId: editing.mealPlanId || startingMealPlanId(property),
@@ -1347,8 +1391,15 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   // extra shows its name (instead of a blank row), gets the SAVED badge, and
   // exposes its remove button — previously all three silently no-op'd because
   // savedCustomExtras have no `label` / `custom` fields.
+  // The extras picker shows ONLY this property's own add-ons (its saved pool +
+  // anything added inline this booking) — NOT the hardcoded desert-camp
+  // EXTRAS_DEFAULT (camel safari / bonfire …), which used to be prepended for
+  // EVERY property and couldn't be removed (audit #5). A fresh hotelier starts
+  // with an empty list + the "+ Add extra" escape hatch; the demo seeds its
+  // pool with the camp extras so it still looks complete. (extrasBreakdownFor
+  // in data.js keeps EXTRAS_DEFAULT in its lookup catalog so any OLD booking
+  // that referenced those ids still itemises correctly on the folio/voucher.)
   const allExtras = [
-    ...EXTRAS_DEFAULT,
     ...mergedCustoms.map(ex => ({ ...ex, label: ex.label || ex.name, custom: true })),
   ].map(ex => ({
     ...ex,
@@ -1382,7 +1433,12 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
   const defaultMpId = property?.defaultMealPlanId || 'ep';
   const defaultMealPlan = mealPlans.find(p => p.id === defaultMpId);
   const mealDeltaPrice = (selectedMealPlan?.price || 0) - (defaultMealPlan?.price || 0);
-  const mealCost = selectedMealPlan ? mealDeltaPrice * totalGuests * data.nights : 0;
+  // Floor the meal delta at -roomsSubtotal: a cheaper-than-default plan gives a
+  // negative delta (a refund of the bundled meal cost), but it must never drag
+  // the subtotal below the room tariff — otherwise a big MAP→EP downgrade on a
+  // multi-guest, multi-night stay could make the folio show a sub-tariff (even
+  // negative) total. (audit Batch-2 meal-plan floor)
+  const mealCost = selectedMealPlan ? Math.max(-roomsSubtotal, mealDeltaPrice * totalGuests * data.nights) : 0;
   // Extra-adult / extra-child surcharge based on per-category rules. The
   // booking object is shaped like a saved booking so extraGuestCostFor()
   // can compute against it the same way the cloud-side / voucher does.
@@ -1517,7 +1573,20 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
 
   const titles = [t('stayDetails'), t('pickRoom'), t('guest'), t('payment')];
   const datesValid = !!data.checkIn && data.nights > 0;
-  const guestValid = data.name.trim().length > 0 && data.phone.trim().length >= 6;
+  // Phone must be exactly the selected country's national length (digits only).
+  // The input already strips non-digits + caps at this length, so a valid new
+  // booking naturally reaches it; editing a legacy odd-length number prompts a
+  // quick correction (the field shows a "{n}-digit" hint).
+  const guestCountry = COUNTRIES.find(c => c.code === data.country) || COUNTRIES[0];
+  const guestPhoneLen = (data.phone || '').replace(/\D/g, '').length;
+  const guestValid = data.name.trim().length > 0 && guestPhoneLen === guestCountry.len;
+  // Step-4 payment sanity (new bookings only — editing never touches payment):
+  // a "Custom" advance must be > ₹0, and any recorded payment must name a
+  // method. "Not yet" (nothing received) needs neither. Without this the
+  // booking could confirm with a ₹0 custom advance or a payment with no method.
+  const paymentValid = isEdit || data.payAmount === 'none' || !data.payAmount
+    ? true
+    : (data.payAmount === 'custom' ? (+data.payCustom > 0 && !!data.payMethod) : !!data.payMethod);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -1604,7 +1673,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
             setStep(step + 1);
           }} disabled={(step === 1 && !datesValid) || (step === 2 && !roomsValid) || (step === 3 && !guestValid)} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>{t('continue')}</Btn>
         ) : (
-          <Btn icon={submitting ? 'sync' : 'check'} onClick={doConfirm} disabled={!guestValid || submitting} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>
+          <Btn icon={submitting ? 'sync' : 'check'} onClick={doConfirm} disabled={!guestValid || !paymentValid || submitting} style={{ flex: anyRoomTyped ? 'unset' : 1 }}>
             {submitting ? (isEdit ? t('savingShort') : t('creatingBooking')) : (isEdit ? t('confirmMove') : t('confirmBooking'))}
           </Btn>
         )}

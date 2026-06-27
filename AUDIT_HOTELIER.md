@@ -336,17 +336,23 @@ list myself — the Haiku verifiers overstated two clusters (see "Downgraded" be
 - **GST CGST/SGST % label "uses a decimal."** NOT real — `(tx.rate/2).toFixed(tx.rate%2?1:0)`
   correctly renders 2.5% / 9%. False positive.
 
-### Needs an owner decision (judgment calls, not auto-fixed)
-- **Guests "in-house" excludes `checkout` status.** A verifier called this a bug, but
-  `checkout` = "Logged check-out" = the guest has DEPARTED, so excluding it from
-  in-house is arguably CORRECT (Dashboard includes it only for payment-collection). Left
-  as-is.
-- **Guests repeat-guest groups by NAME; Dashboard repeat-chip groups by PHONE
-  (repeatGuestKeys).** They can disagree (same name/diff phone, or vice-versa). Aligning
-  to phone is cleaner but changes the Guests list bucketing — wants an explicit call.
-- **extraGuestCostFor silently skips a roomItem whose category was DELETED** → folio/
-  voucher drop that surcharge (total was stored with it). Real edge; the clean fix
-  (store the surcharge as a booking field, or soft-delete categories) is a data-shape
-  change — defer to a dedicated pass.
-- **Public widget shows a blank Step 2 when no rooms are configured** (Rates + Dashboard
-  show a prompt). Minor; the widget is only shared after setup.
+### Owner decisions — RESOLVED (2026-06-27)
+- **Deleted-category surcharge → STORE IT (owner: "fix one, store the surcharge").** ✓
+  `74c7491` — `stampExtraGuestAmounts` stamps each roomItem's extra-guest amount at
+  create/edit (+ widget); `extraGuestCostFor` reads it as a fallback when the category
+  is gone. No migration (rides the roomItems jsonb). Inert for existing data.
+- **Repeat-guest → group by PHONE (owner: "one phone per guest").** ✓ `397725e` —
+  Guests keys by `normPhone(phone)` (name fallback when no phone), matching the Dashboard.
+- **Guests "in-house" excludes `checkout` → LEAVE (owner: "okay").** ✓ No change —
+  `checkout` = departed, so excluding it is correct.
+- **Widget blank Step 2 when no rooms → owner confirmed a customer can't reach the link
+  pre-setup (it's shared after).** ✓ Added a defensive "no rooms published yet" message
+  anyway (`397725e`) for the remove-all-rooms-later edge.
+
+### Round-3 fix batches shipped
+3F1 `5151a1c` (weekend tint · holdHours default · dashboard room count) · 3F2 `5280d64`
+(Diary + Rates Hindi i18n) · 3F3 `ec518e7` (tentative pill colour · widget meal rounding)
+· 3F4 `397725e` (Guests phone grouping · widget empty state) · 3F5 `74c7491` (store
+extra-guest surcharge). Skipped (zero-behaviour churn): defaultMealPlanId DRY,
+baseCapacityAdults dead `||2`, StepDates dead params, greeting-vs-ANCHOR. roomsSubtotalFor
+floor-accuracy left as a known MED (rare meal-downgrade edge; total always correct).

@@ -595,7 +595,10 @@ export function isUnitFree(bookings, roomTypeId, unitIdx, startIdx, nights, room
 // adjust price points per plan, so we keep the math simple here.
 function bookingGuestCount(b) {
   if (Array.isArray(b.roomItems) && b.roomItems.length > 0) {
-    return b.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+    // Count ALL child bands (free + half + full + any custom), not just the
+    // half-rate field — otherwise meals + per-guest extras undercounted every
+    // booking with a free or full-rate child (round-2 audit money bug).
+    return b.roomItems.reduce((s, r) => s + (r.adults || 0) + childTotalForItem(r), 0);
   }
   // Fall back to parsing the guests string ("2A 1C" -> 3) for legacy bookings.
   const m = String(b.guests || '').match(/(\d+)A.*?(\d+)?C?/);
@@ -693,13 +696,109 @@ function seasonOverrideFor(property, booking) {
   return null;
 }
 
+// ─── Custom child-rate bands ────────────────────────────────────────────────
+// The hotelier defines ANY NUMBER of age bands in Settings (each = label +
+// upper age cut-off). The ₹ price per band is set PER ROOM CATEGORY with
+// optional PER-SEASON overrides. All config lives on the `accountant` jsonb
+// (no DB migration), the same place the rest of the pricing flags live:
+//   accountant.childBands           = [{ id, label, maxAge }]  (maxAge null = "and up")
+//   accountant.childRatesByCategory = { [catId]: { [bandId]: {mode:'free'|'flat'|'pct', value} } }
+//   accountant.childRatesBySeason   = { [seasonId]: { [catId]: { [bandId]: {...} } } }
+// Bookings store per-band counts on each roomItem: roomItem.childBands = { [bandId]: count }.
+// Legacy bookings (childrenFree/children/childrenFull) + legacy category/season
+// extraChild rates map onto the three seeded default band ids 'free'/'half'/'full'
+// (half = 50% of the old extra-child rate, full = 100%), so existing data prices
+// exactly as before until the hotelier edits the new bands.
+
+// The default 3-band layout, seeded from the legacy two age thresholds.
+export function effectiveChildBands(property) {
+  const acc = (property && property.accountant) || {};
+  if (Array.isArray(acc.childBands) && acc.childBands.length) return acc.childBands;
+  const freeAge = acc.childFreeBelowAge != null ? acc.childFreeBelowAge : 5;
+  const halfAge = acc.childAgeBelow != null ? acc.childAgeBelow : 12;
+  return [
+    { id: 'free', label: `Under ${freeAge}`, maxAge: freeAge },
+    { id: 'half', label: `${freeAge}–${Math.max(freeAge, halfAge - 1)}`, maxAge: halfAge },
+    { id: 'full', label: `${halfAge}+`, maxAge: null },
+  ];
+}
+
+// Per-band child counts for a room item — new childBands map if present, else
+// the legacy childrenFree/children/childrenFull fields mapped to the default ids.
+export function childCountsForItem(item) {
+  if (item && item.childBands && typeof item.childBands === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(item.childBands)) { const n = +v || 0; if (n > 0) out[k] = n; }
+    return out;
+  }
+  const out = {};
+  const free = +(item && item.childrenFree) || 0;
+  const half = +(item && item.children) || 0;
+  const full = +(item && item.childrenFull) || 0;
+  if (free) out.free = free;
+  if (half) out.half = half;
+  if (full) out.full = full;
+  return out;
+}
+export function childTotalForItem(item) {
+  return Object.values(childCountsForItem(item)).reduce((s, n) => s + n, 0);
+}
+
+// First season (by date) covering a booking — regardless of whether it carries
+// a legacy override. Used by the new per-season child-rate lookup.
+export function activeSeasonFor(property, booking) {
+  if (!property || !booking || !Array.isArray(property.seasons) || booking.startIdx == null) return null;
+  const startDate = new Date(ANCHOR);
+  startDate.setDate(startDate.getDate() + (booking.startIdx || 0));
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + ((booking.nights || 1) - 1));
+  const startIso = ymd(startDate), endIso = ymd(endDate);
+  for (const s of property.seasons) {
+    if (!s || !s.startIso || !s.endIso) continue;
+    if (s.startIso > endIso || s.endIso < startIso) continue;
+    return s;
+  }
+  return null;
+}
+
+function resolveChildRate(rule, baseRate) {
+  if (!rule || typeof rule !== 'object' || rule.mode === 'free') return 0;
+  return resolveExtraRate(rule, baseRate); // flat ₹ or % of base
+}
+
+// ₹ per child per night for one band on one category, honouring the new
+// per-season + per-category config, then falling back to the legacy extraChild
+// model (free=0 / half=50% / full=100%) so existing properties are unchanged.
+export function childBandRate(property, category, band, booking) {
+  if (!band || !category) return 0;
+  const acc = (property && property.accountant) || {};
+  const baseRate = category.base || 0;
+  const catId = category.id;
+  const bandId = band.id;
+  const season = booking ? activeSeasonFor(property, booking) : null;
+
+  const bySeason = acc.childRatesBySeason || {};
+  const seasonRule = season && bySeason[season.id] && bySeason[season.id][catId] && bySeason[season.id][catId][bandId];
+  if (seasonRule) return resolveChildRate(seasonRule, baseRate);
+
+  const byCat = acc.childRatesByCategory || {};
+  const catRule = byCat[catId] && byCat[catId][bandId];
+  if (catRule) return resolveChildRate(catRule, baseRate);
+
+  // Legacy fallback for the seeded default band ids.
+  if (bandId === 'free') return 0;
+  if (bandId === 'half' || bandId === 'full') {
+    const legacyRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
+    const childPer = resolveExtraRate(legacyRule, baseRate);
+    return bandId === 'half' ? Math.round(childPer * 0.5) : childPer;
+  }
+  return 0; // custom band with no rate configured → free
+}
+
 export function extraGuestCostForItem(item, property, category, nights, booking) {
   if (!item || !category) return 0;
   const cap = baseCapacityAdults(property);
   const adults = +item.adults || 0;
-  const childrenHalf = +item.children || 0;
-  const childrenFree = +item.childrenFree || 0;
-  const childrenFull = +item.childrenFull || 0;
   // Extra-guest pct surcharge is "% of the category BASE rate" everywhere
   // (engine, OTA, reception) per the owner's decision — so the widget (which
   // passes the uplifted nightly rate as item.rate) and reception agree, and the
@@ -707,26 +806,26 @@ export function extraGuestCostForItem(item, property, category, nights, booking)
   // rate no longer drags the pct up. (Flat mode ignores baseRate; the per-booking
   // ₹ overrides below still win.)
   const baseRate = (category.base || 0);
-  // Resolution chain for the per-guest rate:
-  //   1. item.extraAdultRate / extraChildRate — per-booking override
-  //      the hotelier explicitly set in NewBooking (a plain ₹ number)
-  //   2. matching season's extraAdult / extraChild rule object
-  //   3. category default extraAdult / extraChild rule object
-  // Per-booking overrides win because they were entered intentionally
-  // for THIS guest; seasons + categories are defaults.
+  // EXTRA ADULTS — unchanged: per-booking override → season → category default.
   const season = booking ? seasonOverrideFor(property, booking) : null;
   const adultRule = (season && season.extraAdult) ? season.extraAdult : category.extraAdult;
-  const childRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
   const autoAdultPer = resolveExtraRate(adultRule, baseRate);
-  const autoChildPer = resolveExtraRate(childRule, baseRate);
   const adultPer = (typeof item.extraAdultRate === 'number') ? Math.max(0, item.extraAdultRate) : autoAdultPer;
-  const childPer = (typeof item.extraChildRate === 'number') ? Math.max(0, item.extraChildRate) : autoChildPer;
   const extraAdults = Math.max(0, adults - cap);
   const adultCost = extraAdults * adultPer * (nights || 1);
-  const halfCost = Math.round(childrenHalf * childPer * 0.5 * (nights || 1));
-  const fullCost = childrenFull * childPer * (nights || 1);
-  void childrenFree;
-  return adultCost + halfCost + fullCost;
+  // EXTRA CHILDREN — sum each configured band's count × its resolved per-night
+  // rate (childBandRate handles new per-category / per-season config + the
+  // legacy free/half/full fallback). Counts for bands that no longer exist
+  // (a band the hotelier later deleted) simply price at 0.
+  const bands = effectiveChildBands(property);
+  const counts = childCountsForItem(item);
+  let childCost = 0;
+  for (const band of bands) {
+    const n = counts[band.id] || 0;
+    if (!n) continue;
+    childCost += n * childBandRate(property, category, band, booking) * (nights || 1);
+  }
+  return adultCost + childCost;
 }
 
 export function extraGuestCostFor(booking, property) {

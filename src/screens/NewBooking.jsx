@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor } from '../data.js';
+import { COUNTRIES, effectiveRoomTypes, ANCHOR, idxToDate, dateToIdx, gstRateForCategory, effectiveMealPlans, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, defaultMealPlanId, extraGuestCostFor, singleOccRateFor, childTotalForItem } from '../data.js';
 
 // Default mealPlanId for a fresh booking. Priority order:
 //   1) property.defaultMealPlanId (if set & still enabled) — the camp's
@@ -645,7 +645,7 @@ function RoomItemCard({ item, idx, total, roomTypes, nights, rateForNight, onCha
 // that still read it) is auto-derived from the first room.
 function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans = [], property }) {
   const totalAdults = data.roomItems.reduce((s, r) => s + r.adults, 0);
-  const totalChildren = data.roomItems.reduce((s, r) => s + r.children, 0);
+  const totalChildren = data.roomItems.reduce((s, r) => s + childTotalForItem(r), 0);
   const totalGuests = totalAdults + totalChildren;
   const roomsLabel = `${data.roomItems.length} ${data.roomItems.length > 1 ? t('rooms') : t('room')}`;
   const nightsLabel = `${data.nights} ${data.nights > 1 ? t('nights') : t('nights')}`;
@@ -1405,7 +1405,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
     ...ex,
     price: data.extraPrices[ex.id] != null ? data.extraPrices[ex.id] : ex.price,
   }));
-  const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+  const totalGuests = data.roomItems.reduce((s, r) => s + (r.adults || 0) + childTotalForItem(r), 0);
   // Extras honour their unit, matching the public widget: per stay (×1) /
   // per night (×nights) / per guest (×guests) / per guest per night
   // (×guests×nights). Default extras carry no unit → per-stay (price × qty,

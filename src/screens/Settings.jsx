@@ -1547,7 +1547,6 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       </div>
                       {[
                         { rule: 'extraAdult', label: 'Extra adult', val: ea },
-                        { rule: 'extraChild', label: 'Extra child', val: ec },
                       ].map(({ rule, label, val }) => (
                         <div key={rule} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76 }}>{label}</span>
@@ -1579,6 +1578,50 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                           )}
                         </div>
                       ))}
+                      {/* Extra child override — per age band, this season (applies to
+                          all room types; "% of base" scales per room). "Default" on a
+                          band = use that room type's normal child rate. */}
+                      {(() => {
+                        const bands = effectiveChildBands({ accountant });
+                        const sNode = (accountant.childRatesBySeason && accountant.childRatesBySeason[s.id]) || {};
+                        const byBand = sNode.byBand || {};
+                        const setSeasonChild = (bandId, ruleOrNull) => setAccountant(a => {
+                          const all = a.childRatesBySeason || {};
+                          const node = all[s.id] || {};
+                          const bb = { ...(node.byBand || {}) };
+                          if (ruleOrNull === null) delete bb[bandId];
+                          else bb[bandId] = { ...(bb[bandId] || { mode: 'flat', value: 0 }), ...ruleOrNull };
+                          return { ...a, childRatesBySeason: { ...all, [s.id]: { ...node, byBand: bb } } };
+                        });
+                        const seg = (bandId, cur, m, lbl) => {
+                          const active = cur ? cur.mode === m : m === 'default';
+                          return (
+                            <button key={m} onClick={() => setSeasonChild(bandId, m === 'default' ? null : { mode: m })} style={{ padding: '3px 7px', borderRadius: 5, cursor: 'pointer', border: `1px solid ${active ? T.indigo : T.border}`, background: active ? T.indigoLt : T.card, color: active ? T.indigo : T.ink3, fontSize: 9.5, fontWeight: 700 }}>{lbl}</button>
+                          );
+                        };
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+                            <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600 }}>Extra child · per age band</span>
+                            {bands.map(band => {
+                              const cur = byBand[band.id];
+                              const prev = !cur ? 'category rate' : cur.mode === 'pct' ? `${cur.value || 0}% of base` : cur.mode === 'free' ? 'Free' : `₹${(cur.value || 0).toLocaleString('en-IN')}/night`;
+                              return (
+                                <div key={band.id} style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600, minWidth: 70, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{band.label || '—'}</span>
+                                  {seg(band.id, cur, 'default', 'Default')}
+                                  {seg(band.id, cur, 'free', 'Free')}
+                                  {seg(band.id, cur, 'flat', '₹')}
+                                  {seg(band.id, cur, 'pct', '%')}
+                                  {cur && cur.mode !== 'free' && (
+                                    <NumberInput min={0} value={cur.value || 0} onChange={(n) => setSeasonChild(band.id, { value: n })} className="tnum" style={{ width: 60, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '2px 5px', fontSize: 10.5, fontWeight: 700, color: T.ink, background: T.card }} />
+                                  )}
+                                  <span style={{ marginLeft: 'auto', fontSize: 9, color: cur ? T.indigo : T.ink3, fontWeight: 600, fontStyle: cur ? 'normal' : 'italic' }}>{prev}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}

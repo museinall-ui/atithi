@@ -777,8 +777,12 @@ export function childBandRate(property, category, band, booking) {
   const bandId = band.id;
   const season = booking ? activeSeasonFor(property, booking) : null;
 
+  // Per-season override. Shape: childRatesBySeason[seasonId] = { byBand: {...},
+  // byCategory: { [catId]: {...} } }. A per-category override wins over the
+  // property-wide per-band one for the season.
   const bySeason = acc.childRatesBySeason || {};
-  const seasonRule = season && bySeason[season.id] && bySeason[season.id][catId] && bySeason[season.id][catId][bandId];
+  const sNode = season ? (bySeason[season.id] || {}) : {};
+  const seasonRule = (sNode.byCategory && sNode.byCategory[catId] && sNode.byCategory[catId][bandId]) || (sNode.byBand && sNode.byBand[bandId]);
   if (seasonRule) return resolveChildRate(seasonRule, baseRate);
 
   const byCat = acc.childRatesByCategory || {};

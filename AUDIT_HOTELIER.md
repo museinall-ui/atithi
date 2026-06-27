@@ -205,3 +205,37 @@ All 13 reproduced & root-caused except **#11** (needs live reproduction).
   - Past-date bookings: reception CAN now create a back-dated booking from the Diary again (Batch 4 had blocked it). Tapping a past empty cell asks "This date has already passed. Create a back-dated booking anyway?" then opens New Booking with the past date prefilled; future/today cells skip the confirm. Past-date RATE/INVENTORY editing stays locked. _Verified live: tapped a past cell → confirm → New Booking seeded with 2026-06-22._ `Diary.jsx`, `i18n.js`.
 
 _Append shipped batches here (commit hash + what it fixed + how verified)._
+
+---
+
+## ROUND 2 — fresh hotelier audit (2026-06-27)
+
+11 parallel auditors + adversarial verify pass. 48 raw → 20 verified non-low + 22 lows. The lows were almost all the verifiers CONFIRMING Batches 1–6 hold up (setup gate, advance-vs-paid, extras, phone, past-dates, share, voucher, child-bands all verified correct). Verified NEW findings below, grouped + proposed fix order. None shipped yet.
+
+### Money / cross-surface math (fix first)
+- [ ] **[HIGH]** `totalGuests` excludes `childrenFree` + `childrenFull` → meal cost + per-guest extras UNDERCOUNT whenever a booking has free/full-rate children. `NewBooking.jsx:648,1408` + `data.js:598 bookingGuestCount()`. Fix: sum all three child bands + adults everywhere. (Revenue loss on every such booking.)
+- [ ] **[HIGH]** Meal-plan floor (`Math.max(-roomsSubtotal, …)`, my Batch-2 change) is applied in NewBooking ONLY; `mealCostFor()` (folio + voucher + widget) is un-floored → the SAME booking totals differ across surfaces on a big meal downgrade. `data.js:765-777` vs `NewBooking.jsx:1441`. Fix: add optional `roomsSubtotal` param to `mealCostFor` + floor; pass it from folio/voucher/widget. (Regression I introduced.)
+- [x] **[HIGH]** Dashboard "Daily income" card conflated average tariff with cash collected. ✓ FIXED + verified live (owner's design) — split into TWO cards: **"Today's income"** (accrual = per-night value of tonight's stays) + **"Collected today"** (cash basis, split by method Cash/UPI/Card…). They now show distinct numbers (demo: ₹4,500 income vs ₹9,000 collected). `Dashboard.jsx`.
+- [x] **[HIGH]** Credit notes handled 3 ways in Dashboard. ✓ FIXED — credit = 0 for collected + monthRevenue (it reduces what's owed, not cash), matching collectedOn + the day-close skip. `Dashboard.jsx`.
+- [ ] **[MED/HIGH]** Occupancy CSV export lacks `startIdx`/`nights` `|| 0`/`|| 1` guards that the KPI cards have → CSV silently drops bookings the cards count. `Reports.jsx:888` vs `:586`.
+
+### Date / logic
+- [ ] **[HIGH]** Diary sticky header shows `ANCHOR.getFullYear()` → wrong year when scrolled to a different year (e.g. "JAN 2026" while viewing Jan 2025). `Diary.jsx:910`. Fix: year from `viewDays[0].iso`.
+- [ ] **[MED]** Rates "Copy from another type" day-count label uses unclamped range but the copy clamps past dates to today → label over-counts. `Rates.jsx:1304-1305`. (Regression from my Batch-4 clamp.) Fix: clamp the label count too.
+
+### Settings / validation
+- [ ] **[HIGH]** Disabling ALL meal plans → default falls to 'ep' but if EP is also disabled the booking price baseline is `undefined`→0, breaking the booking flow. `Settings.jsx:1980-1989` + `App.jsx:288`. Fix: block disabling the last enabled plan.
+- [ ] **[HIGH]** Public widget phone input has NO per-country validation (digit-only / maxLength / exact-len) — Batch-3 fixed reception but not the widget; `guestValid` accepts ≥7 digits. `PublicBookingWidget.jsx:1024,391`. Fix: mirror the NewBooking phone handling (IN = 10).
+- [ ] **[MED]** GST per-category manual override silently reverts to auto when the entered value equals the current slab (`gstRate: n === slab.rate ? null : n`); later base-rate changes then mis-tax. `Settings.jsx:1176`. Fix: store the override; only null on explicit Reset.
+- [ ] **[MED]** Empty room-category name saves with no validation → voucher + Diary show "—". `Settings.jsx:1140`. Fix: require a name on save (or auto-fill).
+- [ ] **[MED]** Child free-age can be set ≥ half-age (no cross-field validation) → impossible "12–11y" band in the preview. `Settings.jsx:2826,2839`. Fix: enforce free < half.
+- [ ] **[MED]** Team-alert (arrivalsRecipients) phone field has no validation → malformed numbers break the WhatsApp alert. `Settings.jsx:2774`. Fix: light digit/+ filter.
+
+### Cross-cutting
+- [ ] **[HIGH]** Settings is pervasively English in Hindi mode + the "per night/per stay/per guest" unit strings are hardcoded (and flow into the widget + voucher). `Settings.jsx` (many) + `PublicBookingWidget.jsx:832,1056`. → the deferred Settings/units i18n pass.
+- [ ] **[MED]** Client action handlers (`addPayment`/`setStatus`/`setBookingGst`/`issueInvoice`/`voidInvoice`) lack defense-in-depth `can()` checks (UI buttons are gated; DB RLS enforces server-side, so low real risk). `App.jsx`. Fix: add guard lines.
+
+### Minor (lows worth a sweep later)
+Invoice range filter keeps unparseable dates in range CSV (`Reports.jsx:449`); duplicate saved-extra names allowed; custom meal-plan label saved but never shown to guests; QR "Uploaded" hint optimistic before async save; season-overlap warning only after both dates; extra-guest ₹0 vs "not set" ambiguity.
+
+**Proposed fix order:** R2-1 money/cross-surface (the 5 HIGH money items) → R2-2 date/logic + quick validation (Diary year, copy count, empty name, team phone, all-meal-plans-disabled) → R2-3 widget phone + GST override + child-age bounds → R2-4 the Settings/units i18n pass. RBAC handler guards + lows folded in where they fit.

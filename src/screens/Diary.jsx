@@ -464,7 +464,11 @@ const DEFAULT_HORIZON = 180;
 // relative to ANCHOR (today). Negative idx values represent past dates,
 // 0 is today, positive is the future. This lets the Diary show recent
 // past bookings instead of jumping straight to today.
-function generateDays(pastN, futureN) {
+function generateDays(pastN, futureN, weekendDays) {
+  // Weekend tint must follow the property's configured weekend days (same source
+  // ratePerNight uses — default Sun+Sat [0,6]); hardcoding Fri/Sat tinted the
+  // wrong columns vs where the uplift actually applied (audit R3).
+  const wknd = (Array.isArray(weekendDays) && weekendDays.length) ? weekendDays : [0, 6];
   const out = [];
   for (let i = -pastN; i < futureN; i++) {
     const d = new Date(ANCHOR);
@@ -474,7 +478,7 @@ function generateDays(pastN, futureN) {
       dow: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay() + 6) % 7],
       dom: d.getDate(),
       month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],
-      isWknd: d.getDay() === 5 || d.getDay() === 6,
+      isWknd: wknd.includes(d.getDay()),
       idx: i,
     });
   }
@@ -602,7 +606,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   // the (expensive) expandToPillInstances ran on every render — including every
   // drag pointermove.
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
-  const viewDays = useMemo(() => generateDays(pastDays, horizon), [pastDays, horizon]);
+  const weekendDays = (property && property.weekendRules && Array.isArray(property.weekendRules.weekendDays)) ? property.weekendRules.weekendDays : [0, 6];
+  const weekendKey = weekendDays.join(',');
+  const viewDays = useMemo(() => generateDays(pastDays, horizon, weekendDays), [pastDays, horizon, weekendKey]);
   const viewDaysStart = viewDays.length > 0 ? viewDays[0].idx : 0;
   const todayIso = ymd(ANCHOR);
 

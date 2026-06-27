@@ -280,3 +280,73 @@ had drifted across the child-bands work), then fixed in 5 reviewable batches on
 **Still DEFERRED (owner's call):** the full Settings/units i18n pass (R2 cross-cutting)
 — pervasive English in Hindi mode + hardcoded "per night/stay/guest" unit strings.
 Too large + inconsistent to do piecemeal; per CLAUDE.md M-10 it's deliberately deferred.
+
+---
+
+## ROUND 3 — inconsistency audit (2026-06-27)
+
+11-dimension multi-agent sweep focused on CROSS-SURFACE INCONSISTENCIES (the same
+concept computed/shown/validated differently in two places) + adversarial verify.
+49 raw → 27 "confirmed", 5 intentional, 17 not-real. I then RE-GRADED the confirmed
+list myself — the Haiku verifiers overstated two clusters (see "Downgraded" below).
+
+### Worth fixing — real + safe (deduped)
+- **[HIGH] Diary weekend tint highlights the WRONG days.** Diary `generateDays`
+  (Diary.jsx:477) + `DAYS` (data.js:115) hardcode Fri+Sat (`getDay()===5||6`), but
+  `ratePerNight` (data.js:480) uses `property.weekendRules.weekendDays` (default
+  **[0,6] = Sun+Sat**). So even at defaults the Diary tints Fri/Sat while the uplift
+  applies Sun/Sat. Rates.jsx already reads weekendRules correctly. _Verified the
+  default mismatch in code._ Fix: Diary should derive its weekend set from
+  property.weekendRules.
+- **[HIGH] holdHours default mismatch.** NewBooking seeds holdHours: 4 (NewBooking.jsx
+  ~1266/1300) while the widget + Settings use `accountant.holdHours ?? 12`
+  (PublicBookingWidget.jsx ~417, Settings ~2660). A hotelier who sets a 12h policy
+  still gets 4h holds on staff-created bookings. Fix: NewBooking seed `?? 4` from the
+  property setting.
+- **[HIGH] Dashboard occupancy counts BOOKINGS, not rooms.** Dashboard.jsx ~452
+  uses `.filter().length`; Diary (pills) + Reports (roomsHeld) count per room. A
+  2-room booking shows as 1 occupied on the Dashboard card but 2 in Diary/Reports.
+  Fix: `.reduce((s,b)=>s+roomsHeld(b),0)`.
+- **[MED] Reports revenue-by-type weights legacy bookings by b.total.** Reports.jsx
+  ~616 fallback for a booking with no roomItems uses `rate: b.total` (room + meals +
+  extras + GST), inflating that room type's share. Fix: weight by
+  `roomsSubtotalFor(b, property)`.
+- **[MED] Diary is the one primary screen still leaking English in Hindi mode.**
+  "units" (Diary.jsx:362), "k due"/"paid" pill text (273-274), "IN"/"OUT"/"cancelled"
+  badges (121/125/278) — all hardcoded; BookingPill never receives `t`. Plus Rates.jsx
+  ~703 hardcodes the Sun..Sat day abbreviations. (Distinct from the deferred SETTINGS
+  i18n — the Diary is otherwise bilingual, so this reads as broken.)
+- **[LOW, trivial cleanups]** Diary tentative pill colour 60% vs STATUS 58% lightness
+  (Diary.jsx:104); `defaultMealPlanId` inline `||'ep'` duplicated at 4 call sites
+  instead of the helper; `baseCapacityAdults(property) || 2` dead `||2` in
+  cloud/aiosell.js:252; unused childAge params on StepDates (NewBooking.jsx:105/1651);
+  widget meal delta `Math.round` before floor (PublicBookingWidget.jsx:281) vs un-rounded
+  mealCostFor (±1 only on fractional meal prices); Dashboard greeting uses live clock
+  vs Diary's ANCHOR (diverges only if the app is left open past midnight).
+
+### Downgraded — verifiers overstated (NOT the high they claimed)
+- **roomsSubtotalFor is "best-effort" (falls back to category.base, ignores
+  weekend/season/single-occ).** Reported as "folio/voucher show a different room
+  RATE." FALSE — the folio (BookingDetail.jsx:753) + voucher (voucher.js:267) derive
+  the tariff line by SUBTRACTION from the stored total, so the displayed rate is always
+  correct. roomsSubtotalFor only feeds the meal-downgrade FLOOR → impact is limited to
+  the rare big-downgrade meal-split decomposition (total still correct). Real but MED,
+  and the clean fix (recompute weekend/season/solo in roomsSubtotalFor) must NOT store
+  the rate on roomItems (that re-introduces the edit double-apply bug CLAUDE.md warns of).
+- **GST CGST/SGST % label "uses a decimal."** NOT real — `(tx.rate/2).toFixed(tx.rate%2?1:0)`
+  correctly renders 2.5% / 9%. False positive.
+
+### Needs an owner decision (judgment calls, not auto-fixed)
+- **Guests "in-house" excludes `checkout` status.** A verifier called this a bug, but
+  `checkout` = "Logged check-out" = the guest has DEPARTED, so excluding it from
+  in-house is arguably CORRECT (Dashboard includes it only for payment-collection). Left
+  as-is.
+- **Guests repeat-guest groups by NAME; Dashboard repeat-chip groups by PHONE
+  (repeatGuestKeys).** They can disagree (same name/diff phone, or vice-versa). Aligning
+  to phone is cleaner but changes the Guests list bucketing — wants an explicit call.
+- **extraGuestCostFor silently skips a roomItem whose category was DELETED** → folio/
+  voucher drop that surcharge (total was stored with it). Real edge; the clean fix
+  (store the surcharge as a booking field, or soft-delete categories) is a data-shape
+  change — defer to a dedicated pass.
+- **Public widget shows a blank Step 2 when no rooms are configured** (Rates + Dashboard
+  show a prompt). Minor; the widget is only shared after setup.

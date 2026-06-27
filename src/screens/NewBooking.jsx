@@ -1263,7 +1263,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         roomTypeId: editing.roomTypeId,
         roomItems: seedItems,
         name: editing.guest, phone: (editing.phone || '').replace(/^\+\d+\s*/, ''), email: editing.email || '', country: editing.country || 'IN', state: editing.state || '', gstin: '',
-        notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: 4,
+        notes: editing.notes || '', source: 'walk-in', hold: false, holdHours: property?.accountant?.holdHours ?? 4,
         // Edit path: seed 'none' (not 'full'). Editing never recomputes what's
         // been paid (onCreate preserves existing.paid and StepPayment shows the
         // "payments aren't changed here" card instead of the picker), so this is
@@ -1297,7 +1297,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
         rate: Number.isFinite(pf.rate) ? pf.rate : null,
       }],
       name: pf.name || '', phone: pf.phone || '', email: pf.email || '', country: pf.country || 'IN', state: '', gstin: '',
-      notes: pf.notes || '', source: 'walk-in', hold: false, holdHours: 4,
+      notes: pf.notes || '', source: 'walk-in', hold: false, holdHours: property?.accountant?.holdHours ?? 4,
       payMethod: pf.payMethod || null, payAmount: pf.payAmount || 'none', payCustom: numOr(pf.payCustom, 0),
       extras: {}, customExtras: [], extraPrices: {},
       // New bookings created here are channel='direct', so GST defaults to off.

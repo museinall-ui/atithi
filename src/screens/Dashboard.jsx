@@ -449,7 +449,16 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   // liveBookings), matching the In-house/Arriving tiles below — otherwise a
   // cancelled in-house stay inflated both and contradicted those tiles.
   const catOcc = ROOM_TYPES.map(rt => {
-    const occ = liveBookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
+    // Count ROOMS held of this type today, not bookings — a multi-room booking
+    // holds N units. Matches the Diary pills + Reports room-night math (which
+    // both count per roomItem); counting bookings under-reported multi-room
+    // stays on this card (audit R3).
+    let occ = 0;
+    for (const b of liveBookings) {
+      if ((b.startIdx || 0) > TODAY_IDX || (b.startIdx || 0) + (b.nights || 1) <= TODAY_IDX) continue;
+      const items = (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
+      occ += items.filter(it => (it.roomTypeId || b.roomTypeId) === rt.id).length;
+    }
     return { rt, occ, total: rt.units };
   });
   const occRooms = catOcc.reduce((a, c) => a + c.occ, 0);

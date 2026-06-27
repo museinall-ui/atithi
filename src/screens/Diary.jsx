@@ -101,7 +101,9 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi,
   // it's instantly readable across the calendar, a bold matching border,
   // and a small filled badge on the right edge that flags the status with
   // white-on-colour for maximum contrast.
-  const HOLD = 'oklch(60% 0.14 75)';
+  // Match the authoritative STATUS.tentative colour (data.js) so the pill's
+  // on-hold tint is the exact same shade as the booking-detail status dot (R3).
+  const HOLD = 'oklch(58% 0.14 75)';
   let bg = T.card;
   let border = `1px solid ${T.border}`;
   let badge = null;

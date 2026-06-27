@@ -278,7 +278,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     // folio recompute (bookingGuestCount in data.js, which sums all bands). Keeps
     // the widget total equal to what the folio + voucher recompute (price parity).
     const totalGuests = (data.adults || 0) + totalChildren;
-    const raw = Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
+    // No Math.round on the delta — NewBooking + mealCostFor leave it un-rounded,
+    // so rounding here diverged the widget quote from the folio recompute on
+    // fractional meal prices (R3 parity; a no-op on whole-rupee prices).
+    const raw = ((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1);
     // Floor a downgrade at -roomCost (same floor NewBooking + the folio apply)
     // so a big meal discount can't push rooms+meal below zero.
     return Math.max(-roomCost, raw);

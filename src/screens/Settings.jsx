@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { T, THEME_PRESETS, applyTheme } from '../tokens.js';
-import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode } from '../data.js';
+import { AMENITIES, currentFinancialYear, GST_SLABS, gstSlabFor, gstRateForCategory, slugify, propertyShortCode, effectiveChildBands } from '../data.js';
 import TeamSection from '../components/TeamSection.jsx';
 import NumberInput from '../components/NumberInput.jsx';
 import { useInstallPrompt } from '../components/InstallPrompt.jsx';
@@ -1198,7 +1198,6 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     (e.g. luxury tents charge more for an extra adult). */}
                 {(() => {
                   const ea = c.extraAdult || { mode: 'flat', value: 0 };
-                  const ec = c.extraChild || { mode: 'flat', value: 0 };
                   const updateRule = (key, patch) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, [key]: { ...(x[key] || { mode: 'flat', value: 0 }), ...patch } } : x));
                   const modeBtn = (rule, mode, label) => {
                     const sel = (c[rule]?.mode || 'flat') === mode;
@@ -1231,32 +1230,57 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     if (r.mode === 'pct') return `₹${Math.round((c.base || 0) * (+r.value) / 100).toLocaleString('en-IN')}`;
                     return `₹${(+r.value).toLocaleString('en-IN')}`;
                   };
+                  const bands = effectiveChildBands({ accountant });
+                  const catChildRates = (accountant.childRatesByCategory && accountant.childRatesByCategory[c.id]) || {};
+                  const setChildRate = (bandId, patch) => setAccountant(a => {
+                    const all = a.childRatesByCategory || {};
+                    const forCat = all[c.id] || {};
+                    const cur = forCat[bandId] || { mode: 'free', value: 0 };
+                    return { ...a, childRatesByCategory: { ...all, [c.id]: { ...forCat, [bandId]: { ...cur, ...patch } } } };
+                  });
+                  const childModeBtn = (bandId, cur, mode, label) => {
+                    const sel = (cur.mode || 'free') === mode;
+                    return (
+                      <button onClick={() => setChildRate(bandId, { mode })} style={{ padding: '4px 8px', borderRadius: 6, cursor: 'pointer', border: `1.5px solid ${sel ? T.indigo : T.border}`, background: sel ? T.indigo : T.card, color: sel ? '#fff' : T.ink3, fontSize: 10, fontWeight: 800, letterSpacing: 0.2, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        {sel && <Icon name="check" size={9} color="#fff" stroke={3} />}{label}
+                      </button>
+                    );
+                  };
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, padding: '8px 10px', background: T.bgSoft, borderRadius: 7, border: `1px solid ${T.borderSoft}` }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, padding: '8px 10px', background: T.bgSoft, borderRadius: 7, border: `1px solid ${T.borderSoft}` }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase' }}>Extra-guest pricing</div>
-                      {[
-                        { rule: 'extraAdult', label: 'Extra adult', val: ea },
-                        { rule: 'extraChild', label: 'Extra child', val: ec },
-                      ].map(({ rule, label, val }) => (
-                        <div key={rule} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76 }}>{label}</span>
-                          <div style={{ display: 'inline-flex', gap: 3 }}>
-                            {modeBtn(rule, 'flat', '₹')}
-                            {modeBtn(rule, 'pct', '% of base')}
-                          </div>
-                          <NumberInput
-                            min={0}
-                            value={val.value || 0}
-                            onChange={(n) => updateRule(rule, { value: n })}
-                            className="tnum"
-                            style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }}
-                          />
-                          <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>per night</span>
-                          {previewFor(rule) && (
-                            <span style={{ marginLeft: 'auto', fontSize: 9, color: T.indigo, fontWeight: 700 }}>≈ {previewFor(rule)}/night</span>
-                          )}
+                      {/* Extra adult */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76 }}>Extra adult</span>
+                        <div style={{ display: 'inline-flex', gap: 3 }}>
+                          {modeBtn('extraAdult', 'flat', '₹')}
+                          {modeBtn('extraAdult', 'pct', '% of base')}
                         </div>
-                      ))}
+                        <NumberInput min={0} value={ea.value || 0} onChange={(n) => updateRule('extraAdult', { value: n })} className="tnum" style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }} />
+                        <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>per night</span>
+                        {previewFor('extraAdult') && (<span style={{ marginLeft: 'auto', fontSize: 9, color: T.indigo, fontWeight: 700 }}>≈ {previewFor('extraAdult')}/night</span>)}
+                      </div>
+                      {/* Extra child — one price per age band */}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, letterSpacing: 0.3, textTransform: 'uppercase', marginTop: 2 }}>Extra child · per age band</div>
+                      {bands.map(band => {
+                        const cur = catChildRates[band.id] || { mode: 'free', value: 0 };
+                        const prev = cur.mode === 'pct' ? `₹${Math.round((c.base || 0) * (+cur.value || 0) / 100).toLocaleString('en-IN')}` : `₹${(+cur.value || 0).toLocaleString('en-IN')}`;
+                        return (
+                          <div key={band.id} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 10.5, color: T.ink2, fontWeight: 600, minWidth: 76, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{band.label || '—'}</span>
+                            <div style={{ display: 'inline-flex', gap: 3 }}>
+                              {childModeBtn(band.id, cur, 'free', 'Free')}
+                              {childModeBtn(band.id, cur, 'flat', '₹')}
+                              {childModeBtn(band.id, cur, 'pct', '% of base')}
+                            </div>
+                            {cur.mode !== 'free' && (
+                              <NumberInput min={0} value={cur.value || 0} onChange={(n) => setChildRate(band.id, { value: n })} className="tnum" style={{ width: 70, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 5, padding: '3px 6px', fontSize: 11, fontWeight: 700, color: T.ink, background: T.card }} />
+                            )}
+                            {cur.mode !== 'free' && <span style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>per night</span>}
+                            <span style={{ marginLeft: 'auto', fontSize: 9, color: cur.mode === 'free' ? T.ok : T.indigo, fontWeight: 700 }}>{cur.mode === 'free' ? 'Free' : `≈ ${prev}/night`}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
@@ -2808,64 +2832,57 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           </Card>
         </AccordionGroup>
 
-        <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')} hint={`Free <${accountant.childFreeBelowAge ?? 5}y · Half ≤${(accountant.childAgeBelow ?? 12) - 1}y`}>
+        <AccordionGroup title="House rules" open={openGroups.houseRules} onToggle={() => toggleGroup('houseRules')} hint={`${effectiveChildBands({ accountant }).length} child bands`}>
         {/* Capacity + child-age tiers that drive extra-guest pricing.
             The category-level "Extra adult" + "Extra child" rates
             (inside Rooms + amenities) reference these. */}
-        <SectionHead title="Child age policy" style={{ marginTop: 0 }} />
+        <SectionHead title="Child age bands" style={{ marginTop: 0 }} />
         <Card padding={12}>
           <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>
-            Set your property's child policy. Some properties let kids stay free up to 10 or 12 years — set whatever fits your rate sheet. Used everywhere kids are counted: New Booking, the public widget, the voucher.
+            Define your child age groups. You set the ₹ price for each group per room type (Rooms + amenities) and can override it per season (Pricing rules). Make the youngest band free by setting its price to ₹0. Used in New Booking, the website widget and the voucher.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>Stay FREE under age</label>
-              <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
-                <NumberInput
-                  value={accountant.childFreeBelowAge ?? 5}
-                  min={0} fallback={5}
-                  onChange={(n) => setAccountant({ ...accountant, childFreeBelowAge: n })}
-                  placeholder="5"
-                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
-                />
-              </div>
-              <span style={{ fontSize: 11, color: T.ink3 }}>No charge for kids below this age</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.ink2 }}>HALF rate under age</label>
-              <div style={{ background: T.bgSunk, border: `1px solid ${T.borderSoft}`, borderRadius: 10, padding: '0 12px', height: 44, display: 'flex', alignItems: 'center' }}>
-                <NumberInput
-                  value={accountant.childAgeBelow ?? 12}
-                  min={0} fallback={12}
-                  onChange={(n) => setAccountant({ ...accountant, childAgeBelow: n })}
-                  placeholder="12"
-                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 500, color: T.ink, minWidth: 0 }}
-                />
-              </div>
-              <span style={{ fontSize: 11, color: T.ink3 }}>Half the extra-child rate up to this age</span>
-            </div>
-          </div>
-          {/* Live preview — concrete example rendered in the hotelier's
-              current numbers. Helps catch off-by-one mistakes (e.g. 'I
-              set Half to 12, does a 12-year-old pay full or half?'). */}
-          <div style={{ padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 8, fontSize: 11, color: T.ink2, fontWeight: 600, lineHeight: 1.6 }}>
-            <div style={{ fontSize: 9, fontWeight: 800, color: T.ink3, letterSpacing: 0.5, marginBottom: 5, textTransform: 'uppercase' }}>Your policy</div>
-            {(() => {
-              const free = accountant.childFreeBelowAge ?? 5;
-              const half = accountant.childAgeBelow ?? 12;
-              const rows = [
-                { label: `0 – ${free - 1}y old`, charge: 'Free', color: T.ok },
-                free < half && { label: `${free} – ${half - 1}y old`, charge: 'Half the extra-child rate', color: T.indigo },
-                { label: `${half}y and above`, charge: 'Full extra-child rate', color: T.warn },
-              ].filter(Boolean);
-              return rows.map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0' }}>
-                  <span>{r.label}</span>
-                  <span style={{ color: r.color, fontWeight: 700 }}>{r.charge}</span>
+          {(() => {
+            const bands = effectiveChildBands({ accountant });
+            const setBands = (next) => setAccountant(a => ({ ...a, childBands: next }));
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {bands.map((b, i) => (
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      value={b.label || ''}
+                      placeholder="Band name (e.g. 5–10 yrs)"
+                      onChange={(e) => setBands(bands.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                      style={{ flex: 1, minWidth: 0, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontWeight: 600, color: T.ink, background: T.card }}
+                    />
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>under</span>
+                    <input
+                      type="number" inputMode="numeric" min={1}
+                      value={b.maxAge ?? ''}
+                      placeholder="& up"
+                      onChange={(e) => { const v = e.target.value; const n = v === '' ? null : Math.max(1, Math.round(+v || 0)); setBands(bands.map((x, j) => j === i ? { ...x, maxAge: n } : x)); }}
+                      className="tnum"
+                      style={{ width: 58, border: `1px solid ${T.border}`, outline: 'none', borderRadius: 6, padding: '6px 6px', fontSize: 12, fontWeight: 700, color: T.ink, background: T.card, textAlign: 'center' }}
+                    />
+                    <span style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>y</span>
+                    {bands.length > 1 && (
+                      <button onClick={() => setBands(bands.filter((_, j) => j !== i))} title="Remove band" style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+                        <Icon name="x" size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setBands([...bands, { id: 'cb_' + Date.now().toString(36), label: '', maxAge: null }])}
+                  style={{ marginTop: 2, alignSelf: 'flex-start', padding: '6px 10px', borderRadius: 8, border: `1.5px dashed ${T.border}`, background: T.card, color: T.ink2, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Icon name="plus" size={11} color={T.ink2} /> Add band
+                </button>
+                <div style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, fontStyle: 'italic', lineHeight: 1.4, marginTop: 2 }}>
+                  "Under {'{age}'}" = children below that age fall in this band. Leave the top band's age blank for "and up". List youngest to oldest.
                 </div>
-              ));
-            })()}
-          </div>
+              </div>
+            );
+          })()}
         </Card>
 
         <SectionHead title="Adults included in the base rate" style={{ marginTop: 16 }} />

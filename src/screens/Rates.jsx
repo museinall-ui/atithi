@@ -699,9 +699,9 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
               <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4 }}>{t('baseRate')}</div>
               <div className="tnum" style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.6 }}>₹{rt.base.toLocaleString('en-IN')}</div>
               <div style={{ fontSize: 11, color: T.ink3, marginTop: 2 }}>{rt.units} {t('units')} · {(() => {
-                const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const dows = lang === 'hi' ? ['रवि','सोम','मंगल','बुध','गुरु','शुक्र','शनि'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
                 const names = weekendDays.map(d => dows[d]).join('/');
-                return upliftPct > 0 ? `${names} +${upliftPct}%` : 'No weekend uplift';
+                return upliftPct > 0 ? `${names} +${upliftPct}%` : t('noWeekendUplift');
               })()}</div>
               <button onClick={() => go('settings')} style={{
                 marginTop: 7, padding: 0, background: 'none', border: 'none',

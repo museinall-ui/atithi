@@ -88,7 +88,7 @@ function expandToPillInstances(bookings, ROOM_TYPES) {
   return instances;
 }
 
-function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi }) {
+function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi, t = (k) => k }) {
   // Defensive default (R9-3): an unexpected channel value must not crash
   // the pill (and with it the whole Diary) on ch.color below.
   const ch = CHANNELS[b.channel] || { label: b.channel || 'Direct', color: T.ink3, short: '?' };
@@ -118,11 +118,11 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
     // pill on the calendar.
     bg = `color-mix(in oklch, ${T.indigo} 34%, white)`;
     border = `2px solid ${T.indigo}`;
-    badge = { color: T.indigo, icon: 'bed', label: 'IN' };
+    badge = { color: T.indigo, icon: 'bed', label: t('diaryStatusIn') };
   } else if (isCheckedout) {
     bg = `color-mix(in oklch, ${T.ok} 34%, white)`;
     border = `2px solid ${T.ok}`;
-    badge = { color: T.ok, icon: 'check', label: 'OUT' };
+    badge = { color: T.ok, icon: 'check', label: t('diaryStatusOut') };
   }
 
   // Responsive name + badge rendering. A 1-night pill at default zoom is only
@@ -270,12 +270,12 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
         {!isHold && !isCheckedin && !isCheckedout && !isCancelled && !showInitials && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
             {b.paid < b.total
-              ? <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k due</span>
-              : <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> paid</span>}
+              ? <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k {t('diaryDue')}</span>
+              : <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> {t('diaryPaid')}</span>}
           </div>
         )}
         {isCancelled && !showInitials && (
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, marginTop: 1 }}>cancelled</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, marginTop: 1 }}>{t('diaryCancelled')}</div>
         )}
       </div>
       {badge && badgeMode !== 'hidden' && (
@@ -359,7 +359,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
           <span style={{ width: 4, height: 14, borderRadius: 2, background: tagColor }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.ink, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rt.name}</div>
-            <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} units · ₹{rt.base.toLocaleString('en-IN')}</div>
+            <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} {t('units')} · ₹{rt.base.toLocaleString('en-IN')}</div>
           </div>
         </div>
         {days.map(d => (
@@ -427,6 +427,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                     colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
                     onPointerDown={(e) => gatedOnPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
                     multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
+                    t={t}
                   />
                 );
               })}

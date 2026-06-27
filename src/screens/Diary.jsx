@@ -88,7 +88,7 @@ function expandToPillInstances(bookings, ROOM_TYPES) {
   return instances;
 }
 
-function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi }) {
+function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi, t = (k) => k }) {
   // Defensive default (R9-3): an unexpected channel value must not crash
   // the pill (and with it the whole Diary) on ch.color below.
   const ch = CHANNELS[b.channel] || { label: b.channel || 'Direct', color: T.ink3, short: '?' };
@@ -101,7 +101,9 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   // it's instantly readable across the calendar, a bold matching border,
   // and a small filled badge on the right edge that flags the status with
   // white-on-colour for maximum contrast.
-  const HOLD = 'oklch(60% 0.14 75)';
+  // Match the authoritative STATUS.tentative colour (data.js) so the pill's
+  // on-hold tint is the exact same shade as the booking-detail status dot (R3).
+  const HOLD = 'oklch(58% 0.14 75)';
   let bg = T.card;
   let border = `1px solid ${T.border}`;
   let badge = null;
@@ -118,11 +120,11 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
     // pill on the calendar.
     bg = `color-mix(in oklch, ${T.indigo} 34%, white)`;
     border = `2px solid ${T.indigo}`;
-    badge = { color: T.indigo, icon: 'bed', label: 'IN' };
+    badge = { color: T.indigo, icon: 'bed', label: t('diaryStatusIn') };
   } else if (isCheckedout) {
     bg = `color-mix(in oklch, ${T.ok} 34%, white)`;
     border = `2px solid ${T.ok}`;
-    badge = { color: T.ok, icon: 'check', label: 'OUT' };
+    badge = { color: T.ok, icon: 'check', label: t('diaryStatusOut') };
   }
 
   // Responsive name + badge rendering. A 1-night pill at default zoom is only
@@ -270,12 +272,12 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
         {!isHold && !isCheckedin && !isCheckedout && !isCancelled && !showInitials && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
             {b.paid < b.total
-              ? <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k due</span>
-              : <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> paid</span>}
+              ? <span className="tnum" style={{ fontSize: 9, fontWeight: 700, color: T.ink3 }}>₹{((b.total - b.paid)/1000).toFixed(1)}k {t('diaryDue')}</span>
+              : <span style={{ fontSize: 9, fontWeight: 700, color: T.ok, display: 'flex', alignItems: 'center', gap: 2 }}><Icon name="check" size={9} stroke={2.5} /> {t('diaryPaid')}</span>}
           </div>
         )}
         {isCancelled && !showInitials && (
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, marginTop: 1 }}>cancelled</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.ink3, marginTop: 1 }}>{t('diaryCancelled')}</div>
         )}
       </div>
       {badge && badgeMode !== 'hidden' && (
@@ -299,7 +301,7 @@ function BookingPill({ b, colW, labelW, viewDaysStart, dx, onPointerDown, multi 
   );
 }
 
-function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart, canCreate = true, canEdit = true }) {
+function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW, drag, onPointerDown, go, days, todayIso, viewDaysStart, canCreate = true, canEdit = true, t = (k) => k }) {
   const tagColor = T[rt.tag];
   // Map of (unitIdx, dayIdx) -> whether that cell is already occupied by a
   // pill instance. Used to decide whether to make the cell clickable for
@@ -332,7 +334,11 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
     // the cell is rendered without a hover affordance for the same
     // reason (see cellOnClick below).
     if (!canCreate) return;
-    if (dateToIdx(date) < 0) return;  // can't take a booking for a date that's already gone (audit #4)
+    // Past dates ARE allowed for back-dated bookings — reception sometimes
+    // records a stay that already happened. Confirm first so a mis-tap on an old
+    // column doesn't silently start a gone-by booking. (Rates / inventory for a
+    // past day stay locked — there's no reason to re-price a day that's gone.)
+    if (dateToIdx(date) < 0 && typeof window !== 'undefined' && !window.confirm(t('pastDateBookingConfirm'))) return;
     if (go) go('new', { prefill: { date, roomTypeId: rt.id } });
   };
   // Gate drag-move on edit_bookings — same reason. A reception
@@ -355,7 +361,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
           <span style={{ width: 4, height: 14, borderRadius: 2, background: tagColor }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.ink, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rt.name}</div>
-            <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} units · ₹{rt.base.toLocaleString('en-IN')}</div>
+            <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }} className="tnum">{rt.units} {t('units')} · ₹{rt.base.toLocaleString('en-IN')}</div>
           </div>
         </div>
         {days.map(d => (
@@ -383,9 +389,10 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
             {days.map(d => {
               const occupied = isOccupied(ui, d.idx);
               const isToday = d.iso === todayIso;
-              // Past empty cells can't be booked (audit #4) — no tap, no hover,
-              // faded so they read as locked.
-              const inactive = occupied || d.idx < 0;
+              // Past empty cells stay tappable (faded as a cue) so reception can
+              // make a back-dated booking; openQuickCreate confirms first. Only
+              // occupied cells are inactive.
+              const inactive = occupied;
               return (
                 <div
                   key={d.iso}
@@ -422,6 +429,7 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
                     colW={colW} labelW={labelW} viewDaysStart={viewDaysStart} dx={dx}
                     onPointerDown={(e) => gatedOnPointerDown(e, inst.b, { isPrimary: inst.isPrimary })}
                     multi={inst.roomCount > 1 ? { current: inst.itemIndex + 1, total: inst.roomCount } : null}
+                    t={t}
                   />
                 );
               })}
@@ -459,7 +467,11 @@ const DEFAULT_HORIZON = 180;
 // relative to ANCHOR (today). Negative idx values represent past dates,
 // 0 is today, positive is the future. This lets the Diary show recent
 // past bookings instead of jumping straight to today.
-function generateDays(pastN, futureN) {
+function generateDays(pastN, futureN, weekendDays) {
+  // Weekend tint must follow the property's configured weekend days (same source
+  // ratePerNight uses — default Sun+Sat [0,6]); hardcoding Fri/Sat tinted the
+  // wrong columns vs where the uplift actually applied (audit R3).
+  const wknd = (Array.isArray(weekendDays) && weekendDays.length) ? weekendDays : [0, 6];
   const out = [];
   for (let i = -pastN; i < futureN; i++) {
     const d = new Date(ANCHOR);
@@ -469,7 +481,7 @@ function generateDays(pastN, futureN) {
       dow: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(d.getDay() + 6) % 7],
       dom: d.getDate(),
       month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()],
-      isWknd: d.getDay() === 5 || d.getDay() === 6,
+      isWknd: wknd.includes(d.getDay()),
       idx: i,
     });
   }
@@ -597,7 +609,9 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
   // the (expensive) expandToPillInstances ran on every render — including every
   // drag pointermove.
   const ROOM_TYPES = useMemo(() => effectiveRoomTypes(property), [property]);
-  const viewDays = useMemo(() => generateDays(pastDays, horizon), [pastDays, horizon]);
+  const weekendDays = (property && property.weekendRules && Array.isArray(property.weekendRules.weekendDays)) ? property.weekendRules.weekendDays : [0, 6];
+  const weekendKey = weekendDays.join(',');
+  const viewDays = useMemo(() => generateDays(pastDays, horizon, weekendDays), [pastDays, horizon, weekendKey]);
   const viewDaysStart = viewDays.length > 0 ? viewDays[0].idx : 0;
   const todayIso = ymd(ANCHOR);
 
@@ -902,7 +916,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
         <div style={{ minWidth: labelW + colW * viewDays.length + 16, position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', background: T.card, borderBottom: `1px solid ${T.border}` }}>
             <div style={{ width: labelW, flexShrink: 0, borderRight: `1px solid ${T.borderSoft}`, padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${new Date(ANCHOR).getFullYear()}` : ''}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{viewDays[0] ? `${viewDays[0].month.toUpperCase()} ${viewDays[0].iso.slice(0, 4)}` : ''}</div>
               <div style={{ fontSize: 11, color: T.ink3 }}>{visibleBookings.length} {lang === 'hi' ? (visibleBookings.length === 1 ? 'ठहराव' : 'ठहराव') : (visibleBookings.length === 1 ? 'stay' : 'stays')}</div>
             </div>
             {viewDays.map((d) => {
@@ -964,6 +978,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
               viewDaysStart={viewDaysStart}
               canCreate={canCreate}
               canEdit={canEdit}
+              t={t}
             />
           ))}
         </div>

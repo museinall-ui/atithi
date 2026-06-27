@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, childTotalForItem, stampExtraGuestAmounts, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import { migratePropertyImages } from './cloud/storage.js';
@@ -1559,6 +1559,7 @@ export default function App() {
   }, []);
 
   const addPayment = (bookingId, entry) => {
+    if (!can('manage_payments')) return; // defense-in-depth (UI + RLS also gate)
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
     // Synthetic "pre-existing balance" row for a legacy booking that has
@@ -1618,6 +1619,7 @@ export default function App() {
   };
 
   const setStatus = (bookingId, status) => {
+    if (!can(status === 'cancelled' ? 'cancel_bookings' : 'edit_bookings')) return; // defense-in-depth
     const clearRelease = status === 'confirmed' || status === 'cancelled' || status === 'checkedin';
     let nextEvents = null;
     // Snapshot what we're overwriting — used by the undo snackbar so
@@ -1700,6 +1702,7 @@ export default function App() {
   // history; the no-show flag is derived from that event on reload. Then report
   // it to the OTA.
   const markNoShow = (bookingId) => {
+    if (!can('cancel_bookings')) return; // defense-in-depth
     const existing = bookings.find(b => b.id === bookingId);
     if (!existing) return;
     let nextEvents = null;
@@ -1726,6 +1729,7 @@ export default function App() {
   // to the current releaseTs (or to now, if the timer has somehow gone stale)
   // and resyncs releaseAt + holdHours so the UI stays in sync.
   const extendHold = (bookingId, hours) => {
+    if (!can('edit_bookings')) return; // defense-in-depth
     if (!hours || hours <= 0) return;
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking || booking.status !== 'tentative') return;
@@ -1757,6 +1761,7 @@ export default function App() {
   };
 
   const moveBooking = (bookingId, patch) => {
+    if (!can('edit_bookings')) return; // defense-in-depth
     let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
@@ -1774,6 +1779,7 @@ export default function App() {
   };
 
   const setBookingGst = (bookingId, value) => {
+    if (!can('manage_invoices')) return; // defense-in-depth
     let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
@@ -1800,6 +1806,7 @@ export default function App() {
     return (hit && (hit.label || hit.name)) || id;
   };
   const addExpense = async (expense) => {
+    if (!can('manage_expenses')) return; // defense-in-depth
     // Local: prepend to the list (newest first). Cloud assigns the
     // canonical uuid; if cloud succeeds we swap the local id for the
     // cloud one. If cloud fails the local entry stays.
@@ -1815,6 +1822,7 @@ export default function App() {
     logEvent('expense.add', 'expense', expense.id, { amount: expense.amount, category: expense.category, categoryLabel: expCatLabel(expense.category), paidVia: expense.paidVia, note: expense.note });
   };
   const removeExpense = (expenseId) => {
+    if (!can('manage_expenses')) return; // defense-in-depth
     const removed = expenses.find(e => e.id === expenseId);
     setExpenses(arr => arr.filter(e => e.id !== expenseId));
     if (cloudReady && propertyId) {
@@ -1823,6 +1831,7 @@ export default function App() {
     logEvent('expense.remove', 'expense', expenseId, removed ? { amount: removed.amount, category: removed.category, categoryLabel: expCatLabel(removed.category) } : {});
   };
   const updateExpense = (expenseId, patch) => {
+    if (!can('manage_expenses')) return; // defense-in-depth
     setExpenses(arr => arr.map(e => e.id === expenseId ? { ...e, ...patch } : e));
     if (cloudReady && propertyId) {
       syncFire('Update expense', updateExpenseCloud(expenseId, patch));
@@ -1835,6 +1844,7 @@ export default function App() {
   // VoiceRecorder component on BookingDetail. We cap at 3 notes per
   // booking (enforced in the UI too) so localStorage stays bounded.
   const addVoiceNote = (bookingId, note) => {
+    if (!can('edit_bookings')) return; // defense-in-depth
     let nextNotes = null;
     let nextEvents = null;
     setBookings(arr => arr.map(b => {
@@ -1852,6 +1862,7 @@ export default function App() {
     logEvent('booking.voice_note_add', 'booking', bookingId, { durationSec: note.durationSec });
   };
   const removeVoiceNote = (bookingId, noteId) => {
+    if (!can('edit_bookings')) return; // defense-in-depth
     let nextNotes = null;
     let nextEvents = null;
     setBookings(arr => arr.map(b => {
@@ -1872,6 +1883,7 @@ export default function App() {
   // and Dashboard, the 'Whale' / 'Repeat VIP' derivations in Guests,
   // and the VIP filter. Manual flag — no auto-derivation here.
   const setBookingVip = (bookingId, value) => {
+    if (!can('edit_bookings')) return; // defense-in-depth
     let nextEvents = null;
     setBookings(arr => arr.map(b => {
       if (b.id !== bookingId) return b;
@@ -1900,6 +1912,7 @@ export default function App() {
   // Offline path: fall back to the local counter so the hotelier isn't
   // blocked when the network is down. We reconcile on the next sync.
   const issueInvoice = async (bookingId, partOrParts) => {
+    if (!can('manage_invoices')) return null; // defense-in-depth
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking || booking.status === 'tentative') return null;
     const part = (Array.isArray(partOrParts) ? partOrParts[0] : partOrParts) || {
@@ -1966,6 +1979,7 @@ export default function App() {
   };
 
   const voidInvoice = (bookingId, invoiceId) => {
+    if (!can('manage_invoices')) return; // defense-in-depth
     const booking = bookings.find(b => b.id === bookingId);
     const inv = booking?.invoices?.find(i => i.id === invoiceId);
     setBookings(arr => arr.map(b => b.id === bookingId
@@ -2076,7 +2090,9 @@ export default function App() {
       const newStartIdx = data.checkIn
         ? parseCheckInIdx(data.checkIn)
         : (existing ? (existing.startIdx || 0) : 0);
-      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
+      const _adultsTot = data.roomItems.reduce((s, r) => s + (r.adults || 0), 0);
+      const _childTot = data.roomItems.reduce((s, r) => s + childTotalForItem(r), 0);
+      const guestsStr = `${_adultsTot}A${_childTot > 0 ? ` ${_childTot}C` : ''}`;
       const phone = dial + ' ' + (data.phone || (existing && existing.phone ? existing.phone.replace(/^\+\d+\s*/, '') : ''));
       // Build a brief diff summary for the activity feed — only the
       // fields that actually changed. Keeps the changelog auditable
@@ -2103,7 +2119,10 @@ export default function App() {
         couponCode: existing ? (existing.couponCode || '') : '',
         discountAmount: keepDiscount,
         notes: data.notes, extras: data.extras,
-        roomItems: data.roomItems, customExtras: mergedCustomExtras, extraPrices: data.extraPrices,
+        // Stamp each room's extra-guest surcharge so it survives a later
+        // category deletion (audit R3 — extraGuestCostFor reads it as a fallback).
+        roomItems: stampExtraGuestAmounts(data.roomItems, property, data.nights, newStartIdx, data.roomTypeId),
+        customExtras: mergedCustomExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
@@ -2203,7 +2222,9 @@ export default function App() {
         if (!proceed) return;
         unitIdx = 0;
       }
-      const guestsStr = `${data.roomItems.reduce((s, r) => s + r.adults, 0)}A${data.roomItems.reduce((s, r) => s + r.children, 0) > 0 ? ` ${data.roomItems.reduce((s, r) => s + r.children, 0)}C` : ''}`;
+      const _adultsTot = data.roomItems.reduce((s, r) => s + (r.adults || 0), 0);
+      const _childTot = data.roomItems.reduce((s, r) => s + childTotalForItem(r), 0);
+      const guestsStr = `${_adultsTot}A${_childTot > 0 ? ` ${_childTot}C` : ''}`;
       const newBk = {
         roomTypeId: data.roomTypeId,
         unitIdx,
@@ -2236,7 +2257,9 @@ export default function App() {
         country, formC,
         notes: data.notes,
         extras: data.extras,
-        roomItems: data.roomItems,
+        // Stamp each room's extra-guest surcharge so it survives a later
+        // category deletion (audit R3 — extraGuestCostFor reads it as a fallback).
+        roomItems: stampExtraGuestAmounts(data.roomItems, property, data.nights, startIdx, data.roomTypeId),
         customExtras: mergedCustomExtras,
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, singleOccRateFor, safeUrl, AMENITIES } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, stampExtraGuestAmounts, singleOccRateFor, safeUrl, AMENITIES, effectiveChildBands } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -48,9 +48,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     // The 3-band picker only appears when the property actually charges for
     // extra children — otherwise a single "Children (total)" stepper shows and
     // everything lands in `children` (the bands wouldn't change the price).
-    children: 0,        // half-rate band (also the catch-all when no child charge)
-    childrenFree: 0,    // free band — no charge
-    childrenFull: 0,    // full-rate band — billed like an adult
+    // Per-age-band child counts, keyed by the hotelier's band ids
+    // (accountant.childBands). { [bandId]: count }. Replaces the old fixed
+    // free/half/full trio so a property with custom bands collects the right
+    // ages online. childCountsForItem maps legacy bookings forward.
+    childBands: {},
     roomTypeId: null,
     ratePlanId: defaultRatePlanId(),
     // Default to the property's default meal plan so the displayed
@@ -211,19 +213,35 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0));
   };
   const adultsPerRoom = distributeAcross(data.adults || 0, rooms);
-  const childrenPerRoom = distributeAcross(data.children || 0, rooms);
-  const childrenFreePerRoom = distributeAcross(data.childrenFree || 0, rooms);
-  const childrenFullPerRoom = distributeAcross(data.childrenFull || 0, rooms);
-  // Headcount used for meals + per-guest extras counts EVERY band (a free-band
-  // toddler still eats a meal); only the extra-guest surcharge weights bands
-  // differently. Pricing weight ≠ headcount.
-  const totalChildren = (data.children || 0) + (data.childrenFree || 0) + (data.childrenFull || 0);
+  // Children are collected per custom age band (effectiveChildBands). Distribute
+  // each band's count across rooms so roomItems[].childBands mirrors exactly what
+  // the cost engine + voucher read. Headcount (totalChildren) counts EVERY band
+  // (a free-band toddler still eats a meal); the extra-guest surcharge weights
+  // bands differently — pricing weight ≠ headcount.
+  const ageBands = effectiveChildBands(property);
+  const childBandsPerRoom = Array.from({ length: rooms }, () => ({}));
+  let totalChildren = 0;
+  for (const band of ageBands) {
+    const cnt = (data.childBands && data.childBands[band.id]) || 0;
+    if (!cnt) continue;
+    totalChildren += cnt;
+    distributeAcross(cnt, rooms).forEach((n, i) => { if (n) childBandsPerRoom[i][band.id] = n; });
+  }
+  // Per-room child fields. childBands is canonical; the legacy free/half/full
+  // mirrors keep any surface still reading the old fields correct for the 3
+  // default band ids (custom bands rely on childBands).
+  const roomChildFields = (i) => {
+    const cb = childBandsPerRoom[i] || {};
+    return { childBands: cb, childrenFree: cb.free || 0, children: cb.half || 0, childrenFull: cb.full || 0 };
+  };
   // The 3-band child picker only matters when the property charges for extra
   // children (a per-category extraChild rule, or a season override). Otherwise
   // the bands are price-identical, so we keep a single "Children" stepper.
-  const childFreeAge = property?.accountant?.childFreeBelowAge ?? 5;
-  const childHalfAge = property?.accountant?.childAgeBelow ?? 12;
+  const chRatesAcc = property?.accountant || {};
+  const anyChildRule = (m) => m && Object.values(m).some(r => r && r.mode && r.mode !== 'free' && (+r.value || 0) > 0);
   const chargesForChildren =
+    (chRatesAcc.childRatesByCategory && Object.values(chRatesAcc.childRatesByCategory).some(anyChildRule)) ||
+    (chRatesAcc.childRatesBySeason && Object.values(chRatesAcc.childRatesBySeason).some(node => anyChildRule(node?.byBand) || (node?.byCategory && Object.values(node.byCategory).some(anyChildRule)))) ||
     (Array.isArray(property?.categories) && property.categories.some(c => c?.extraChild && (+c.extraChild.value || 0) > 0)) ||
     (Array.isArray(property?.seasons) && property.seasons.some(s => s?.extraChild && (+s.extraChild.value || 0) > 0));
   // Room cost = per-night sum, per room. A room with exactly 1 adult uses the
@@ -255,13 +273,18 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     const def = mealPlanById(property, defaultMealPlanId);
     if (!picked || !def) return 0;
     if (picked.id === def.id) return 0;
-    // Meals + per-guest extras count adults + the half-rate child band only —
-    // matching reception (NewBooking) + the saved-booking folio recompute
-    // (bookingGuestCount in data.js). Free/full-band children still count toward
-    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
-    // widget total equals what the folio + voucher recompute (price parity).
-    const totalGuests = (data.adults || 0) + (data.children || 0);
-    return Math.round(((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1));
+    // Meals + per-guest extras count adults + EVERY child band (a free-band
+    // toddler still eats) — matching reception (NewBooking) + the saved-booking
+    // folio recompute (bookingGuestCount in data.js, which sums all bands). Keeps
+    // the widget total equal to what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + totalChildren;
+    // No Math.round on the delta — NewBooking + mealCostFor leave it un-rounded,
+    // so rounding here diverged the widget quote from the folio recompute on
+    // fractional meal prices (R3 parity; a no-op on whole-rupee prices).
+    const raw = ((picked.price || 0) - (def.price || 0)) * totalGuests * (data.nights || 1);
+    // Floor a downgrade at -roomCost (same floor NewBooking + the folio apply)
+    // so a big meal discount can't push rooms+meal below zero.
+    return Math.max(-roomCost, raw);
   })();
 
   // Sum of selected extras. Each extra has a unit that determines the
@@ -271,12 +294,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     .map(([id, qty]) => {
       const ex = savedCustomExtras.find(x => x.id === id);
       if (!ex || !qty) return null;
-      // Meals + per-guest extras count adults + the half-rate child band only —
-    // matching reception (NewBooking) + the saved-booking folio recompute
-    // (bookingGuestCount in data.js). Free/full-band children still count toward
-    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
-    // widget total equals what the folio + voucher recompute (price parity).
-    const totalGuests = (data.adults || 0) + (data.children || 0);
+      // Meals + per-guest extras count adults + EVERY child band (a free-band
+    // toddler still eats) — matching reception (NewBooking) + the saved-booking
+    // folio recompute (bookingGuestCount in data.js, which sums all bands). Keeps
+    // the widget total equal to what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + totalChildren;
       let mult = 1;
       switch (ex.unit) {
         case 'per night': mult = data.nights || 1; break;
@@ -346,9 +368,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     roomItems: Array.from({ length: rooms }, (_, i) => ({
       roomTypeId: data.roomTypeId,
       adults: adultsPerRoom[i] || 0,
-      children: childrenPerRoom[i] || 0,
-      childrenFree: childrenFreePerRoom[i] || 0,
-      childrenFull: childrenFullPerRoom[i] || 0,
+      ...roomChildFields(i),
       // Include the per-night rate the booking is SAVED with, so a percentage-
       // mode extra-guest surcharge (rate × pct%) computes the same here as the
       // folio/voucher recompute it later. Without it the live calc fell back to
@@ -388,7 +408,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // cover the requested room count for every night.
   const roomValid = !!data.roomTypeId && availUnitsFor(data.roomTypeId) >= rooms;
   // Submit gate.
-  const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length >= 7;
+  const guestValid = data.name.trim().length > 0 && data.phone.replace(/\D/g, '').length === 10;
 
   // Hold window: how many hours an unpaid website booking stays tentative
   // before it's eligible for release. The hotelier sets the length in
@@ -429,9 +449,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       roomItems: Array.from({ length: rooms }, (_, i) => ({
         roomTypeId: data.roomTypeId,
         adults: adultsPerRoom[i] || 0,
-        children: childrenPerRoom[i] || 0,
-        childrenFree: childrenFreePerRoom[i] || 0,
-        childrenFull: childrenFullPerRoom[i] || 0,
+        ...roomChildFields(i),
         // Store rate=null (NOT the multiplier-baked, averaged perNight) so a later
         // edit in NewBooking re-derives the price from the calendar + ratePlanId +
         // single-occupancy exactly ONCE — same as a hotelier-created booking.
@@ -483,6 +501,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       releaseAt,
       holdHours,
     };
+    // Stamp each room's extra-guest surcharge so it survives a later category
+    // deletion (audit R3 — same as the hotelier create path).
+    newBooking.roomItems = stampExtraGuestAmounts(newBooking.roomItems, property, newBooking.nights, newBooking.startIdx, newBooking.roomTypeId);
     setSubmitting(true);
     let res;
     try {
@@ -674,25 +695,21 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                   rate; otherwise the labels are age-only so they don't imply a
                   charge that isn't applied. */}
               {(() => {
-                const rate = (txt) => (chargesForChildren ? ` (${txt})` : '');
+                const setChildBand = (bandId, v) => set('childBands', { ...(data.childBands || {}), [bandId]: Math.max(0, Math.min(15, v)) });
                 return (
                   <>
-                    <Field label={`Children under ${childFreeAge}${rate('free')}`}>
-                      <Stepper value={data.childrenFree} onChange={(v) => set('childrenFree', Math.max(0, Math.min(15, v)))} />
-                    </Field>
-                    <Field label={`Children ${childFreeAge}–${childHalfAge - 1}${rate('half rate')}`}>
-                      <Stepper value={data.children} onChange={(v) => set('children', Math.max(0, Math.min(15, v)))} />
-                    </Field>
-                    <Field label={`Children ${childHalfAge}+${rate('full rate')}`}>
-                      <Stepper value={data.childrenFull} onChange={(v) => set('childrenFull', Math.max(0, Math.min(15, v)))} />
-                    </Field>
+                    {ageBands.map(band => (
+                      <Field key={band.id} label={`Children · ${band.label || 'age band'}`}>
+                        <Stepper value={(data.childBands && data.childBands[band.id]) || 0} onChange={(v) => setChildBand(band.id, v)} />
+                      </Field>
+                    ))}
                   </>
                 );
               })()}
               {data.rooms > 1 && (
                 <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, lineHeight: 1.5, fontStyle: 'italic' }}>
                   Guests will be split across {data.rooms} rooms: {adultsPerRoom.map((a, i) => {
-                    const c = (childrenPerRoom[i] || 0) + (childrenFreePerRoom[i] || 0) + (childrenFullPerRoom[i] || 0);
+                    const c = Object.values(childBandsPerRoom[i] || {}).reduce((s, n) => s + n, 0);
                     return `${a}A${c > 0 ? ` ${c}C` : ''}`;
                   }).join(' · ')}
                 </div>
@@ -760,6 +777,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               {data.nights} night{data.nights > 1 ? 's' : ''} · {guestsStr} · {rooms} room{rooms > 1 ? 's' : ''} · {new Date(data.checkIn + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} → {new Date(checkOutIso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ROOM_TYPES.length === 0 && (
+                <div style={{ padding: '24px 16px', textAlign: 'center', color: T.ink3, fontSize: 13, lineHeight: 1.6, background: T.bgSoft, borderRadius: 12, border: `1px solid ${T.borderSoft}` }}>
+                  This property hasn't published any rooms yet. Please check back soon, or contact the property directly to book.
+                </div>
+              )}
               {ROOM_TYPES.map(rt => {
                 const avail = availUnitsFor(rt.id);
                 // Sold-out logic now respects the requested room count —
@@ -921,12 +943,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                     const sel = mp.id === data.mealPlanId;
                     const def = mealPlanById(property, defaultMealPlanId);
                     const isDefault = mp.id === defaultMealPlanId;
-                    // Meals + per-guest extras count adults + the half-rate child band only —
-    // matching reception (NewBooking) + the saved-booking folio recompute
-    // (bookingGuestCount in data.js). Free/full-band children still count toward
-    // the displayed headcount (guestsStr) but not the meal/extras charge, so the
-    // widget total equals what the folio + voucher recompute (price parity).
-    const totalGuests = (data.adults || 0) + (data.children || 0);
+                    // Meals + per-guest extras count adults + EVERY child band (a free-band
+    // toddler still eats) — matching reception (NewBooking) + the saved-booking
+    // folio recompute (bookingGuestCount in data.js, which sums all bands). Keeps
+    // the widget total equal to what the folio + voucher recompute (price parity).
+    const totalGuests = (data.adults || 0) + totalChildren;
                     const deltaPerNight = isDefault ? 0 : ((mp.price || 0) - (def?.price || 0)) * totalGuests;
                     return (
                       <button
@@ -1021,8 +1042,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               <Field label="Mobile number (WhatsApp)">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 13, color: T.ink2, fontWeight: 700, flexShrink: 0 }}>+91</span>
-                  <input value={data.phone} onChange={(e) => set('phone', e.target.value)} placeholder="98100 00000" inputMode="numeric" style={{ ...inputStyle, flex: 1 }} />
+                  <input value={data.phone} onChange={(e) => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="98100 00000" inputMode="numeric" maxLength={10} style={{ ...inputStyle, flex: 1 }} />
                 </div>
+                {data.phone.replace(/\D/g, '').length > 0 && data.phone.replace(/\D/g, '').length !== 10 && (
+                  <div style={{ fontSize: 10.5, color: T.ink3, fontWeight: 600, marginTop: 4 }}>Enter a 10-digit mobile number</div>
+                )}
               </Field>
               <Field label="Email (optional)">
                 <input type="email" value={data.email} onChange={(e) => set('email', e.target.value)} placeholder="you@email.com" style={inputStyle} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, mealPlanById, extraGuestCostFor, extrasCostFor } from '../data.js';
+import { CHANNELS, STATUS, statusLabel, ANCHOR, bookingGstApplies, getTaxBreakdown, blendedGstRate, effectiveRoomTypes, repeatGuestKeys, normPhone, mealCostFor, roomsSubtotalFor, mealPlanById, extraGuestCostFor, extraGuestBreakdownFor, extrasCostFor } from '../data.js';
 import { bookingShareWaUrl } from '../utils/share.js';
 
 // Format a startIdx-relative day as a real calendar date — e.g. "23 May"
@@ -734,7 +734,7 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
           } />
           <Card>
             {(() => {
-              const mealCost = mealCostFor(b, property);
+              const mealCost = mealCostFor(b, property, roomsSubtotalFor(b, property));
               const meal = mealPlanById(property, b.mealPlanId);
               const defaultId = property?.defaultMealPlanId || 'ep';
               const extraGuests = extraGuestCostFor(b, property);
@@ -784,7 +784,20 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
                     />
                   )}
                   {extraGuests > 0 && (
-                    <Row label={t('extraGuestChargesRow')} value={`₹${extraGuests.toLocaleString('en-IN')}`} />
+                    <>
+                      <Row label={t('extraGuestChargesRow')} value={`₹${extraGuests.toLocaleString('en-IN')}`} />
+                      {(() => {
+                        // Itemise the extra-guest charge by extra adults + each
+                        // child age band, so the hotelier can explain the number.
+                        const bd = extraGuestBreakdownFor(b, property);
+                        const parts = [];
+                        if (bd.extraAdults > 0) parts.push(`${bd.extraAdults}× ${t('extraAdultWord')} ₹${bd.adultAmount.toLocaleString('en-IN')}`);
+                        bd.bands.forEach(bn => parts.push(`${bn.count}× ${bn.label} ₹${bn.amount.toLocaleString('en-IN')}`));
+                        return parts.length > 1 ? (
+                          <div style={{ fontSize: 11, color: T.ink3, fontWeight: 600, margin: '-2px 0 6px', lineHeight: 1.5 }}>{parts.join('  ·  ')}</div>
+                        ) : null;
+                      })()}
+                    </>
                   )}
                   {extras > 0 && (
                     <Row label={t('addOnsExtras')} value={`₹${extras.toLocaleString('en-IN')}`} />

@@ -133,7 +133,7 @@ export default function SearchOverlay({ open, onClose, bookings = [], property, 
             <div style={{ fontSize: 11, marginTop: 4 }}>Try a different spelling, or fewer characters.</div>
           </div>
         )}
-        {results.map((b) => {
+        {results.map((b, i) => {
           const rt = rtById[b.roomTypeId];
           const checkOutIdx = (b.startIdx || 0) + (b.nights || 1);
           const isCancelled = b.status === 'cancelled';
@@ -141,7 +141,7 @@ export default function SearchOverlay({ open, onClose, bookings = [], property, 
           const balance = (b.total || 0) - (b.paid || 0);
           return (
             <button
-              key={b.id}
+              key={`${b.id}-${i}`}
               onClick={() => { onClose(); go && go('booking', b.id); }}
               style={{
                 width: '100%', textAlign: 'left',

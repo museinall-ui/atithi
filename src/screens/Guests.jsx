@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { T } from '../tokens.js';
-import { dateToIdx } from '../data.js';
+import { dateToIdx, normPhone } from '../data.js';
 import Icon from '../components/Icon.jsx';
 import Chip from '../components/Chip.jsx';
 import Field from '../components/Field.jsx';
@@ -46,7 +46,12 @@ export default function Guests({ go, bookings = [], t, can = () => true }) {
   const liveGuests = useMemo(() => {
     const bookingGuests = new Map();
     bookings.forEach(b => {
-      const key = b.guest;
+      // Identify a guest by PHONE (one phone per guest) so two different people
+      // who share a name don't merge into one row, and one person who booked
+      // under slightly different names still does. Matches repeatGuestKeys /
+      // the Dashboard repeat-chip. Falls back to name when no phone is on the
+      // booking (can't phone-match those). (audit R3)
+      const key = b.phone ? normPhone(b.phone) : ('name:' + String(b.guest || '').trim().toLowerCase());
       const prev = bookingGuests.get(key);
       const isCx = b.status === 'cancelled';
       const bIdx = b.startIdx ?? 0;

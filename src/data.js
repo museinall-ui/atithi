@@ -595,7 +595,10 @@ export function isUnitFree(bookings, roomTypeId, unitIdx, startIdx, nights, room
 // adjust price points per plan, so we keep the math simple here.
 function bookingGuestCount(b) {
   if (Array.isArray(b.roomItems) && b.roomItems.length > 0) {
-    return b.roomItems.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0);
+    // Count ALL child bands (free + half + full + any custom), not just the
+    // half-rate field — otherwise meals + per-guest extras undercounted every
+    // booking with a free or full-rate child (round-2 audit money bug).
+    return b.roomItems.reduce((s, r) => s + (r.adults || 0) + childTotalForItem(r), 0);
   }
   // Fall back to parsing the guests string ("2A 1C" -> 3) for legacy bookings.
   const m = String(b.guests || '').match(/(\d+)A.*?(\d+)?C?/);
@@ -693,13 +696,117 @@ function seasonOverrideFor(property, booking) {
   return null;
 }
 
+// ─── Custom child-rate bands ────────────────────────────────────────────────
+// The hotelier defines ANY NUMBER of age bands in Settings (each = label +
+// upper age cut-off). The ₹ price per band is set PER ROOM CATEGORY with
+// optional PER-SEASON overrides. All config lives on the `accountant` jsonb
+// (no DB migration), the same place the rest of the pricing flags live:
+//   accountant.childBands           = [{ id, label, maxAge }]  (maxAge null = "and up")
+//   accountant.childRatesByCategory = { [catId]: { [bandId]: {mode:'free'|'flat'|'pct', value} } }
+//   accountant.childRatesBySeason   = { [seasonId]: { [catId]: { [bandId]: {...} } } }
+// Bookings store per-band counts on each roomItem: roomItem.childBands = { [bandId]: count }.
+// Legacy bookings (childrenFree/children/childrenFull) + legacy category/season
+// extraChild rates map onto the three seeded default band ids 'free'/'half'/'full'
+// (half = 50% of the old extra-child rate, full = 100%), so existing data prices
+// exactly as before until the hotelier edits the new bands.
+
+// The default 3-band layout, seeded from the legacy two age thresholds.
+export function effectiveChildBands(property) {
+  const acc = (property && property.accountant) || {};
+  if (Array.isArray(acc.childBands) && acc.childBands.length) return acc.childBands;
+  let freeAge = acc.childFreeBelowAge != null ? acc.childFreeBelowAge : 5;
+  const halfAge = acc.childAgeBelow != null ? acc.childAgeBelow : 12;
+  // Defensive: the legacy free/half age inputs have no cross-field validation,
+  // so free could be set >= half. Keep the seeded bands strictly ordered so the
+  // labels/maxAges never produce an impossible "12–11y" middle band.
+  if (freeAge >= halfAge) freeAge = Math.max(1, halfAge - 1);
+  return [
+    { id: 'free', label: `Under ${freeAge}`, maxAge: freeAge },
+    { id: 'half', label: `${freeAge}–${Math.max(freeAge, halfAge - 1)}`, maxAge: halfAge },
+    { id: 'full', label: `${halfAge}+`, maxAge: null },
+  ];
+}
+
+// Per-band child counts for a room item — new childBands map if present, else
+// the legacy childrenFree/children/childrenFull fields mapped to the default ids.
+export function childCountsForItem(item) {
+  if (item && item.childBands && typeof item.childBands === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(item.childBands)) { const n = +v || 0; if (n > 0) out[k] = n; }
+    return out;
+  }
+  const out = {};
+  const free = +(item && item.childrenFree) || 0;
+  const half = +(item && item.children) || 0;
+  const full = +(item && item.childrenFull) || 0;
+  if (free) out.free = free;
+  if (half) out.half = half;
+  if (full) out.full = full;
+  return out;
+}
+export function childTotalForItem(item) {
+  return Object.values(childCountsForItem(item)).reduce((s, n) => s + n, 0);
+}
+
+// First season (by date) covering a booking — regardless of whether it carries
+// a legacy override. Used by the new per-season child-rate lookup.
+export function activeSeasonFor(property, booking) {
+  if (!property || !booking || !Array.isArray(property.seasons) || booking.startIdx == null) return null;
+  const startDate = new Date(ANCHOR);
+  startDate.setDate(startDate.getDate() + (booking.startIdx || 0));
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + ((booking.nights || 1) - 1));
+  const startIso = ymd(startDate), endIso = ymd(endDate);
+  for (const s of property.seasons) {
+    if (!s || !s.startIso || !s.endIso) continue;
+    if (s.startIso > endIso || s.endIso < startIso) continue;
+    return s;
+  }
+  return null;
+}
+
+function resolveChildRate(rule, baseRate) {
+  if (!rule || typeof rule !== 'object' || rule.mode === 'free') return 0;
+  return resolveExtraRate(rule, baseRate); // flat ₹ or % of base
+}
+
+// ₹ per child per night for one band on one category, honouring the new
+// per-season + per-category config, then falling back to the legacy extraChild
+// model (free=0 / half=50% / full=100%) so existing properties are unchanged.
+export function childBandRate(property, category, band, booking) {
+  if (!band || !category) return 0;
+  const acc = (property && property.accountant) || {};
+  const baseRate = category.base || 0;
+  const catId = category.id;
+  const bandId = band.id;
+  const season = booking ? activeSeasonFor(property, booking) : null;
+
+  // Per-season override. Shape: childRatesBySeason[seasonId] = { byBand: {...},
+  // byCategory: { [catId]: {...} } }. A per-category override wins over the
+  // property-wide per-band one for the season.
+  const bySeason = acc.childRatesBySeason || {};
+  const sNode = season ? (bySeason[season.id] || {}) : {};
+  const seasonRule = (sNode.byCategory && sNode.byCategory[catId] && sNode.byCategory[catId][bandId]) || (sNode.byBand && sNode.byBand[bandId]);
+  if (seasonRule) return resolveChildRate(seasonRule, baseRate);
+
+  const byCat = acc.childRatesByCategory || {};
+  const catRule = byCat[catId] && byCat[catId][bandId];
+  if (catRule) return resolveChildRate(catRule, baseRate);
+
+  // Legacy fallback for the seeded default band ids.
+  if (bandId === 'free') return 0;
+  if (bandId === 'half' || bandId === 'full') {
+    const legacyRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
+    const childPer = resolveExtraRate(legacyRule, baseRate);
+    return bandId === 'half' ? Math.round(childPer * 0.5) : childPer;
+  }
+  return 0; // custom band with no rate configured → free
+}
+
 export function extraGuestCostForItem(item, property, category, nights, booking) {
   if (!item || !category) return 0;
   const cap = baseCapacityAdults(property);
   const adults = +item.adults || 0;
-  const childrenHalf = +item.children || 0;
-  const childrenFree = +item.childrenFree || 0;
-  const childrenFull = +item.childrenFull || 0;
   // Extra-guest pct surcharge is "% of the category BASE rate" everywhere
   // (engine, OTA, reception) per the owner's decision — so the widget (which
   // passes the uplifted nightly rate as item.rate) and reception agree, and the
@@ -707,26 +814,26 @@ export function extraGuestCostForItem(item, property, category, nights, booking)
   // rate no longer drags the pct up. (Flat mode ignores baseRate; the per-booking
   // ₹ overrides below still win.)
   const baseRate = (category.base || 0);
-  // Resolution chain for the per-guest rate:
-  //   1. item.extraAdultRate / extraChildRate — per-booking override
-  //      the hotelier explicitly set in NewBooking (a plain ₹ number)
-  //   2. matching season's extraAdult / extraChild rule object
-  //   3. category default extraAdult / extraChild rule object
-  // Per-booking overrides win because they were entered intentionally
-  // for THIS guest; seasons + categories are defaults.
+  // EXTRA ADULTS — unchanged: per-booking override → season → category default.
   const season = booking ? seasonOverrideFor(property, booking) : null;
   const adultRule = (season && season.extraAdult) ? season.extraAdult : category.extraAdult;
-  const childRule = (season && season.extraChild) ? season.extraChild : category.extraChild;
   const autoAdultPer = resolveExtraRate(adultRule, baseRate);
-  const autoChildPer = resolveExtraRate(childRule, baseRate);
   const adultPer = (typeof item.extraAdultRate === 'number') ? Math.max(0, item.extraAdultRate) : autoAdultPer;
-  const childPer = (typeof item.extraChildRate === 'number') ? Math.max(0, item.extraChildRate) : autoChildPer;
   const extraAdults = Math.max(0, adults - cap);
   const adultCost = extraAdults * adultPer * (nights || 1);
-  const halfCost = Math.round(childrenHalf * childPer * 0.5 * (nights || 1));
-  const fullCost = childrenFull * childPer * (nights || 1);
-  void childrenFree;
-  return adultCost + halfCost + fullCost;
+  // EXTRA CHILDREN — sum each configured band's count × its resolved per-night
+  // rate (childBandRate handles new per-category / per-season config + the
+  // legacy free/half/full fallback). Counts for bands that no longer exist
+  // (a band the hotelier later deleted) simply price at 0.
+  const bands = effectiveChildBands(property);
+  const counts = childCountsForItem(item);
+  let childCost = 0;
+  for (const band of bands) {
+    const n = counts[band.id] || 0;
+    if (!n) continue;
+    childCost += n * childBandRate(property, category, band, booking) * (nights || 1);
+  }
+  return adultCost + childCost;
 }
 
 export function extraGuestCostFor(booking, property) {
@@ -751,8 +858,107 @@ export function extraGuestCostFor(booking, property) {
   for (const it of items) {
     const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
     if (cat) total += extraGuestCostForItem(it, property, cat, nights, booking);
+    // Category was DELETED after the booking was taken: fall back to the
+    // amount we stamped onto the item at create/edit (stampExtraGuestAmounts)
+    // so the surcharge the guest was actually charged isn't silently dropped
+    // from the folio/voucher (audit R3). Live categories always recompute above.
+    else if (typeof it.extraGuestAmount === 'number') total += it.extraGuestAmount;
   }
   return total;
+}
+
+// Stamp each roomItem with the extra-guest surcharge computed against the
+// CURRENT categories, so the folio/voucher can still show it after the room
+// category is later deleted (extraGuestCostFor reads it as a fallback). Called
+// at booking create + edit, when the category still exists. Items whose type is
+// unknown are left untouched (never zero a real charge).
+export function stampExtraGuestAmounts(items, property, nights, startIdx, fallbackType) {
+  if (!Array.isArray(items)) return items;
+  const cats = effectiveRoomTypes(property);
+  const bookingShape = { startIdx, nights };
+  return items.map(it => {
+    const cat = cats.find(c => c.id === (it.roomTypeId || fallbackType));
+    if (!cat) return it;
+    const amt = extraGuestCostForItem(it, property, cat, nights || 1, bookingShape);
+    return { ...it, extraGuestAmount: Math.round(amt) };
+  });
+}
+
+// Itemised extra-guest breakdown for the folio. Mirrors extraGuestCostFor
+// exactly (same season / per-category / per-band resolution) but returns the
+// split: { extraAdults, adultAmount, bands: [{id,label,count,amount}], total }.
+// The pieces sum to extraGuestCostFor(booking, property).
+export function extraGuestBreakdownFor(booking, property) {
+  const out = { extraAdults: 0, adultAmount: 0, bands: [], total: 0 };
+  if (!booking) return out;
+  const cats = effectiveRoomTypes(property);
+  const parseGuests = (g) => {
+    const s = String(g || '');
+    const a = s.match(/(\d+)\s*A/i);
+    return { adults: a ? parseInt(a[1], 10) : 2 };
+  };
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId, ...parseGuests(booking.guests), rate: null }];
+  const nights = booking.nights || 1;
+  const cap = baseCapacityAdults(property);
+  const season = seasonOverrideFor(property, booking);
+  const bands = effectiveChildBands(property);
+  const agg = {};
+  for (const band of bands) agg[band.id] = { id: band.id, label: band.label || '', count: 0, amount: 0 };
+  for (const it of items) {
+    const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+    if (!cat) continue;
+    const baseRate = cat.base || 0;
+    const adultRule = (season && season.extraAdult) ? season.extraAdult : cat.extraAdult;
+    const autoAdultPer = resolveExtraRate(adultRule, baseRate);
+    const adultPer = (typeof it.extraAdultRate === 'number') ? Math.max(0, it.extraAdultRate) : autoAdultPer;
+    const extraAdults = Math.max(0, (+it.adults || 0) - cap);
+    out.extraAdults += extraAdults;
+    out.adultAmount += extraAdults * adultPer * nights;
+    const counts = childCountsForItem(it);
+    for (const band of bands) {
+      const n = counts[band.id] || 0;
+      if (!n) continue;
+      agg[band.id].count += n;
+      agg[band.id].amount += n * childBandRate(property, cat, band, booking) * nights;
+    }
+  }
+  out.bands = bands.map(b => agg[b.id]).filter(x => x.count > 0);
+  out.total = out.adultAmount + out.bands.reduce((s, x) => s + x.amount, 0);
+  return out;
+}
+
+// Best-effort room-only subtotal (rate × nights, summed over roomItems). Used
+// as the floor bound for a meal-plan DOWNGRADE so the meal discount can never
+// drag the rooms+meal portion below zero on any surface. NewBooking computes a
+// rate-plan/single-occ-aware room subtotal at creation; this recomputes a close
+// equivalent from the stored roomItems so the BookingDetail folio + voucher
+// apply the SAME floor NewBooking did (was un-floored, so a big MAP→EP downgrade
+// showed a different rooms/meal split there than at booking time). The displayed
+// total is always derived by subtraction, so an approximate bound only affects
+// that rare split, never the total.
+export function roomsSubtotalFor(booking, property) {
+  if (!booking) return 0;
+  const cats = effectiveRoomTypes(property);
+  const nights = booking.nights || 1;
+  const items = Array.isArray(booking.roomItems) && booking.roomItems.length > 0
+    ? booking.roomItems
+    : [{ roomTypeId: booking.roomTypeId, rate: null }];
+  let total = 0;
+  for (const it of items) {
+    if (it.perNight && Array.isArray(it.nightRates) && it.nightRates.length) {
+      total += it.nightRates.reduce((s, r) => s + (+r || 0), 0);
+    } else {
+      let rate = (it.rate != null) ? +it.rate : null;
+      if (rate == null || rate === 0) {
+        const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
+        rate = (cat && cat.base) || 0;
+      }
+      total += rate * nights;
+    }
+  }
+  return Math.round(total);
 }
 
 // Cost of the meal plan add-on for this booking. Returns the delta from
@@ -760,9 +966,11 @@ export function extraGuestCostFor(booking, property) {
 //   - booking has no mealPlanId
 //   - the picked plan doesn't exist on the property anymore
 //   - the picked plan IS the default (already in the room rate)
-// Negative deltas (e.g. EP on a property whose default is MAP) flow
-// through unchanged — the booking summary shows them as a discount.
-export function mealCostFor(booking, property) {
+// Negative deltas (e.g. EP on a property whose default is MAP) are a discount;
+// when a `roomsSubtotal` is passed they're floored at -roomsSubtotal so a big
+// downgrade can't push rooms+meal negative (same floor NewBooking applies at
+// creation — keeps the folio/voucher/widget split consistent with it).
+export function mealCostFor(booking, property, roomsSubtotal) {
   if (!booking || !booking.mealPlanId) return 0;
   const selected = mealPlanById(property, booking.mealPlanId);
   if (!selected) return 0;
@@ -773,7 +981,11 @@ export function mealCostFor(booking, property) {
   if (delta === 0) return 0;
   const guests = bookingGuestCount(booking);
   const nights = booking.nights || 1;
-  return delta * guests * nights;
+  const raw = delta * guests * nights;
+  if (typeof roomsSubtotal === 'number' && Number.isFinite(roomsSubtotal)) {
+    return Math.max(-roomsSubtotal, raw);
+  }
+  return raw;
 }
 
 // Add-on extras cost for a booking, honouring each extra's UNIT — the same

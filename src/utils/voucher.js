@@ -1,4 +1,4 @@
-import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, mealPlanById, extraGuestCostFor, safeUrl, ratePlansActive } from '../data.js';
+import { extrasBreakdownFor, bookingGstApplies, getTaxBreakdown, ANCHOR, mealCostFor, roomsSubtotalFor, mealPlanById, extraGuestCostFor, safeUrl, ratePlansActive, childTotalForItem, effectiveChildBands } from '../data.js';
 import { themeColors } from '../tokens.js';
 
 // Empty fallback used when the caller passes no property at all. We
@@ -236,7 +236,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
   const preTax = baseAmount - gstAmt;
   const extrasSum = isInvoice ? 0 : extrasList.reduce((s, e) => s + e.total, 0);
   const mealPlan = mealPlanById(prop, b.mealPlanId);
-  const mealCost = isInvoice ? 0 : mealCostFor(b, prop);
+  const mealCost = isInvoice ? 0 : mealCostFor(b, prop, roomsSubtotalFor(b, prop));
   // Extra-adult / extra-child surcharge — surfaced as a separate folio
   // row so the guest sees why their bill exceeded the published rate.
   const extraGuests = isInvoice ? 0 : extraGuestCostFor(b, prop);
@@ -421,17 +421,32 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     // type by name.
     const heroCat = findCat((items[0] && items[0].roomTypeId) || b.roomTypeId);
     const heroPhoto = heroCat && heroCat.photoDataUrl ? heroCat.photoDataUrl : null;
+    const voucherBands = effectiveChildBands(prop);
     const rows = items.map((it, i) => {
       const cat = findCat(it.roomTypeId || b.roomTypeId);
       const name = (cat && cat.name) || (rt && rt.name) || '—';
       const a = it.adults || 0;
-      const c = it.children || 0;
+      // Count EVERY child band (free/half/full/custom), not just the half field.
+      const c = childTotalForItem(it);
       totalA += a; totalC += c;
       const aLabel = a === 1 ? L.adultLabel : L.adultsLabel;
-      const cLabel = c === 1 ? L.childLabel : L.childrenLabel;
+      // Itemise children by band when the booking carries the band map;
+      // legacy bookings (only a total) show one combined children pill.
+      let childPills = '';
+      if (c > 0) {
+        if (it.childBands && Object.keys(it.childBands).length) {
+          childPills = voucherBands
+            .filter(bd => (it.childBands[bd.id] || 0) > 0)
+            .map(bd => `<span class="rooms-pill rooms-pill-c">${it.childBands[bd.id]} · ${esc(bd.label || L.childLabel)}</span>`)
+            .join('');
+        } else {
+          const cLabel = c === 1 ? L.childLabel : L.childrenLabel;
+          childPills = `<span class="rooms-pill rooms-pill-c">${c} ${cLabel}</span>`;
+        }
+      }
       return `<tr>
         <td><strong>${esc(name)}</strong></td>
-        <td class="r"><span class="rooms-pill">${a} ${aLabel}</span>${c > 0 ? `<span class="rooms-pill rooms-pill-c">${c} ${cLabel}</span>` : ''}</td>
+        <td class="r"><span class="rooms-pill">${a} ${aLabel}</span>${childPills}</td>
       </tr>`;
     }).join('');
     const totalALabel = totalA === 1 ? L.adultLabel : L.adultsLabel;

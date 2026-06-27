@@ -414,7 +414,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     // each card's minWidth is 'calc(100% - 26px)'.
     const cardWidth = el.clientWidth - 26;
     if (cardWidth <= 0) return;
-    const next = Math.min(2, Math.max(0, Math.round(el.scrollLeft / cardWidth)));
+    const next = Math.min(3, Math.max(0, Math.round(el.scrollLeft / cardWidth)));
     if (next !== carouselIdx) setCarouselIdx(next);
   };
   const ROOM_TYPES = effectiveRoomTypes(property);
@@ -449,7 +449,16 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   // liveBookings), matching the In-house/Arriving tiles below — otherwise a
   // cancelled in-house stay inflated both and contradicted those tiles.
   const catOcc = ROOM_TYPES.map(rt => {
-    const occ = liveBookings.filter(b => b.roomTypeId === rt.id && b.startIdx <= TODAY_IDX && b.startIdx + b.nights > TODAY_IDX).length;
+    // Count ROOMS held of this type today, not bookings — a multi-room booking
+    // holds N units. Matches the Diary pills + Reports room-night math (which
+    // both count per roomItem); counting bookings under-reported multi-room
+    // stays on this card (audit R3).
+    let occ = 0;
+    for (const b of liveBookings) {
+      if ((b.startIdx || 0) > TODAY_IDX || (b.startIdx || 0) + (b.nights || 1) <= TODAY_IDX) continue;
+      const items = (Array.isArray(b.roomItems) && b.roomItems.length) ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
+      occ += items.filter(it => (it.roomTypeId || b.roomTypeId) === rt.id).length;
+    }
     return { rt, occ, total: rt.units };
   });
   const occRooms = catOcc.reduce((a, c) => a + c.occ, 0);
@@ -482,6 +491,35 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
   };
   const collectedToday = collectedOn(idxToDate(TODAY_IDX));
   const collectedYesterday = collectedOn(idxToDate(TODAY_IDX - 1));
+
+  // Collected-today split by payment method (Cash / UPI / Card / …) for the
+  // "Collected today" card. Same date + credit/refund handling as collectedToday
+  // so the rows sum to it. Credits don't move cash → excluded.
+  const collectedTodayByMethod = (() => {
+    const iso = idxToDate(TODAY_IDX);
+    const m = {};
+    for (const b of liveBookings) {
+      const pays = (b.payments && b.payments.length)
+        ? b.payments
+        : (b.paid > 0 ? [{ amount: b.paid, kind: 'payment', method: 'cash', dateIso: idxToDate(b.startIdx || 0) }] : []);
+      for (const p of pays) {
+        if (payIsoDash(p, b) !== iso) continue;
+        if (p.kind === 'credit' || p.kind === 'credit_note') continue;
+        const amt = p.kind === 'refund' ? -(p.amount || 0) : (p.amount || 0);
+        if (!amt) continue;
+        const key = (p.method || 'other').toLowerCase();
+        m[key] = (m[key] || 0) + amt;
+      }
+    }
+    return m;
+  })();
+  const methodLabel = (k) => {
+    const map = isHi
+      ? { cash: 'नकद', upi: 'UPI', card: 'कार्ड', bank: 'बैंक', wa: 'WhatsApp', online: 'ऑनलाइन', other: 'अन्य' }
+      : { cash: 'Cash', upi: 'UPI', card: 'Card', bank: 'Bank', wa: 'WhatsApp', online: 'Online', other: 'Other' };
+    return map[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+  };
+  const collectedMethodRows = Object.entries(collectedTodayByMethod).sort((a, b) => b[1] - a[1]);
 
   // Day-close reconciliation (Q2). The close used to compare the hotelier's
   // counted drawer against the SUM OF TODAY'S ARRIVAL TOTALS — wildly wrong
@@ -551,7 +589,9 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
     for (const p of pays) {
       const iso = payIsoDash(p, b);
       if (!iso || iso < monthStartIso || iso > monthEndIso) continue;
-      monthRevenue += (p.kind === 'refund' || p.kind === 'credit' || p.kind === 'credit_note') ? -(p.amount || 0) : (p.amount || 0);
+      // Credits don't move cash (they reduce what's owed) → 0, matching
+      // collectedOn + dayClose so the income cards + cash-close agree.
+      monthRevenue += p.kind === 'refund' ? -(p.amount || 0) : (p.kind === 'credit' || p.kind === 'credit_note') ? 0 : (p.amount || 0);
     }
   }
   monthRevenue = Math.max(0, monthRevenue);
@@ -883,10 +923,37 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
             )}
           </div>
 
-          {/* Card 2 — Daily income */}
+          {/* Card 2 — Today's income (accrual: value of tonight's stays,
+              regardless of when paid). Kept SEPARATE from "Collected today"
+              so the hotelier can read room revenue earned vs cash actually in. */}
           <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{t('dailyIncome')}</span>
+              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'आज की आय' : "TODAY'S INCOME"}</span>
+            </div>
+            <div className="tnum" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, lineHeight: 1 }}>
+              ₹{dailyIncome.toLocaleString('en-IN')}
+            </div>
+            <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4, fontWeight: 600 }}>
+              {isHi ? "आज ठहरे मेहमानों से (प्रति रात का हिस्सा)" : "Earned from tonight's stays (per-night)"}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.9, fontWeight: 600 }}>
+                <span>{isHi ? 'आज चेक-इन' : 'Arriving today'}</span>
+                <span className="tnum" style={{ fontWeight: 700 }}>{arriving}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.9, fontWeight: 600 }}>
+                <span>{isHi ? 'अभी ठहरे हुए' : 'In-house tonight'}</span>
+                <span className="tnum" style={{ fontWeight: 700 }}>{inhouse}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3 — Collected today (cash basis): actual money received today,
+              split by method. May differ from "Today's income" (e.g. a guest
+              paid cash yesterday for a stay that's in-house tonight). */}
+          <div style={{ background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(10px)', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.22)', minWidth: 'calc(100% - 26px)', scrollSnapAlign: 'start', flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, letterSpacing: 0.4 }} className={isHi ? 'hi' : ''}>{isHi ? 'आज वसूली' : 'COLLECTED TODAY'}</span>
               {dailyChangePct !== null && (
                 <span style={{ fontSize: 10, opacity: 0.85, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.18)' }}>
                   {dailyChangePct > 0 ? '+' : ''}{dailyChangePct}%
@@ -894,10 +961,17 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
               )}
             </div>
             <div className="tnum" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, lineHeight: 1 }}>
-              ₹{(dailyIncome/1000).toFixed(1)}<span style={{ fontSize: 14, opacity: 0.8 }}>k</span>
+              ₹{collectedToday.toLocaleString('en-IN')}
             </div>
-            <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4, fontWeight: 600 }} className="tnum">
-              {isHi ? 'आज वसूली' : 'Collected today'} ₹{collectedToday.toLocaleString('en-IN')}
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {collectedMethodRows.length === 0 ? (
+                <div style={{ fontSize: 10.5, opacity: 0.8, fontWeight: 600 }}>{isHi ? 'आज तक कुछ नहीं मिला' : 'Nothing received yet today'}</div>
+              ) : collectedMethodRows.map(([k, amt]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.9, fontWeight: 600 }}>
+                  <span>{methodLabel(k)}</span>
+                  <span className="tnum" style={{ fontWeight: 700 }}>₹{amt.toLocaleString('en-IN')}</span>
+                </div>
+              ))}
             </div>
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -952,7 +1026,7 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 8 }}>
-          {[0,1,2].map(i => <span key={i} style={{ width: i === carouselIdx ? 14 : 5, height: 5, borderRadius: 3, background: i === carouselIdx ? '#fff' : 'rgba(255,255,255,0.5)', transition: 'width .2s' }} />)}
+          {[0,1,2,3].map(i => <span key={i} style={{ width: i === carouselIdx ? 14 : 5, height: 5, borderRadius: 3, background: i === carouselIdx ? '#fff' : 'rgba(255,255,255,0.5)', transition: 'width .2s' }} />)}
         </div>
       </div>
 

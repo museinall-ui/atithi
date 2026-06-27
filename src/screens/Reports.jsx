@@ -885,7 +885,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                     const perType = {};
                     for (const rt of ROOM_TYPES) perType[rt.id] = 0;
                     for (const b of active) {
-                      if (b.startIdx <= dayIdx && dayIdx < b.startIdx + b.nights) {
+                      if ((b.startIdx || 0) <= dayIdx && dayIdx < (b.startIdx || 0) + (b.nights || 1)) {
                         const items = Array.isArray(b.roomItems) && b.roomItems.length ? b.roomItems : [{ roomTypeId: b.roomTypeId }];
                         for (const it of items) {
                           const tid = it.roomTypeId || b.roomTypeId;

@@ -41,9 +41,13 @@ export default function VoiceBookingSheet({ open, onClose, property, propertyId,
   // Each finalized phrase is appended to the command box (the single source
   // of truth), so pauses/restarts accumulate and manual edits stick.
   const sp = useSpeech({
-    // Match the recognizer to the app language so a Hindi hotelier dictating in
-    // Hindi is transcribed in Devanagari instead of mangled as English (#3).
-    lang: isHi ? 'hi-IN' : 'en-IN',
+    // ALWAYS use Indian English regardless of the app's UI language. The Web
+    // Speech API takes a single recognition locale (it can't truly auto-detect
+    // both at once), and en-IN is the most tolerant for the mixed English +
+    // Hindi/Hinglish that Indian hoteliers actually speak. The /api/parse-booking
+    // prompt is hardened for Hindi/Hinglish + speech-to-text noise on top.
+    // (Tying this to the app language broke spoken English in Hindi mode.)
+    lang: 'en-IN',
     onFinal: (chunk) => setCommand(prev => (prev ? prev.trimEnd() + ' ' : '') + chunk),
   });
 

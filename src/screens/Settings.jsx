@@ -639,6 +639,32 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
   const [chip, setChip] = useState(null); // null | 'saving' | 'ok' | 'err'
 
   const handleSave = () => {
+    // A room category with a blank name renders as "—" on the voucher + Diary.
+    // Block the save and flag it rather than persist an unnamed room.
+    if (categories.some(c => !String(c.name || '').trim())) {
+      setChip('needName');
+      setTimeout(() => setChip(c => (c === 'needName' ? null : c)), 3200);
+      return;
+    }
+    // Custom child age bands must each have a name and ascending "under" ages
+    // (only the last may be open-ended) — otherwise the steppers + voucher show
+    // blank/impossible ranges like "12–11y".
+    const cb = accountant.childBands;
+    if (Array.isArray(cb) && cb.length) {
+      let prevAge = 0, bandsOk = true;
+      for (let k = 0; k < cb.length; k++) {
+        if (!String(cb[k].label || '').trim()) { bandsOk = false; break; }
+        const a = cb[k].maxAge;
+        if (a == null) { if (k !== cb.length - 1) { bandsOk = false; break; } continue; }
+        if (a <= prevAge) { bandsOk = false; break; }
+        prevAge = a;
+      }
+      if (!bandsOk) {
+        setChip('needBands');
+        setTimeout(() => setChip(c => (c === 'needBands' ? null : c)), 3600);
+        return;
+      }
+    }
     // Functional update so we don't accidentally clobber any property fields
     // we don't know about (the partial here only enumerates the editable ones).
     onSave(prev => ({
@@ -748,6 +774,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           }}>
             {chip === 'saving' && <><Icon name="sync" size={12} color="#fff" className="spin" /> Saving to cloud…</>}
             {chip === 'ok' && <><Icon name="check" size={13} color="#fff" stroke={2.4} /> Saved · live across your devices</>}
+            {chip === 'needMeal' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Keep at least one meal plan enabled</>}
+            {chip === 'needName' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Give every room category a name first</>}
+            {chip === 'needBands' && <><Icon name="info" size={13} color="#fff" stroke={2.4} /> Name each age band; ages must go youngest → oldest</>}
             {chip === 'err' && (
               <>
                 <Icon name="info" size={13} color="#fff" stroke={2.4} />
@@ -1173,7 +1202,7 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                       <NumberInput
                         value={effective}
                         min={0} max={28}
-                        onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: n === slab.rate ? null : n } : x))}
+                        onChange={(n) => setCategories(arr => arr.map(x => x.id === c.id ? { ...x, gstRate: n } : x))}
                         className="tnum"
                         style={{ width: 50, border: `1px solid ${T.indigo}`, outline: 'none', background: T.card, borderRadius: 5, padding: '3px 6px', fontSize: 12, fontWeight: 700, color: T.indigo }}
                       />
@@ -2042,6 +2071,14 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     <Toggle
                       on={mp.enabled}
                       onChange={(v) => {
+                        // Never let the LAST enabled plan be turned off — with zero
+                        // enabled plans the default dangles, mealPlanById returns
+                        // undefined, and the booking price baseline breaks. Keep >=1.
+                        if (!v && mealPlans.filter(p => p.enabled).length <= 1) {
+                          setChip('needMeal');
+                          setTimeout(() => setChip(c => (c === 'needMeal' ? null : c)), 2800);
+                          return;
+                        }
                         setMealPlans(arr => {
                           const next = arr.map((p, j) => j === i ? { ...p, enabled: v } : p);
                           // If we just disabled the current default plan, move the
@@ -2842,7 +2879,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                     value={r.phone || ''}
                     placeholder="+91 98100 12345"
                     inputMode="tel"
-                    onChange={(e) => setProfile({ ...profile, arrivalsRecipients: (profile.arrivalsRecipients || []).map((x, j) => j === i ? { ...x, phone: e.target.value } : x) })}
+                    maxLength={18}
+                    onChange={(e) => setProfile({ ...profile, arrivalsRecipients: (profile.arrivalsRecipients || []).map((x, j) => j === i ? { ...x, phone: e.target.value.replace(/[^\d+\-() ]/g, '').slice(0, 18) } : x) })}
                     style={{ flex: 1.4, minWidth: 0, fontSize: 12, fontWeight: 700, color: T.ink, padding: '6px 9px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.card, fontFamily: 'JetBrains Mono, monospace' }}
                   />
                   <button

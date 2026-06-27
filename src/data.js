@@ -714,8 +714,12 @@ function seasonOverrideFor(property, booking) {
 export function effectiveChildBands(property) {
   const acc = (property && property.accountant) || {};
   if (Array.isArray(acc.childBands) && acc.childBands.length) return acc.childBands;
-  const freeAge = acc.childFreeBelowAge != null ? acc.childFreeBelowAge : 5;
+  let freeAge = acc.childFreeBelowAge != null ? acc.childFreeBelowAge : 5;
   const halfAge = acc.childAgeBelow != null ? acc.childAgeBelow : 12;
+  // Defensive: the legacy free/half age inputs have no cross-field validation,
+  // so free could be set >= half. Keep the seeded bands strictly ordered so the
+  // labels/maxAges never produce an impossible "12–11y" middle band.
+  if (freeAge >= halfAge) freeAge = Math.max(1, halfAge - 1);
   return [
     { id: 'free', label: `Under ${freeAge}`, maxAge: freeAge },
     { id: 'half', label: `${freeAge}–${Math.max(freeAge, halfAge - 1)}`, maxAge: halfAge },

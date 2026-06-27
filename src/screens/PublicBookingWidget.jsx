@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, singleOccRateFor, safeUrl, AMENITIES, effectiveChildBands } from '../data.js';
+import { ANCHOR, ymd, dateToIdx, effectiveRoomTypes, effectiveRatePlans, ratePlansActive, ratePerNight, ratePlanMultiplier, defaultRatePlanId, effectiveMealPlans, mealPlanById, extraGuestCostFor, stampExtraGuestAmounts, singleOccRateFor, safeUrl, AMENITIES, effectiveChildBands } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import { generateVoucher } from '../utils/voucher.js';
@@ -501,6 +501,9 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
       releaseAt,
       holdHours,
     };
+    // Stamp each room's extra-guest surcharge so it survives a later category
+    // deletion (audit R3 — same as the hotelier create path).
+    newBooking.roomItems = stampExtraGuestAmounts(newBooking.roomItems, property, newBooking.nights, newBooking.startIdx, newBooking.roomTypeId);
     setSubmitting(true);
     let res;
     try {

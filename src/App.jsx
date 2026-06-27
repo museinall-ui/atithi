@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useT } from './i18n.js';
 import { T, applyTheme } from './tokens.js';
-import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, childTotalForItem, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
+import { BOOKINGS_SEED, COUNTRIES, ROOM_TYPES, EXTRAS_DEFAULT, DAYS, ANCHOR, ymd, currentFinancialYear, formatInvoiceNumber, invoicePrefixOf, effectiveRoomTypes, isPropertyConfigured, childTotalForItem, stampExtraGuestAmounts, dateToIdx, idxToDate, firstFreeUnit, isUnitFree } from './data.js';
 import { supabase, signOut as supaSignOut } from './supabase.js';
 import { loadCurrentProperty, bootstrapProperty, saveCloudProperty } from './cloud/property.js';
 import { migratePropertyImages } from './cloud/storage.js';
@@ -2119,7 +2119,10 @@ export default function App() {
         couponCode: existing ? (existing.couponCode || '') : '',
         discountAmount: keepDiscount,
         notes: data.notes, extras: data.extras,
-        roomItems: data.roomItems, customExtras: mergedCustomExtras, extraPrices: data.extraPrices,
+        // Stamp each room's extra-guest surcharge so it survives a later
+        // category deletion (audit R3 — extraGuestCostFor reads it as a fallback).
+        roomItems: stampExtraGuestAmounts(data.roomItems, property, data.nights, newStartIdx, data.roomTypeId),
+        customExtras: mergedCustomExtras, extraPrices: data.extraPrices,
         country, formC, state: data.state || '',
         gstApplies: !!data.gstApplies,
         mealPlanId: data.mealPlanId || 'ep',
@@ -2254,7 +2257,9 @@ export default function App() {
         country, formC,
         notes: data.notes,
         extras: data.extras,
-        roomItems: data.roomItems,
+        // Stamp each room's extra-guest surcharge so it survives a later
+        // category deletion (audit R3 — extraGuestCostFor reads it as a fallback).
+        roomItems: stampExtraGuestAmounts(data.roomItems, property, data.nights, startIdx, data.roomTypeId),
         customExtras: mergedCustomExtras,
         extraPrices: data.extraPrices,
         gstApplies: !!data.gstApplies,

@@ -858,8 +858,30 @@ export function extraGuestCostFor(booking, property) {
   for (const it of items) {
     const cat = cats.find(c => c.id === (it.roomTypeId || booking.roomTypeId));
     if (cat) total += extraGuestCostForItem(it, property, cat, nights, booking);
+    // Category was DELETED after the booking was taken: fall back to the
+    // amount we stamped onto the item at create/edit (stampExtraGuestAmounts)
+    // so the surcharge the guest was actually charged isn't silently dropped
+    // from the folio/voucher (audit R3). Live categories always recompute above.
+    else if (typeof it.extraGuestAmount === 'number') total += it.extraGuestAmount;
   }
   return total;
+}
+
+// Stamp each roomItem with the extra-guest surcharge computed against the
+// CURRENT categories, so the folio/voucher can still show it after the room
+// category is later deleted (extraGuestCostFor reads it as a fallback). Called
+// at booking create + edit, when the category still exists. Items whose type is
+// unknown are left untouched (never zero a real charge).
+export function stampExtraGuestAmounts(items, property, nights, startIdx, fallbackType) {
+  if (!Array.isArray(items)) return items;
+  const cats = effectiveRoomTypes(property);
+  const bookingShape = { startIdx, nights };
+  return items.map(it => {
+    const cat = cats.find(c => c.id === (it.roomTypeId || fallbackType));
+    if (!cat) return it;
+    const amt = extraGuestCostForItem(it, property, cat, nights || 1, bookingShape);
+    return { ...it, extraGuestAmount: Math.round(amt) };
+  });
 }
 
 // Itemised extra-guest breakdown for the folio. Mirrors extraGuestCostFor

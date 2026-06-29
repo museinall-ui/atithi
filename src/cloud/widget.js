@@ -167,11 +167,68 @@ export async function loadWidgetInventory(propertyId) {
   return { categories, bookings, overrides };
 }
 
-// Insert a widget booking via the anon INSERT policy. The RLS check
-// requires status='tentative' AND channel='website' so we hardcode
-// both. Returns the inserted booking id (from the DB trigger) on
-// success, throws on failure (the widget catches + shows an error).
-export async function insertWidgetBooking(propertyId, booking) {
+// Best-effort: ping the hotelier's subscribed devices via Web Push so their
+// phone buzzes on a new booking. Fire-and-forget — a slow/missing endpoint
+// never delays the guest's confirmation. The /api function lives on the same
+// Vercel origin; it returns 503 (ignored) until the owner sets the VAPID +
+// service-role env vars, and simply 404s on the GitHub Pages mirror.
+function fireBookingNotify(propertyId) {
+  try {
+    const origin = (typeof window !== 'undefined' && window.location) ? window.location.origin : '';
+    fetch('/api/notify-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId, origin }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) { /* never block the booking on a notify failure */ }
+}
+
+// Try the CAPTCHA-verified serverless insert path (api/widget-book.js). It holds
+// the Turnstile secret + the service-role key, verifies the guest is human with
+// Cloudflare, and only then inserts via book_widget_slot. Returns:
+//   { done:true }     → booked (notify already the caller's job)
+//   { fallback:true } → verifier not configured (503 no_captcha) or absent (404
+//                       on the GitHub-Pages mirror) or unreachable → caller does
+//                       the legacy direct insert (unchanged pre-CAPTCHA flow)
+//   throws Error(code) → captcha_failed / no_capacity / rate_limited / … so the
+//                       widget surfaces the right message (error.message = code).
+async function tryWidgetBookViaApi(payload, token) {
+  let resp;
+  try {
+    resp = await fetch('/api/widget-book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload, token }),
+    });
+  } catch (e) {
+    // Network error reaching the function → fall back so a transient hiccup
+    // doesn't lose the booking.
+    return { fallback: true };
+  }
+  if (resp.ok) return { done: true };
+  let body = {};
+  try { body = await resp.json(); } catch (e) { /* non-JSON error body */ }
+  const code = body.code || '';
+  // Verifier not set up (no secret) or not deployed (mirror) → use the legacy path.
+  if (resp.status === 503 && code === 'no_captcha') return { fallback: true };
+  if (resp.status === 404) return { fallback: true };
+  // Everything else is a real rejection the guest should see (failed CAPTCHA,
+  // sold out, rate limited, …). Carry the code as the Error message so the
+  // widget's existing /no_capacity/i etc. checks match.
+  const err = new Error(code || 'error');
+  err.widgetCode = code;
+  throw err;
+}
+
+// Insert a widget booking. When `token` is present (a real cloud guest who
+// solved the Turnstile CAPTCHA) the insert is routed through the serverless
+// verifier; otherwise (or when the verifier isn't configured yet) it falls back
+// to the direct anon book_widget_slot RPC. The RLS check requires
+// status='tentative' AND channel='website' so we hardcode both. Returns the
+// inserted booking id (from the DB trigger) on success, throws on failure (the
+// widget catches + shows an error).
+export async function insertWidgetBooking(propertyId, booking, token) {
   if (!propertyId) throw new Error('No propertyId');
   const startIdx = booking.startIdx || 0;
   const startDate = idxToDate(startIdx);
@@ -207,6 +264,20 @@ export async function insertWidgetBooking(propertyId, booking) {
     hold_hours: booking.holdHours || null,
     gst_applies: false,
   };
+
+  // CAPTCHA path first: when the guest solved the Turnstile check, route the
+  // insert through the serverless verifier (api/widget-book.js). It only books
+  // after Cloudflare confirms the guest is human. If it isn't configured /
+  // deployed yet, we transparently fall through to the direct RPC below.
+  if (token) {
+    const apiRes = await tryWidgetBookViaApi(payload, token); // throws on real rejection
+    if (apiRes.done) {
+      fireBookingNotify(propertyId);
+      return null;
+    }
+    // apiRes.fallback → continue to the legacy direct insert below.
+  }
+
   // Prefer the atomic capacity-checked RPC (20260607_widget_capacity_check.sql):
   // it locks per property + room type, re-checks availability against live
   // bookings, and inserts in one transaction — closing the race where two
@@ -242,22 +313,8 @@ export async function insertWidgetBooking(propertyId, booking) {
   // (Pre-migration the old RPC simply won't redeem until the owner pastes
   // 20260626; the booking still works, exactly as before.)
 
-  // Best-effort: ping the hotelier's subscribed devices via Web Push so their
-  // phone buzzes on this booking. Fire-and-forget (no await) so a slow/missing
-  // endpoint never delays the guest's confirmation. The /api function lives on
-  // the same Vercel origin; it returns 503 (ignored) until the owner sets the
-  // VAPID + service-role env vars, and simply 404s on the GitHub Pages mirror.
-  // `keepalive` lets the request finish even as the widget navigates to its
-  // confirmation screen.
-  try {
-    const origin = (typeof window !== 'undefined' && window.location) ? window.location.origin : '';
-    fetch('/api/notify-booking', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ propertyId, origin }),
-      keepalive: true,
-    }).catch(() => {});
-  } catch (e) { /* never block the booking on a notify failure */ }
+  // Best-effort: buzz the hotelier's phone via Web Push (fire-and-forget).
+  fireBookingNotify(propertyId);
 
   // Return null — caller (App.jsx PublicWidgetEntry) generates a
   // friendly "your booking is being created" placeholder for the

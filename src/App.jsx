@@ -60,6 +60,14 @@ import Activity from './screens/Activity.jsx';
 // preview the app without an account.
 const HARDCODED_DEMO_MODE = false;
 
+// Cloudflare Turnstile (anti-bot) PUBLIC site key for the public booking widget.
+// Safe to ship (the secret key lives only in the Vercel env var TURNSTILE_SECRET_KEY,
+// read server-side by api/widget-book.js). Bound to atithibook.com hostnames, so
+// it only renders a valid token on the live domain — which is exactly where the
+// cloud guest path runs. The hotelier's own logged-in preview gets no site key
+// (see PublicWidgetEntry), so the check never blocks them.
+const TURNSTILE_SITE_KEY = '0x4AAAAAADsz85O7wFnAki_z';
+
 // Per-browser demo opt-in. When the hotelier (or a prospect) lands on
 // `?demo=1` or taps "Try the demo" on SignIn, we set this flag. It lets
 // the demo experience persist across reloads without touching the
@@ -472,16 +480,22 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
   // ACTUAL insert result instead of optimistically showing success. Returns
   // { ok:true, ref } on success or { ok:false, reason } so the guest sees a
   // real error (and can retry) when the hold wasn't created.
-  const handleSubmit = async (newBk) => {
+  const handleSubmit = async (newBk, captchaToken) => {
     if (cloudProperty && cloudProperty.id) {
       try {
         // Anonymous insert. The cloud-side trigger assigns the real BK-XXXX,
         // but anon has no SELECT (RLS) to read it back, so we return a
         // friendly WEB-XXXX reference for the guest; the hotelier sees the
-        // real BK-#### when it lands in their diary.
-        await insertWidgetBooking(cloudProperty.id, newBk);
+        // real BK-#### when it lands in their diary. The captcha token (when
+        // present) routes the insert through the serverless verifier.
+        await insertWidgetBooking(cloudProperty.id, newBk, captchaToken);
       } catch (err) {
         const msg = (err && err.message) || '';
+        if (/captcha_failed|captcha/i.test(msg)) {
+          // Turnstile rejected the token (expired / tampered / wrong host).
+          console.warn('[atithi widget] not created — CAPTCHA verification failed.', err);
+          return { ok: false, reason: 'captcha' };
+        }
         if (/no_capacity/i.test(msg)) {
           // Room type filled up between opening the widget and Confirm (or two
           // guests raced for the last unit). The atomic book_widget_slot guard
@@ -515,6 +529,7 @@ function PublicWidgetEntry({ slug, fallbackProperty, fallbackBookings, fallbackO
         savedCustomExtras={fallbackExtras || []}
         onSubmit={handleSubmit}
         validateCoupon={cloudProperty ? (code, nights) => validateCouponCloud(cloudProperty.id, code, nights) : undefined}
+        captchaSiteKey={cloudProperty ? TURNSTILE_SITE_KEY : undefined}
       />
     </div>
   );

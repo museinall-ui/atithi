@@ -24,7 +24,7 @@ import { generateVoucher } from '../utils/voucher.js';
 // through a Supabase anon RLS policy that allows status='tentative'
 // inserts but rejects everything else — that policy work is queued.
 
-export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, savedCustomExtras = [], onSubmit, validateCoupon }) {
+export default function PublicBookingWidget({ property, bookings, rateOverrides = {}, savedCustomExtras = [], onSubmit, validateCoupon, captchaSiteKey }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const ratePlans = effectiveRatePlans(property);
   const mealPlans = effectiveMealPlans(property).filter(mp => mp.enabled);
@@ -75,6 +75,11 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   const [createdBooking, setCreatedBooking] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // Cloudflare Turnstile (anti-bot). Only active when captchaSiteKey is set —
+  // i.e. a real cloud guest, not the hotelier's local preview. Token is
+  // single-use, so we bump captchaReset after a failed submit to re-issue one.
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
 
@@ -507,7 +512,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     setSubmitting(true);
     let res;
     try {
-      res = await onSubmit(newBooking);
+      res = await onSubmit(newBooking, captchaToken);
     } catch (e) {
       res = { ok: false, reason: 'error' };
     }
@@ -519,9 +524,12 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
     const ok = (res && typeof res === 'object') ? res.ok : !!res;
     if (!ok) {
       const reason = (res && res.reason) || 'error';
+      // Turnstile tokens are single-use — re-issue one so the guest can retry.
+      if (captchaSiteKey) { setCaptchaToken(''); setCaptchaReset(n => n + 1); }
       setSubmitError(
         reason === 'no_capacity' ? 'Sorry — those dates just sold out for this room. Please pick different dates or another room.'
           : reason === 'rate_limited' ? "We're getting a lot of requests right now. Please try again in a few minutes."
+          : reason === 'captcha' ? 'Please complete the “I’m human” check below, then tap Confirm again.'
           : "Something went wrong and your booking wasn't saved. Please try again, or contact the property directly."
       );
       return;
@@ -1275,9 +1283,16 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
                 {submitError}
               </div>
             )}
+            {/* Anti-bot check — only for real guests (cloud path). The hotelier's
+                own logged-in preview has no site key, so it isn't shown there. */}
+            {captchaSiteKey && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                <TurnstileBox siteKey={captchaSiteKey} resetSignal={captchaReset} onToken={setCaptchaToken} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
               <SecondaryBtn onClick={() => setStep(2)}>← Back</SecondaryBtn>
-              <PrimaryBtn disabled={!guestValid || submitting} onClick={handleSubmit}>
+              <PrimaryBtn disabled={!guestValid || submitting || (!!captchaSiteKey && !captchaToken)} onClick={handleSubmit}>
                 {submitting ? 'Confirming…' : 'Confirm booking'}
               </PrimaryBtn>
             </div>
@@ -1603,6 +1618,59 @@ function SummaryRow({ label, value }) {
       <span style={{ fontSize: 12, color: T.ink, fontWeight: 700, textAlign: 'right' }}>{value}</span>
     </div>
   );
+}
+
+// Loads the Cloudflare Turnstile script once (explicit-render mode) and caches
+// the in-flight promise so multiple boxes / remounts don't inject it twice.
+let _turnstileScriptPromise = null;
+function loadTurnstileScript() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('no window'));
+  if (window.turnstile) return Promise.resolve();
+  if (_turnstileScriptPromise) return _turnstileScriptPromise;
+  _turnstileScriptPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => { _turnstileScriptPromise = null; reject(new Error('turnstile script failed')); };
+    document.head.appendChild(s);
+  });
+  return _turnstileScriptPromise;
+}
+
+// The "I'm human" widget. Calls onToken(token) when solved, onToken('') when the
+// token expires / errors. resetSignal (a bumped number) forces a fresh token
+// after a failed submit, since Turnstile tokens are single-use.
+function TurnstileBox({ siteKey, onToken, resetSignal }) {
+  const ref = useRef(null);
+  const widgetIdRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadTurnstileScript().then(() => {
+      if (cancelled || !ref.current || !window.turnstile) return;
+      widgetIdRef.current = window.turnstile.render(ref.current, {
+        sitekey: siteKey,
+        callback: (tok) => onToken(tok),
+        'expired-callback': () => onToken(''),
+        'error-callback': () => onToken(''),
+        theme: 'light',
+      });
+    }).catch(() => { /* script blocked → box stays empty; Confirm stays disabled */ });
+    return () => {
+      cancelled = true;
+      try { if (widgetIdRef.current != null && window.turnstile) window.turnstile.remove(widgetIdRef.current); } catch (e) { /* ignore */ }
+      widgetIdRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteKey]);
+  // External reset after a failed submit (single-use token consumed).
+  useEffect(() => {
+    if (!resetSignal) return;
+    try { if (widgetIdRef.current != null && window.turnstile) window.turnstile.reset(widgetIdRef.current); } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal]);
+  return <div ref={ref} />;
 }
 
 function PrimaryBtn({ children, onClick, disabled }) {

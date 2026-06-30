@@ -54,6 +54,23 @@ export default async function handler(req, res) {
     return res.status(403).json({ code: 'captcha_failed', error: 'Missing verification token' });
   }
 
+  // L1: the widget prices the booking client-side, so distrust the total the
+  // browser sends — a tampered/scripted caller could forge it. This verifier is
+  // the ONLY path that can create a website booking (anon EXECUTE on
+  // book_widget_slot is revoked by 20260702), so sanitizing here is sufficient.
+  // We don't run the full pricing engine server-side, but we reject non-finite /
+  // negative / absurd values so a forged total can't land as ₹crore or pollute
+  // Reports. book_widget_slot still recomputes the coupon discount from the
+  // server-validated code, and forces paid=0 / status=tentative for review.
+  const MAX_BOOKING_TOTAL = 2000000; // ₹20 lakh — far above any real single website booking
+  const cleanInt = (v, cap) => {
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(n, cap);
+  };
+  payload.total = cleanInt(payload.total, MAX_BOOKING_TOTAL);
+  payload.discount_amount = cleanInt(payload.discount_amount, MAX_BOOKING_TOTAL);
+
   // (1) Verify the Turnstile token with Cloudflare.
   try {
     const ip = (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || '')

@@ -256,8 +256,19 @@ begin
   return v_new_id;
 end;
 $$;
-grant execute on function public.book_widget_slot(jsonb) to anon;
-grant execute on function public.book_widget_slot(jsonb) to authenticated;
+-- ⚠️ CAPTCHA LOCKDOWN (see 20260702_widget_captcha_lockdown.sql). Website bookings
+-- must go through the serverless verifier (api/widget-book.js), which calls this
+-- function with the SERVICE-ROLE key. Granting anon EXECUTE here would re-open the
+-- direct booking bypass the CAPTCHA closes — and because this file DROPs+CREATEs
+-- the function, a fresh CREATE also restores the default PUBLIC execute grant. So
+-- instead of `grant ... to anon`, this migration now SELF-LOCKS: it strips PUBLIC
+-- + anon + authenticated and leaves only service_role. Re-pasting this file is
+-- therefore always safe — it can never re-open the bypass. (To deliberately
+-- restore the pre-CAPTCHA open widget, use the revert block in 20260702.)
+revoke execute on function public.book_widget_slot(jsonb) from public;
+revoke execute on function public.book_widget_slot(jsonb) from anon;
+revoke execute on function public.book_widget_slot(jsonb) from authenticated;
+grant execute on function public.book_widget_slot(jsonb) to service_role;
 
 -- Test (private / logged-out): with units 0 and 2 of a type booked for some dates
 -- and unit 1 free, a website booking for those dates should land on unit_idx = 1

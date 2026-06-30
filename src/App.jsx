@@ -1162,6 +1162,10 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    // Hoisted so the catch below can seed currentMember from the REAL role when
+    // membership resolved but a later load threw (L3) — falling back to owner
+    // only when even the membership read failed.
+    let result = null;
     (async () => {
       try {
         // Accept any pending invites for this email FIRST. Each match
@@ -1175,7 +1179,7 @@ export default function App() {
           // owner / bootstrap path still works.
           console.warn('[atithi] could not accept pending invites', e);
         }
-        let result = await loadCurrentProperty(session.user.id);
+        result = await loadCurrentProperty(session.user.id);
         const isFirstTime = !result;
         if (isFirstTime) {
           // Brand-new cloud user — ALWAYS bootstrap with an empty
@@ -1251,15 +1255,19 @@ export default function App() {
         // Don't block the app — fall back to localStorage data so the
         // hotelier can still work. We retry on next sign-in.
         //
-        // CRITICAL: also seed currentMember with a full-access owner
-        // fallback. Without this, the cloud-load error path leaves
-        // currentMember null while cloudReady flips true → myPerms
-        // resolves to an empty Set → can() denies EVERY action and
-        // the signed-in owner is locked out of new booking, payments,
-        // rates, reports, diary drag, etc. A transient load blip must
-        // degrade to full access, never to zero access.
+        // Seed currentMember so cloudReady=true doesn't leave it null (→ myPerms
+        // empty Set → can() denies everything → the user is locked out). L3:
+        // prefer the REAL role when membership resolved before the throw (e.g. a
+        // later loadBookings/loadExpenses blip) — otherwise an invited
+        // reception/manager staffer would get full owner UI for the session.
+        // Fall back to owner ONLY when even the membership read failed (the
+        // genuine brand-new / offline single-owner case this guard was written
+        // for). The DB-level RBAC is the real backstop either way.
         if (!cancelled) {
-          setCurrentMember(prev => prev || { role: 'owner', permissions: [] });
+          const fallbackMember = (result && result.role)
+            ? { role: result.role, permissions: result.permissions || [] }
+            : { role: 'owner', permissions: [] };
+          setCurrentMember(prev => prev || fallbackMember);
           setCloudReady(true);
         }
       }
@@ -1313,6 +1321,13 @@ export default function App() {
         const cloudExtra = await syncCloud('Add saved extra', addSavedExtraCloud(propertyId, e));
         if (cloudExtra && cloudExtra.id && cloudExtra.id !== e.id) {
           setSavedCustomExtras(arr => arr.map(x => x.id === e.id ? { ...x, id: cloudExtra.id } : x));
+          // L2: advance the diff-sync ref to the server uuid too. The setState
+          // above re-runs this effect; without this, prev (this ref) still holds
+          // the temp id, so the uuid row reads as a NEW addition → a second
+          // addSavedExtraCloud WITH the explicit uuid → duplicate-PK violation →
+          // a spurious "Add saved extra failed" toast. Updating the ref makes the
+          // re-run see the uuid as already-synced.
+          savedExtrasRef.current = savedExtrasRef.current.map(x => x.id === e.id ? { ...x, id: cloudExtra.id } : x);
         }
       } catch { /* syncCloud already toasted */ }
     });
@@ -1385,6 +1400,18 @@ export default function App() {
   // syncs against booking ids that don't belong to the current user's property.
   useEffect(() => {
     const tick = () => {
+      // M2: midnight rollover re-anchor. ANCHOR is today's local midnight,
+      // computed once at module load, and drives every day-index calc. The
+      // focus/visibilitychange staleness reload never fires on a tab that stays
+      // continuously focused across midnight (a front-desk PWA left full-screen
+      // on the Dashboard), so re-anchor here: once the calendar day has moved
+      // past ANCHOR's day, reload to recompute ANCHOR (and everything derived
+      // from it). Runs before the cloud guard so an always-on display re-anchors
+      // even mid-load. One reload at the rollover; after it ymd() matches again.
+      if (typeof window !== 'undefined' && ymd(new Date()) !== ymd(ANCHOR)) {
+        window.location.reload();
+        return;
+      }
       // Don't touch tentative bookings until the cloud has caught up —
       // otherwise we'd cancel-and-sync stale local-only data the cloud
       // doesn't know about, against booking IDs that may not exist in

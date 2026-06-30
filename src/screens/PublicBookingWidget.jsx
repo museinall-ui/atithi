@@ -80,6 +80,10 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
   // single-use, so we bump captchaReset after a failed submit to re-issue one.
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReset, setCaptchaReset] = useState(0);
+  // M3: set when the Turnstile script can't load/render (ad-blocker, Brave
+  // shields, corporate CSP, Cloudflare outage). Lets us show a recoverable
+  // message + the property's contact instead of a silently-disabled Confirm.
+  const [captchaUnavailable, setCaptchaUnavailable] = useState(false);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
 
@@ -1285,11 +1289,25 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
             )}
             {/* Anti-bot check — only for real guests (cloud path). The hotelier's
                 own logged-in preview has no site key, so it isn't shown there. */}
-            {captchaSiteKey && (
+            {captchaSiteKey && !captchaUnavailable && (
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
-                <TurnstileBox siteKey={captchaSiteKey} resetSignal={captchaReset} onToken={setCaptchaToken} />
+                <TurnstileBox siteKey={captchaSiteKey} resetSignal={captchaReset} onToken={setCaptchaToken} onError={() => setCaptchaUnavailable(true)} />
               </div>
             )}
+            {/* M3: Turnstile couldn't load — give the guest a way forward instead
+                of a silently-disabled Confirm button. */}
+            {captchaSiteKey && captchaUnavailable && (() => {
+              const ph = (property?.profile?.phone || '').toString();
+              const digits = ph.replace(/\D/g, '');
+              return (
+                <div style={{ padding: '10px 12px', background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 8, marginTop: 14, fontSize: 12, color: T.ink2, lineHeight: 1.5, fontWeight: 600 }}>
+                  We couldn’t load the “I’m human” check — usually an ad-blocker or a strict network. Please turn off your ad-blocker for this page and reload.
+                  {digits
+                    ? <> Or contact us directly: <a href={`https://wa.me/${digits}`} style={{ color: T.primaryDk, fontWeight: 700 }}>{ph}</a>.</>
+                    : null}
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
               <SecondaryBtn onClick={() => setStep(2)}>← Back</SecondaryBtn>
               <PrimaryBtn disabled={!guestValid || submitting || (!!captchaSiteKey && !captchaToken)} onClick={handleSubmit}>
@@ -1642,11 +1660,17 @@ function loadTurnstileScript() {
 // The "I'm human" widget. Calls onToken(token) when solved, onToken('') when the
 // token expires / errors. resetSignal (a bumped number) forces a fresh token
 // after a failed submit, since Turnstile tokens are single-use.
-function TurnstileBox({ siteKey, onToken, resetSignal }) {
+function TurnstileBox({ siteKey, onToken, onError, resetSignal }) {
   const ref = useRef(null);
   const widgetIdRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
+    let rendered = false;
+    // M3: if the script doesn't load AND render within ~8s (ad-blocker, Brave
+    // shields, a corporate CSP, or a Cloudflare blip), tell the parent so the
+    // guest gets a recoverable message + the property contact — instead of a
+    // permanently-disabled Confirm button with no explanation.
+    const failTimer = setTimeout(() => { if (!cancelled && !rendered && onError) onError(); }, 8000);
     loadTurnstileScript().then(() => {
       if (cancelled || !ref.current || !window.turnstile) return;
       widgetIdRef.current = window.turnstile.render(ref.current, {
@@ -1656,9 +1680,12 @@ function TurnstileBox({ siteKey, onToken, resetSignal }) {
         'error-callback': () => onToken(''),
         theme: 'light',
       });
-    }).catch(() => { /* script blocked → box stays empty; Confirm stays disabled */ });
+      rendered = true;
+      clearTimeout(failTimer);
+    }).catch(() => { clearTimeout(failTimer); if (!cancelled && onError) onError(); });
     return () => {
       cancelled = true;
+      clearTimeout(failTimer);
       try { if (widgetIdRef.current != null && window.turnstile) window.turnstile.remove(widgetIdRef.current); } catch (e) { /* ignore */ }
       widgetIdRef.current = null;
     };

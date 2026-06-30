@@ -23,11 +23,17 @@
 -- ----------------------------------------------------------------------------
 
 -- The verifier calls book_widget_slot with the service-role key — make sure that
--- role keeps execute even after we revoke it from anon.
+-- role keeps execute even after we revoke it from everyone else.
 grant execute on function public.book_widget_slot(jsonb) to service_role;
 
--- (1) Remove anon's ability to call the booking RPC directly.
+-- (1) Remove the ability to call the booking RPC directly from every role except
+-- service_role. NOTE: Postgres grants EXECUTE to PUBLIC by default when a function
+-- is (re)created, so revoking from `anon` alone is NOT enough — PUBLIC silently
+-- lets anon back in. We must revoke from PUBLIC (and the explicit anon/authenticated
+-- grants added in 20260628) so service_role is the only role left.
+revoke execute on function public.book_widget_slot(jsonb) from public;
 revoke execute on function public.book_widget_slot(jsonb) from anon;
+revoke execute on function public.book_widget_slot(jsonb) from authenticated;
 
 -- (2) Remove the anon INSERT policy on bookings (the pre-RPC fallback path the
 -- widget used before book_widget_slot existed). Created in
@@ -42,6 +48,7 @@ drop policy if exists "anon insert widget bookings" on bookings;
 
 -- ---- REVERT (paste this block to undo the lockdown) -------------------------
 -- grant execute on function public.book_widget_slot(jsonb) to anon;
+-- grant execute on function public.book_widget_slot(jsonb) to authenticated;
 -- create policy "anon insert widget bookings" on bookings
 --   for insert to anon
 --   with check (status = 'tentative' and channel = 'website');

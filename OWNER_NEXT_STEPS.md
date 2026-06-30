@@ -15,29 +15,21 @@ to the database, so a normal website rate-limit can't protect it. A CAPTCHA
 (Cloudflare Turnstile) stops bots while staying invisible to real guests. This
 is the one thing standing between you and safely sharing the link publicly.
 
-**✅ Done:** Turnstile widget created; Site Key baked into the app; the booking
-form now shows the "I'm human" check and a serverless verifier
-(`api/widget-book.js`) was built. Until you do the step below, the verifier
-returns "not configured" and the widget books exactly as before — nothing is
-broken in the meantime.
+**✅ COMPLETE + verified live (2026-06-30):**
+- Turnstile widget created; Site Key in the app; serverless verifier
+  (`api/widget-book.js`) deployed.
+- `TURNSTILE_SECRET_KEY` set in Vercel — verifier enforces (probe got a
+  Cloudflare `captcha_failed` on a bad token).
+- Lockdown SQL applied — the public key can no longer call the booking function
+  directly (probe got `permission denied`). The corrected SQL (vs the file) had
+  to also `revoke ... from public`, since Postgres grants functions to PUBLIC by
+  default; `20260702_widget_captcha_lockdown.sql` is updated to match.
 
-**Your remaining action (~3 min):**
-1. Open Vercel → your project → **Settings → Environment Variables**:
-   👉 https://vercel.com/dashboard
-2. Add a variable:
-   - **Name:** `TURNSTILE_SECRET_KEY`
-   - **Value:** the **Secret Key** from Cloudflare Turnstile
-   - Environments: tick **Production** (and Preview if you want).
-3. **Redeploy** so it takes effect: Vercel → **Deployments** → top one → ⋯ →
-   **Redeploy**. (Or tell me and I'll push a tiny commit to trigger it.)
-4. **Test:** open `www.atithibook.com/book/<your-short-code>` in a private
-   window, make a test booking — the "I'm human" check should appear and the
-   booking should land in your diary.
-5. **Then lock it down** (closes the last bypass): Supabase → SQL Editor → paste
-   `supabase/migrations/20260702_widget_captcha_lockdown.sql` → Run. ⚠️ Only
-   after step 4 succeeds — pasting it earlier stops the form from booking.
-
-(The Secret Key lives only in Vercel — never in the code or the repo.)
+Your booking link is now safe to share. **Only loose end:** push one real test
+booking through `/book/<your-short-code>` sometime to see it land in your diary
+(the verifier is now the only path that can create a website booking). If a real
+booking ever failed, the revert block at the bottom of the migration file
+re-opens the old path.
 
 ---
 
@@ -102,7 +94,14 @@ setting is the cause.
 
 ---
 
-## 4. Google sign-in — currently NOT working (~10 min)
+## 4. Google sign-in — ✅ DONE + working (2026-06-30)
+
+Google OAuth client created (Client ID `262648759612-…apps.googleusercontent.com`),
+consent screen published, enabled in Supabase → live test passed. "Continue with
+Google" now signs people in. Note: Google and magic-link merge into the SAME
+account whenever they share the same verified email — so a hotelier can use
+either method interchangeably and see their own data (a *different* email = a
+separate account). The setup steps below are kept for reference.
 
 **Why:** the "Continue with Google" button is in the app but tapping it just
 shows a "not set up yet" hint. To make it real you create a Google OAuth client
@@ -136,15 +135,15 @@ your Google account → you should land signed in.
 
 ---
 
-## 5. WhatsApp enquiry number (optional, ~2 min)
+## 5. WhatsApp enquiry number (~2 min)
 
-Your landing page's "Try Demo" button wants a WhatsApp number to message you.
-When you have one for sales/demo enquiries:
+Number to use: **9677184198** → env-var value **`919677184198`** (country code
+`91` + the 10 digits, no `+`/spaces — `wa.me` links need the country code).
+Powers the Landing "Try Demo" WhatsApp button + the Channels support button.
 - Vercel → your project → **Settings → Environment Variables** → add
-  `VITE_CONTACT_WA` = your number in full international form, digits only
-  (e.g. `919812345678`).
-- Then **redeploy** (Vercel → Deployments → ⋯ → Redeploy), or tell me and I'll
-  push a tiny commit to trigger it.
+  `VITE_CONTACT_WA` = `919677184198` → tick **Production** → Save.
+- Then **redeploy** so it bakes in (the `VITE_` vars only apply on rebuild):
+  Vercel → Deployments → ⋯ → Redeploy, or tell me and I'll push to trigger it.
 
 ---
 

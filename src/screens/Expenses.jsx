@@ -396,7 +396,7 @@ export default function Expenses({ go, t, expenses = [], onAdd, onRemove, onUpda
                   </div>
                   <span className="tnum" style={{ fontSize: 14, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{fmtINR(e.amount)}</span>
                   <button
-                    onClick={() => { if (window.confirm(`Delete this ${fmtINR(e.amount)} expense? This can't be undone.`)) onRemove && onRemove(e.id); }}
+                    onClick={() => { if (window.confirm(t('deleteExpenseConfirm').replace('{amt}', fmtINR(e.amount)))) onRemove && onRemove(e.id); }}
                     title={t('deleteExpense')}
                     style={{ background: 'none', border: 'none', color: T.ink3, cursor: 'pointer', padding: 4 }}
                   ><Icon name="x" size={13} /></button>

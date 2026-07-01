@@ -2390,7 +2390,7 @@ export default function App() {
       } else if (!allowed) {
         screen = <PermissionDenied go={go} t={t} action={isEditPath ? 'edit bookings' : 'create new bookings'} />;
       } else {
-        screen = <NewBooking key={'nb-' + (route.seq || 0)} go={go} onCreate={onCreate} plan={plan} t={t} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} onVoiceBooking={() => setVoiceOpen(true)} />;
+        screen = <NewBooking key={'nb-' + (route.seq || 0)} go={go} onCreate={onCreate} plan={plan} t={t} lang={lang} editing={editingBooking} prefill={prefill} savedCustomExtras={savedCustomExtras} onRemoveSavedExtra={removeSavedCustomExtra} rateOverrides={rateOverrides} property={property} bookings={bookings} onVoiceBooking={() => setVoiceOpen(true)} />;
       }
       break;
     }

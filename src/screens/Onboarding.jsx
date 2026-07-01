@@ -177,7 +177,10 @@ export default function Onboarding({ property, onApply, onDismiss, isHi }) {
 
   return (
     <div
-      onClick={onDismiss}
+      // L2: a stray tap on the dark backdrop used to permanently dismiss this
+      // first-run guide (very easy to hit on a phone), with no way back. The
+      // backdrop is now inert — the guide only closes via its explicit Skip or
+      // Finish buttons, so it can't be lost by accident.
       style={{
         position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)',
         zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',

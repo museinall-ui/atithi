@@ -949,17 +949,26 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
 
           <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, background: T.bgSoft }}>
             <div style={{ width: labelW, flexShrink: 0, padding: '6px 10px', borderRight: `1px solid ${T.borderSoft}` }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>OCCUPANCY</div>
+              {/* L5/L12: owners think in "rooms free", not %. Show the free count as
+                  the main figure with % beneath; label localised. */}
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4 }}>{t('roomsFreeLabel')}</div>
             </div>
             {viewDays.map((d) => {
               // P1: O(1) lookup from the precomputed per-day occupancy map
               // (was an O(instances) filter per column).
               const occRooms = occByDay.get(d.idx) || 0;
               const occ = totalRooms > 0 ? Math.round((occRooms / totalRooms) * 100) : 0;
+              const free = totalRooms - occRooms;
+              const overbook = free < 0;
+              // M4: higher occupancy reads as HEALTHIER — full/near-full green,
+              // mid neutral, low/empty muted grey. Red is reserved for a genuine
+              // overbook (>100%), which is the only occupancy state that's a problem.
+              const occColor = overbook ? T.danger : occ >= 70 ? T.ok : occ >= 30 ? T.ink2 : T.ink3;
               const isToday = d.iso === todayIso;
               return (
-                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '6px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: isToday ? T.primaryLt : 'transparent' }}>
-                  <div className="tnum" style={{ fontSize: 11, fontWeight: 700, color: occ > 80 ? T.danger : occ > 50 ? 'oklch(48% 0.14 75)' : T.ok }}>{occ}%</div>
+                <div key={d.iso} style={{ width: colW, flexShrink: 0, padding: '5px 4px 4px', textAlign: 'center', borderRight: `1px solid ${T.borderSoft}`, background: isToday ? T.primaryLt : 'transparent' }}>
+                  <div className="tnum" style={{ fontSize: 12, fontWeight: 800, color: occColor, lineHeight: 1.05 }}>{overbook ? `+${-free}` : free}</div>
+                  <div className="tnum" style={{ fontSize: 8, fontWeight: 700, color: T.ink3, lineHeight: 1.1 }}>{occ}%</div>
                 </div>
               );
             })}

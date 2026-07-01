@@ -102,7 +102,7 @@ function childBandLabel(band, bands, property, t) {
   return lo > 0 ? `${lo}–${band.maxAge - 1}` : `<${band.maxAge}`;
 }
 
-function StepDates({ data, set, t, property, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
+function StepDates({ data, set, t, lang = 'en', property, childAgeBelow, childFreeAge = 5, childHalfAge = 12 }) {
   const childBands = effectiveChildBands(property);
   const dateRef = useRef(null);
   // Minimum-night reminder (Advanced settings → Minimum-night stays).
@@ -147,10 +147,13 @@ function StepDates({ data, set, t, property, childAgeBelow, childFreeAge = 5, ch
   if (data.checkIn) {
     const inDate = new Date(data.checkIn + 'T00:00:00');
     if (!isNaN(inDate.getTime())) {
-      checkInLabel = inDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+      // M8: localise the date so a Hindi-mode hotelier sees Hindi dates here too
+      // (the Dashboard + voucher already do). Still the correct date either way.
+      const dloc = lang === 'hi' ? 'hi-IN' : 'en-IN';
+      checkInLabel = inDate.toLocaleDateString(dloc, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
       const outDate = new Date(inDate);
       outDate.setDate(outDate.getDate() + (data.nights || 1));
-      checkOutLabel = outDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      checkOutLabel = outDate.toLocaleDateString(dloc, { day: '2-digit', month: 'short', year: 'numeric' });
     }
   }
   return (
@@ -759,7 +762,10 @@ function StepRoom({ data, set, t, rateForNight, roomTypes, mealPlans, ratePlans 
           </Card>
         );
       })()}
-      {enabledMealPlans.length > 0 && (() => {
+      {/* L4: only surface the meal-plan card when there's a real choice — a
+          single "Room only" plan is nothing to pick (the rate-plan card already
+          works this way). */}
+      {enabledMealPlans.length > 1 && (() => {
         // Calendar rate is treated as already including the property's
         // default meal plan; other plans charge the per-guest-per-night
         // delta on top (can be negative — that's the discount when a
@@ -1243,7 +1249,7 @@ function parseGuestsLabel(label) {
   };
 }
 
-export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [], onVoiceBooking }) {
+export default function NewBooking({ go, onCreate, plan = 'engine', t, lang = 'en', editing, prefill, savedCustomExtras = [], onRemoveSavedExtra, rateOverrides = {}, property, bookings = [], onVoiceBooking }) {
   const ROOM_TYPES = effectiveRoomTypes(property);
   const isEdit = !!editing;
   const [step, setStep] = useState(1);
@@ -1648,7 +1654,7 @@ export default function NewBooking({ go, onCreate, plan = 'engine', t, editing, 
                 <Icon name="chev" size={14} color={T.ink3} />
               </button>
             )}
-            <StepDates data={data} set={set} t={t} property={property} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />
+            <StepDates data={data} set={set} t={t} lang={lang} property={property} childAgeBelow={property?.accountant?.childAgeBelow ?? 12} childFreeAge={property?.accountant?.childFreeBelowAge ?? 5} childHalfAge={property?.accountant?.childAgeBelow ?? 12} />
           </>
         )}
         {step === 2 && <StepRoom data={data} set={set} t={t} rateForNight={rateForNight} roomTypes={ROOM_TYPES} mealPlans={property?.mealPlans || []} ratePlans={effectiveRatePlans(property)} property={property} />}

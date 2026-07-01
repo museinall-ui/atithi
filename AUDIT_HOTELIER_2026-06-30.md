@@ -12,6 +12,23 @@ Status legend: [ ] open · [x] fixed · [~] deferred/won't-fix
 
 ---
 
+## FIX STATUS — shipped 2026-06-30 (6 batches, all on `main`)
+
+**All 5 HIGH fixed** · **15 of 17 MEDIUM fixed** · **12 of 13 LOW fixed** (≈30/35).
+
+- ✅ **Fixed + shipped:** H1 H2 H3 H4 H5 · M1 M2 M3 M4 M5 M6 M9 M10 M11 M12 M13 M14 M15 M17 · L1 L2 L3 L4 L5 L6 L7 L8 L9 L10 L11 · L12 (partial — OCCUPANCY→ROOMS FREE label + expense-delete confirm) · M8 (New Booking date entry).
+- Batches: 1 `61c…`-money-wording · 2 Reports/Dashboard · 3 credit/refund · 4 team/RBAC · 5 rates/pricing · 6 diary/first-run. Each is its own commit; behavioural fixes verified live.
+- ⚠️ **Owner action:** paste `20260703_team_member_emails.sql` (H4 — team emails).
+
+**~[~] Deferred (documented, with reason):**
+- **M7** (Rates power-tools + confirms still English in Hindi) → folds into the known-deferred Settings/units i18n pass.
+- **M16** (New Booking Step-2 doesn't itemise custom child bands) → the TOTAL charged is already correct; only the editor preview under-itemises. Needs a band-driven editor rework — a targeted follow-up, not rushed.
+- **M8** (BookingDetail read-only stay-row dates) → the date-entry surface (New Booking) is fixed; the folio's read-only `fmtStayDay` helper folds into the i18n sweep.
+- **L12** (remaining scattered English words: Dashboard "due"/channel names, Diary month banner) → fold into the i18n sweep.
+- **L13** (public booking widget English-only) → part of the deferred guest-facing translation work.
+
+---
+
 ## HIGH — shows a guest or owner genuinely wrong/misleading info
 
 - [ ] **H1 · WhatsApp payment message points to a QR that was never sent.** The ready-made "Send booking summary / reminder" text ends with *"scan the UPI QR we shared to pay"* — but a wa.me text can't attach an image, and the QR only lives inside the downloadable voucher. Fires even when no QR is set up. Guest scrolls, finds nothing, may not pay → lost hold. *Fix:* reword to "Reply here and we'll send you a UPI QR to pay ₹X"; when a QR exists, guide the owner to send the image/voucher first. (`src/utils/share.js`)

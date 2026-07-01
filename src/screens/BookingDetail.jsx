@@ -134,6 +134,13 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
           </div>
         </div>
 
+        {/* M2/M3: say plainly what this action does, since "Refund" (real cash
+            back) and "Credit" (lower the bill, no cash) look alike. */}
+        {(isCredit || isRefund) && (
+          <div style={{ marginBottom: 14, padding: '10px 12px', background: `color-mix(in oklch, ${tone} 8%, white)`, border: `1px solid color-mix(in oklch, ${tone} 30%, white)`, borderRadius: 8, fontSize: 11.5, color: T.ink2, lineHeight: 1.5, fontWeight: 600 }}>
+            {isCredit ? t('creditExplainer') : t('refundExplainer')}
+          </div>
+        )}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('amountCap')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: T.bgSoft, border: `1.5px solid ${tone}`, borderRadius: 10 }}>
@@ -154,11 +161,20 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
               <Icon name="info" size={11} /> {t('overpaymentExtra').replace('{amt}', (+amount - balance).toLocaleString('en-IN'))}
             </div>
           )}
+          {/* M2: show the effect of a credit note before confirming. */}
+          {isCredit && +amount > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: T.indigo }}>
+              {t('creditNewTotal').replace('{old}', total.toLocaleString('en-IN')).replace('{new}', Math.max(0, total - (+amount || 0)).toLocaleString('en-IN'))}
+            </div>
+          )}
         </div>
 
+        {/* M2: a credit note collects no money, so the payment-method grid is
+            meaningless there — hide it for credit. */}
+        {!isCredit && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>
-            {isCredit ? t('creditType') : isRefund ? t('refundVia') : t('collectedVia')}
+            {isRefund ? t('refundVia') : t('collectedVia')}
           </div>
           {/* Method grid: defaults first, then any saved custom
               methods, then an 'Add' tile for creating a new one.
@@ -229,6 +245,7 @@ function PaymentSheet({ kind, balance, total, onClose, onSave, property, onChang
             </div>
           )}
         </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('detailsCap')}</div>
@@ -815,7 +832,23 @@ export default function BookingDetail({ go, bookingId, bookings, plan = 'engine'
             {withTax && <Row label={`CGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.cgst.toLocaleString('en-IN')}`} />}
             {withTax && <Row label={`SGST ${(tx.rate / 2).toFixed(tx.rate % 2 ? 1 : 0)}%`} value={`₹${tx.sgst.toLocaleString('en-IN')}`} />}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
-            <Row label={t('total')} value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
+            {/* L8: when a credit note or coupon reduced the bill, label the total
+                as "after adjustment" (with the original above) so a lower Total
+                than the quoted amount reads as deliberate, not lost money.
+                credits/discount are recomputed here — the ones above are scoped
+                to the tariff-rows IIFE. */}
+            {(() => {
+              const fCredits = payments.reduce((s, p) => s + ((p.kind === 'credit' || p.kind === 'credit_note') ? (p.amount || 0) : 0), 0);
+              const fDisc = Math.max(0, +b.discountAmount || 0);
+              return (fCredits > 0 || fDisc > 0) ? (
+                <>
+                  <Row label={t('originalBill')} value={`₹${((b.total || 0) + fCredits + fDisc).toLocaleString('en-IN')}`} />
+                  <Row label={t('totalAfterAdj')} value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
+                </>
+              ) : (
+                <Row label={t('total')} value={`₹${(b.total || 0).toLocaleString('en-IN')}`} bold />
+              );
+            })()}
             <div style={{ height: 1, background: T.borderSoft, margin: '8px 0' }} />
 
             <div style={{ fontSize: 10, fontWeight: 700, color: T.ink3, letterSpacing: 0.4, marginBottom: 6 }}>{t('paymentsLedger')}</div>

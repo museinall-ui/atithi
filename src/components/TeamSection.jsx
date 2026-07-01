@@ -159,6 +159,9 @@ export default function TeamSection({ session, propertyId, canManageTeam = true 
   const [inviteRole, setInviteRole] = useState('reception');
   const [invitePerms, setInvitePerms] = useState(ROLE_DEFAULT_PERMS.reception);
   const [busy, setBusy] = useState(false);
+  // H5: the email of the just-created invite, so we can show a one-tap
+  // "Share on WhatsApp" with the sign-in link + the EXACT email they must use.
+  const [lastInvited, setLastInvited] = useState('');
 
   // Which member row is showing the expanded permissions editor.
   // null = none open. Only one open at a time to keep the sheet tidy.
@@ -193,6 +196,7 @@ export default function TeamSection({ session, propertyId, canManageTeam = true 
     setError('');
     try {
       await inviteToTeam(propertyId, session.user.id, email, inviteRole, invitePerms);
+      setLastInvited(email);
       setInviteEmail('');
       setInviteRole('reception');
       setInvitePerms(ROLE_DEFAULT_PERMS.reception);
@@ -299,15 +303,26 @@ export default function TeamSection({ session, propertyId, canManageTeam = true 
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 11, fontWeight: 800,
                     }}>
-                      {isMe ? 'ME' : '?'}
+                      {isMe ? 'ME' : (m.email ? m.email[0].toUpperCase() : '?')}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>
-                        {isMe ? 'You' : `Member · ${String(m.user_id || '').slice(0, 8)}…`}
+                      {/* H4: show the member's email (via the property_members RPC,
+                          migration 20260703) instead of a raw user_id code. */}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {isMe ? (m.email ? `You · ${m.email}` : 'You') : (m.email || `Member · ${String(m.user_id || '').slice(0, 8)}…`)}
                       </div>
                       <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, marginTop: 1 }}>
                         {effPerms.length}/{PERMISSIONS.length} permissions {usingDefaults ? '· role defaults' : '· custom'} · joined {m.accepted_at ? new Date(m.accepted_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'pending'}
                       </div>
+                      {/* M14: role and permissions are separate. When a member has
+                          hand-picked (custom) permissions, changing the Role picker
+                          does NOT change their access — say so instead of leaving it
+                          a silent no-op. */}
+                      {!usingDefaults && !isMe && (
+                        <div style={{ fontSize: 9.5, color: 'oklch(48% 0.12 45)', fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>
+                          Custom permissions in effect — the Role picker is just a label here. Use “Edit permissions” below to change access.
+                        </div>
+                      )}
                     </div>
                     <select
                       value={m.role}
@@ -383,6 +398,11 @@ export default function TeamSection({ session, propertyId, canManageTeam = true 
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'oklch(40% 0.10 75)' }}>{inv.email}</div>
                     <div style={{ fontSize: 10, color: 'oklch(40% 0.10 75)', fontWeight: 600, marginTop: 1 }}>
                       {roleLabel(inv.role)} · {invPerms.length} perm{invPerms.length === 1 ? '' : 's'} · invited {new Date(inv.invited_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                    </div>
+                    {/* H5: explain WHY access hasn't appeared — they must sign in
+                        with this exact email. */}
+                    <div style={{ fontSize: 9.5, color: 'oklch(45% 0.10 75)', fontWeight: 700, marginTop: 2, lineHeight: 1.4 }}>
+                      Waiting for them to sign in with this exact email.
                     </div>
                   </div>
                   {canManageTeam && (
@@ -460,10 +480,34 @@ export default function TeamSection({ session, propertyId, canManageTeam = true 
             color: (busy || !inviteEmail.trim()) ? T.ink3 : '#fff',
             fontSize: 12, fontWeight: 700, cursor: (busy || !inviteEmail.trim()) ? 'not-allowed' : 'pointer',
           }}
-        >{busy ? 'Sending…' : `Send invite · ${invitePerms.length} permission${invitePerms.length === 1 ? '' : 's'}`}</button>
-        <div style={{ marginTop: 8, padding: '6px 8px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 6, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
-          The invitee gets added to your property the next time they sign in to Atithi with this email (magic-link). No separate invite email is sent yet — share the app URL via WhatsApp.
-        </div>
+        >{busy ? 'Creating…' : `Create invite · ${invitePerms.length} permission${invitePerms.length === 1 ? '' : 's'}`}</button>
+        {/* H5: creating an invite does NOT send anything. Make that explicit and
+            give a one-tap way to actually tell the person — with the EXACT email
+            they must sign in with (a different address silently gets no access). */}
+        {lastInvited ? (
+          <div style={{ marginTop: 10, padding: '10px 12px', background: T.okLt, border: `1px solid ${T.ok}`, borderRadius: 8 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'oklch(35% 0.12 155)', lineHeight: 1.5 }}>
+              Invite created for <strong>{lastInvited}</strong>. Nothing was sent automatically — tell them to sign in:
+            </div>
+            <button
+              onClick={() => {
+                const appUrl = (typeof window !== 'undefined') ? (window.location.origin + (import.meta.env.BASE_URL || '/')) : 'https://www.atithibook.com/';
+                const msg = `You've been added to our team on AtithiBook. Sign in at ${appUrl} using exactly this email — ${lastInvited} — to get access.`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+              }}
+              style={{ marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 7, border: 'none', background: '#25D366', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+            >
+              <Icon name="wa" size={14} color="#fff" /> Share sign-in link on WhatsApp
+            </button>
+            <div style={{ fontSize: 9.5, color: 'oklch(40% 0.08 155)', fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>
+              They must use this exact email — a typo or a different address won't be recognised.
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 8, padding: '6px 8px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 6, fontSize: 10, color: T.ink3, lineHeight: 1.5 }}>
+            Creating an invite does <strong>not</strong> send an email. The person gets access the next time they sign in to AtithiBook with this <strong>exact</strong> email — after you create it, share the sign-in link with them (a WhatsApp button appears here).
+          </div>
+        )}
       </div>
       )}
     </div>

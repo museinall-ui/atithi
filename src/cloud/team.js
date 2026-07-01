@@ -5,13 +5,18 @@ import { supabase } from '../supabase.js';
 // table from 20260603_team_invites.sql) and the membership reads/writes
 // the Settings → Team accordion needs.
 
-// List all confirmed members of a property (role + accepted_at + user_id).
-// Names / emails come from auth.users which we can't read directly under
-// RLS — but the User who created the invite has us, and at sign-in time
-// the user's own email is on the session. Settings just shows role +
-// 'Me' badge for the current user; future work could expose emails via
-// a security-definer RPC.
+// List all confirmed members of a property (role + accepted_at + user_id + email).
+// Emails live in auth.users which normal RLS can't read, so we prefer the
+// property_members() security-definer RPC (migration 20260703) that returns them.
+// Falls back to the plain membership query (no email) when the RPC isn't pasted
+// yet, so the team screen keeps working — it just shows the id until then.
 export async function loadMembers(propertyId) {
+  const rpc = await supabase.rpc('property_members', { p_property_id: propertyId });
+  if (!rpc.error) return rpc.data || [];
+  const rpcMissing = rpc.error.code === '42883'
+    || /does not exist|undefined.*function/i.test(rpc.error.message || '');
+  if (!rpcMissing) throw rpc.error;
+  // Pre-migration fallback (no email column exposed).
   const { data, error } = await supabase
     .from('memberships')
     .select('id, user_id, role, permissions, accepted_at, invited_by, created_at')

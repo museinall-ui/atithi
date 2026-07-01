@@ -391,8 +391,10 @@ function RoomTypeBlock({ rt, instances, collapsed, onToggle, colW, rowH, labelW,
               const isToday = d.iso === todayIso;
               // Past empty cells stay tappable (faded as a cue) so reception can
               // make a back-dated booking; openQuickCreate confirms first. Only
-              // occupied cells are inactive.
-              const inactive = occupied;
+              // occupied cells are inactive. M15: a staffer without create_bookings
+              // can't book, so their empty cells must NOT look tappable (no
+              // pointer / hover tooltip) — else "tap to book" is a silent dead-end.
+              const inactive = occupied || !canCreate;
               return (
                 <div
                   key={d.iso}
@@ -815,7 +817,7 @@ export default function Diary({ go, bookings, setBookings, moveBooking, t, lang 
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, position: 'relative' }}>
-      <ScreenHeader title={t('diaryTitle')} subtitle={t('diarySub')}
+      <ScreenHeader title={t('diaryTitle')} subtitle={canCreate ? t('diarySub') : t('diarySubView')}
         onBack={() => go('__back')}
         right={<div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setZoom(z => Math.max(40, z - 10))} aria-label="Zoom out" style={iconBtn}><span style={{ fontSize: 18, lineHeight: 1, color: T.ink2 }}>−</span></button>

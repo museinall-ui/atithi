@@ -277,6 +277,7 @@ export const STRINGS = {
     // Booking confirmed screen
     bookingConfirmed: 'Booking confirmed',
     savedInSummary: 'Saved in {name}. Send the booking summary to the guest now, or jump back to the calendar.',
+    savedInSummaryNoPhone: 'Saved in {name}. Jump back to the calendar, or open the booking to add contact details.',
     savedInDiary: 'Saved in your diary. Open it from Home or the calendar.',
     sendToGuestWa: 'Send booking to guest on WhatsApp',
     noPhoneAddOne: 'No phone on file — add one to send the confirmation.',
@@ -745,6 +746,7 @@ export const STRINGS = {
     // Booking confirmed screen
     bookingConfirmed: 'बुकिंग कन्फर्म',
     savedInSummary: '{name} में सेव हो गई। मेहमान को बुकिंग समरी अभी भेजें, या कैलेंडर पर वापस जाएँ।',
+    savedInSummaryNoPhone: '{name} में सेव हो गई। कैलेंडर पर वापस जाएँ, या संपर्क जानकारी जोड़ने के लिए बुकिंग खोलें।',
     savedInDiary: 'आपकी डायरी में सेव हो गई। इसे होम या कैलेंडर से खोलें।',
     sendToGuestWa: 'मेहमान को WhatsApp पर बुकिंग भेजें',
     noPhoneAddOne: 'कोई फ़ोन नंबर नहीं है — कन्फर्मेशन भेजने के लिए एक जोड़ें।',

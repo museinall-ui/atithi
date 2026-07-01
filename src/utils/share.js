@@ -56,8 +56,8 @@ export function bookingShareMessage(booking, property, lang = 'en') {
       lines.push(`बकाया: ${fmtIN(balance)}`);
       lines.push('');
       lines.push(qrLabel
-        ? `भुगतान के लिए UPI QR स्कैन करें (${qrLabel})।`
-        : `भुगतान के लिए UPI QR स्कैन करें।`);
+        ? `भुगतान के लिए हमें यहाँ रिप्लाई करें — हम UPI QR (${qrLabel}) भेज देंगे।`
+        : `भुगतान के लिए हमें यहाँ रिप्लाई करें — हम UPI QR भेज देंगे।`);
     } else {
       lines.push('');
       lines.push(`भुगतान प्राप्त हो गया है। धन्यवाद!`);
@@ -84,8 +84,8 @@ export function bookingShareMessage(booking, property, lang = 'en') {
     lines.push(`Balance:   ${fmtIN(balance)}`);
     lines.push('');
     lines.push(qrLabel
-      ? `Please scan the UPI QR we shared to pay (${qrLabel}).`
-      : `Please scan the UPI QR we shared to pay.`);
+      ? `To pay the balance, reply here and we'll send you our UPI QR (${qrLabel}).`
+      : `To pay the balance, reply here and we'll send you our UPI QR.`);
   } else {
     lines.push('');
     lines.push(`Payment received in full. Thank you!`);

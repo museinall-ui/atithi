@@ -541,7 +541,7 @@ export function generateVoucher(b, rt, property, invoice, lang = 'en') {
     </ul>
   </div>` : ''}
 
-  ${!isInvoice && p.paymentQrDataUrl ? `
+  ${!isInvoice && p.paymentQrDataUrl && balance > 0 ? `
   <div style="margin: 20px 0 22px; padding: 16px 18px; background: #FBF7F3; border: 1px solid #E8E0D8; border-radius: 12px; display: flex; gap: 18px; align-items: center;">
     <img src="${esc(p.paymentQrDataUrl)}" alt="Payment QR" title="Tap to enlarge"
       onclick="(function(img){var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out';o.onclick=function(){o.remove()};var b=new Image();b.src=img.src;b.style.cssText='max-width:92vw;max-height:92vh;background:#fff;padding:18px;border-radius:14px;cursor:default';b.onclick=function(e){e.stopPropagation()};var x=document.createElement('div');x.textContent='✕';x.setAttribute('aria-label','Close');x.style.cssText='position:fixed;top:14px;right:20px;color:#fff;font-size:32px;font-weight:700;line-height:1;cursor:pointer';o.appendChild(b);o.appendChild(x);document.body.appendChild(o);})(this)"

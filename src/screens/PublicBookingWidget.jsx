@@ -1277,7 +1277,7 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
               const h = computeHoldHours();
               return (
                 <div style={{ padding: '10px 12px', background: T.indigoLt, border: `1px solid ${T.indigo}`, borderRadius: 8, marginTop: 12, fontSize: 11, color: T.indigo, lineHeight: 1.5, fontWeight: 600 }}>
-                  <Icon name="info" size={11} /> Your booking is held for <strong>{h}h</strong> pending confirmation. After you tap <strong>Confirm</strong>, the payment QR appears — please send the advance to lock the room. We reach out on WhatsApp / phone to coordinate.
+                  <Icon name="info" size={11} /> Your booking is held for <strong>{h}h</strong>. After you tap <strong>Confirm</strong>, our payment QR appears — send an advance (or pay in full) to lock the room, then WhatsApp us the screenshot. If we don’t hear from you within <strong>{h}h</strong>, the hold may be released so the room can be offered to others.
                 </div>
               );
             })()}
@@ -1325,7 +1325,13 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
             </div>
             <div style={{ fontSize: 20, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>Thank you, {data.name.split(' ')[0]}!</div>
             <div style={{ fontSize: 13, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 320, margin: '6px auto 0' }}>
-              Your booking is in our diary. We'll WhatsApp you shortly to confirm and share check-in details.
+              {/* L11: match the promise to what the property actually has. */}
+              Your booking is in our diary.{' '}
+              {property?.profile?.phone
+                ? "We'll WhatsApp you shortly to confirm and share check-in details."
+                : property?.profile?.email
+                  ? "We'll email you shortly to confirm and share check-in details."
+                  : 'Please save your reference below and contact the property to confirm.'}
             </div>
             {createdBookingId && (
               <div style={{ fontSize: 11, color: T.ink3, marginTop: 8 }}>
@@ -1444,14 +1450,14 @@ export default function PublicBookingWidget({ property, bookings, rateOverrides 
             {property?.profile?.paymentQrDataUrl && (
               <div style={{ marginTop: 22, padding: 16, background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 12, maxWidth: 320, margin: '22px auto 0' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: T.ink3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
-                  Want to lock it in? Scan to pay ₹{total.toLocaleString('en-IN')}
+                  Scan to pay &amp; lock your room
                 </div>
                 <img src={property.profile.paymentQrDataUrl} alt="Pay" style={{ width: 160, height: 160, borderRadius: 10, background: '#fff', padding: 6 }} />
                 {property?.profile?.paymentQrLabel && (
                   <div style={{ fontSize: 11, color: T.ink2, marginTop: 6, fontWeight: 600 }}>{property.profile.paymentQrLabel}</div>
                 )}
                 <div style={{ fontSize: 10, color: T.ink3, marginTop: 6, lineHeight: 1.5 }}>
-                  Pay via any UPI app. WhatsApp us a screenshot of the payment so we can confirm faster.
+                  Send an advance to hold your room — or pay ₹{total.toLocaleString('en-IN')} in full. WhatsApp us a screenshot of the payment so we can confirm faster.
                 </div>
               </div>
             )}

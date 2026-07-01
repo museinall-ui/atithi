@@ -54,7 +54,7 @@ export default function BookingConfirmed({ go, t, bookingId, bookings = [], prop
           <div style={{ fontSize: 13, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 320 }}>
             <strong style={{ color: T.ink2 }}>{b.id}</strong> · {b.guest}{b.phone ? ` · ${b.phone}` : ''}
             <br />
-            {t('savedInSummary').replace('{name}', propName || (lang === 'hi' ? 'आपकी डायरी' : 'your diary'))}
+            {t(waUrl ? 'savedInSummary' : 'savedInSummaryNoPhone').replace('{name}', propName || (lang === 'hi' ? 'आपकी डायरी' : 'your diary'))}
           </div>
         ) : (
           <div style={{ fontSize: 13, color: T.ink3, marginTop: 6, lineHeight: 1.5, maxWidth: 280 }}>

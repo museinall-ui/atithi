@@ -649,9 +649,11 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
     // expenses are point-in-time, not stays.
     const expensesInRange = (expenses || []).filter(e => e.date >= rangeStart && e.date <= rangeEnd);
     const totalExpenses = expensesInRange.reduce((s, e) => s + (e.amount || 0), 0);
-    const netAfterExpenses = Math.max(0, netRevenue - totalExpenses);
+    // L9: allow a real loss to show (was floored at 0, which then didn't sum
+    // with the deduction rows above and hid an underwater month).
+    const netAfterExpenses = netRevenue - totalExpenses;
 
-    return { revenue, billed, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays, totalExpenses, netAfterExpenses, expensesCount: expensesInRange.length };
+    return { revenue, billed, billedInRange, reportedRevenue, reportedBilled, unreported, gstCount: gstBookings.length, avgOccPct, adr, revpar, dailyOccPct, byType, topRevenue, formC, gstCollected, totalUnits, invoiceableCount: invoiceable.length, gapCount, gapAmount, netRevenue, totalTax, totalCommission, rangeDays, totalExpenses, netAfterExpenses, expensesCount: expensesInRange.length };
   }, [bookings, ROOM_TYPES, rangeStartIdx, rangeEndIdx, rangeDays, property, expenses, rangeStart, rangeEnd]);
 
   // Daily Profit & Loss. Separate from `stats` to keep the mental model
@@ -803,7 +805,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
         </Card>
         {rangeValid && (<>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          <KPI label={t('kpiMoneyEarned')} value={fmtINR(stats.revenue)} sub={`${fmtINR(stats.billed)} ${t('kpiBilledSuffix')}`} icon="inr" color={T.primary} />
+          <KPI label={t('kpiMoneyEarned')} value={fmtINR(stats.revenue)} sub={`${fmtINR(stats.billedInRange)} ${t('kpiBilledSuffix')}`} icon="inr" color={T.primary} />
           <KPI label={t('kpiRoomsFull')} value={`${stats.avgOccPct}%`} sub={`${stats.rangeDays} ${t('repDays')} ${t('average')}`} icon="bed" color={T.indigo} />
           <KPI label={t('kpiPerRoomNight')} value={fmtINR(stats.adr)} sub={t('kpiWhenBooked')} icon="tag" color={T.teal} />
           <KPI label={t('kpiPerRoomDay')} value={fmtINR(stats.revpar)} sub={t('kpiAcrossRooms')} icon="chart" color="oklch(60% 0.14 320)" />
@@ -844,7 +846,7 @@ export default function Reports({ go, t, bookings = [], plan = 'engine', propert
                 <>
                   <BreakdownRow label={`${t('thOpExpenses')} (${stats.expensesCount} ${t('expEntries')})`} value={`− ${fmtINR(stats.totalExpenses)}`} color={T.ink3} />
                   <div style={{ borderTop: `1px solid ${T.borderSoft}`, paddingTop: 6, marginTop: 4 }}>
-                    <BreakdownRow label={t('thAfterExpenses')} value={fmtINR(stats.netAfterExpenses)} color={T.ok} bold />
+                    <BreakdownRow label={t('thAfterExpenses')} value={stats.netAfterExpenses < 0 ? `− ${fmtINR(Math.abs(stats.netAfterExpenses))}` : fmtINR(stats.netAfterExpenses)} color={stats.netAfterExpenses < 0 ? T.danger : T.ok} bold />
                   </div>
                 </>
               )}

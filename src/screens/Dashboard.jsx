@@ -1167,7 +1167,24 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
         <div style={{ padding: '0 16px 14px' }}>
           <SectionHead title={t('autoRelease')} />
           <Card padding={0} style={{ overflow: 'hidden' }}>
-            {onHold.map((b, i) => (
+            {onHold.map((b, i) => {
+              // M9: show the real outstanding balance (total − paid), not the full
+              // total, so a hold with an advance already taken doesn't read as
+              // fully unpaid (and matches the Pending-payments card).
+              const bal = (b.total || 0) - (b.paid || 0);
+              // M10: say the real release day, not always "today". releaseTs is
+              // epoch ms; the label carries no date otherwise.
+              const relLabel = (() => {
+                if (!b.releaseTs) return t('releasesToday');
+                if (b.releaseTs <= Date.now()) return t('holdExpired');
+                const relD = new Date(b.releaseTs); relD.setHours(0, 0, 0, 0);
+                const todD = new Date(); todD.setHours(0, 0, 0, 0);
+                const days = Math.round((relD - todD) / 86400000);
+                if (days <= 0) return t('releasesToday');
+                if (days === 1) return t('releasesTomorrow');
+                return t('releasesOn').replace('{date}', relD.toLocaleDateString(isHi ? 'hi-IN' : 'en-IN', { day: '2-digit', month: 'short' }));
+              })();
+              return (
               <div key={b.id} style={{
                 padding: '12px 14px',
                 borderBottom: i < onHold.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
@@ -1179,12 +1196,12 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{b.guest}</div>
                     <div style={{ fontSize: 11, color: T.ink3 }} className="tnum">
-                      {dayName(b.startIdx)} → {dayName(b.startIdx + b.nights)} · ₹{b.total.toLocaleString('en-IN')} {t('unpaid')}
+                      {dayName(b.startIdx)} → {dayName(b.startIdx + b.nights)} · {bal > 0 ? `₹${bal.toLocaleString('en-IN')} ${t('unpaid')}` : t('paidAwaitingConfirm')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div className="tnum" style={{ fontSize: 13, fontWeight: 700, color: 'oklch(48% 0.14 75)' }}>{b.releaseAt}</div>
-                    <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{t('releasesToday')}</div>
+                    <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600 }}>{relLabel}</div>
                   </div>
                 </div>
                 {onExtendHold && canExtend && (
@@ -1197,7 +1214,8 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </Card>
         </div>
       )}
@@ -1209,7 +1227,25 @@ export default function Dashboard({ go, bookings, property, plan = 'engine', t, 
           </button>
         } />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {today.slice(0, 4).map(b => <ArrivalRow key={b.id} b={b} go={go} dayName={dayName} t={t} roomTypes={ROOM_TYPES} isRepeat={repeats.has(normPhone(b.phone))} />)}
+          {today.length > 0 ? (
+            today.slice(0, 4).map(b => <ArrivalRow key={b.id} b={b} go={go} dayName={dayName} t={t} roomTypes={ROOM_TYPES} isRepeat={repeats.has(normPhone(b.phone))} />)
+          ) : (bookings || []).filter(b => b.status !== 'cancelled').length === 0 ? (
+            // L1: first run — no bookings at all. Replace the empty header with a
+            // friendly nudge toward the one action, instead of a blank gap that
+            // reads as "broken / still loading".
+            <Card padding={16} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 12.5, color: T.ink3, fontWeight: 600, marginBottom: can('create_bookings') ? 12 : 0, lineHeight: 1.5 }}>
+                {isHi ? 'आपकी बुकिंग यहाँ दिखेंगी।' : 'Your bookings will show up here.'}
+              </div>
+              {can('create_bookings') && (
+                <button onClick={() => go('new')} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {t('takeFirstBooking')}
+                </button>
+              )}
+            </Card>
+          ) : (
+            <div style={{ fontSize: 12, color: T.ink3, padding: '6px 2px', fontWeight: 600 }}>{t('noArrivalsYet')}</div>
+          )}
         </div>
       </div>
 

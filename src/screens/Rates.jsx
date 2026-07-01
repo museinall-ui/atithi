@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { T } from '../tokens.js';
-import { effectiveRoomTypes, ANCHOR, ymd } from '../data.js';
+import { effectiveRoomTypes, ANCHOR, ymd, ratePlansActive } from '../data.js';
 import { holidayFor } from '../holidays.js';
 import Icon from '../components/Icon.jsx';
 import Btn from '../components/Btn.jsx';
@@ -707,6 +707,13 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 marginTop: 7, padding: 0, background: 'none', border: 'none',
                 color: T.primary, fontSize: 11, fontWeight: 600, cursor: 'pointer',
               }}>{t('weekendSeasonLink')} →</button>
+              {/* M5: explain how a calendar price is built, so a number that
+                  differs from base doesn't read as a bug. L6: note that the
+                  calendar shows Standard-plan rates when rate plans are on. */}
+              <div style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, lineHeight: 1.45, marginTop: 7, maxWidth: 300 }}>
+                {t('rateCompositionHint')}
+                {ratePlansActive(property) ? ` ${t('ratePlansCalendarHint')}` : ''}
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {/* Synced chip used to claim OTA sync regardless of plan.
@@ -1234,6 +1241,11 @@ export default function Rates({ go, t, lang, overrides: overridesProp, setOverri
                 <div style={{ fontSize: 15, fontWeight: 700, color: T.ink, marginBottom: 4 }}>{t('closeOut')} · {rt.name}</div>
                 <div style={{ fontSize: 12, color: T.ink2, marginBottom: 14, lineHeight: 1.4 }}>
                   Stop taking bookings for <strong>{rt.name}</strong> on {selCount} date{selCount > 1 ? 's' : ''}. Block the whole room type, or just specific units (e.g. one tent under maintenance). You can re-open any time.
+                </div>
+                {/* L7: close-out (block units) vs Set inventory (reduce sellable
+                    count) overlap — say which is which so a simple task feels safe. */}
+                <div style={{ fontSize: 10, color: T.ink3, fontWeight: 600, lineHeight: 1.45, marginBottom: 12 }}>
+                  Use this for a room that's temporarily out (maintenance, owner use). To permanently change how many rooms of this type you sell, use <strong>Set inventory</strong> instead.
                 </div>
                 <div style={{ fontSize: 10, color: T.ink3, fontWeight: 700, letterSpacing: 0.4, marginBottom: 6 }}>SPECIFIC UNITS</div>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>

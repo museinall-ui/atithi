@@ -1739,6 +1739,11 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
                   />
                   <span style={{ fontSize: 11, color: T.ink3, fontWeight: 600 }}>% on base rate</span>
                 </div>
+                {/* M6: seasons stack on top of the weekend uplift — make that
+                    visible so a weekend-in-season price isn't a surprise. */}
+                <div style={{ fontSize: 9.5, color: T.ink3, fontWeight: 600, lineHeight: 1.4, marginTop: 3 }}>
+                  Stacks on top of your weekend uplift — a weekend night in this season = base × weekend uplift × this %. Leave at 0% for no seasonal change.
+                </div>
 
                 {/* Per-season extra-adult / extra-child overrides.
                     Each is optional (off = use the category default).
@@ -1855,7 +1860,9 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
           <button
             onClick={() => {
               const id = 'season_' + Date.now().toString(36);
-              setSeasons(arr => [...arr, { id, name: '', startIso: '', endIso: '', multiplierPct: 20 }]);
+              // M6: start a new season at 0% so it never silently stacks an extra
+              // uplift on top of the weekend uplift until the hotelier sets one.
+              setSeasons(arr => [...arr, { id, name: '', startIso: '', endIso: '', multiplierPct: 0 }]);
               setJustAddedId(id);
             }}
             style={{
@@ -2175,8 +2182,8 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               top; set to MAP/AP for camps that quote all-inclusive. */}
           <div style={{ padding: '10px 12px', background: T.primaryLt, border: `1px solid ${T.primary}`, borderRadius: 8, marginBottom: 12 }}>
             <div style={{ fontSize: 10, color: T.primaryDk, fontWeight: 700, letterSpacing: 0.3, marginBottom: 6, textTransform: 'uppercase' }}>Default meal plan</div>
-            <div style={{ fontSize: 10.5, color: T.primaryDk, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
-              Your calendar rate is treated as already including this plan. Other plans add (or subtract) the per-guest-per-night difference.
+            <div style={{ fontSize: 10.5, color: T.primaryDk, fontWeight: 600, lineHeight: 1.5, marginBottom: 8 }}>
+              This tells the app what your calendar price <strong>already includes</strong>. If you quote all-inclusive (e.g. “₹4,500 with dinner &amp; breakfast”), pick that plan here so meals aren’t added on top. If your price is room-only, leave it on <strong>Room only</strong> — then meal cost is added when a guest picks a plan. Getting this wrong silently over- or under-charges every booking.
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
               {mealPlans.filter(mp => mp.enabled).map(mp => {
@@ -2443,6 +2450,13 @@ function PropertyProfile({ t, onClose, property, plan, onSave, savedExtras = [],
               hint="If you're GST-registered, this appears on every tax invoice."
               prefix={<Icon name="tag" size={12} color={T.ink3} />}
             />
+            {/* L3: entering a GSTIN alone doesn't tax bookings — issuing GST tax
+                invoices is part of the Invoicing plan. Say so where it's entered. */}
+            {plan !== 'invoicing' && (
+              <div style={{ marginTop: 6, padding: '8px 10px', background: T.bgSoft, border: `1px solid ${T.borderSoft}`, borderRadius: 7, fontSize: 10.5, color: T.ink3, lineHeight: 1.5, fontWeight: 600 }}>
+                Note: entering your GSTIN here doesn't tax your bookings on its own. Issuing GST tax invoices (with prefix + numbering) is part of the <strong>Invoicing</strong> plan.
+              </div>
+            )}
             {/* Invoice-specific settings: prefix + per-FY counter. Both
                 only relevant on the Invoicing plan, so we gate them. */}
             {plan === 'invoicing' && (
